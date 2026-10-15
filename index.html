@@ -1,0 +1,3772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#fbf7f0" />
+  <title>Kinalbum — Family Photo Sorter</title>
+  <meta name="description" content="On-device face sorting for family photos. Private by design — photos never leave your phone." />
+  
+  <link rel="apple-touch-icon" href="icon.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+/* Kinalbum app — on-device family photo sorter */
+:root {
+  --cream: #fbf7f0;
+  --cream-2: #f4ece0;
+  --ink: #241f1b;
+  --ink-soft: #5b534c;
+  --accent: #e8734a;
+  --accent-dark: #c8552f;
+  --accent-2: #3f7f74;
+  --danger: #c0392b;
+  --card: #ffffff;
+  --line: #e7ddce;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 10px 30px -14px rgba(50, 35, 20, 0.28);
+  --shadow-sm: 0 4px 14px -6px rgba(50, 35, 20, 0.18);
+  --font-sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-serif: "Fraunces", Georgia, serif;
+  --tabbar-h: 64px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; }
+body {
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: var(--cream);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+}
+h1, h2, h3 { font-family: var(--font-serif); line-height: 1.15; margin: 0 0 .4em; }
+em { font-style: italic; color: var(--accent-dark); }
+p { margin: 0 0 .9rem; }
+
+.brand { display: inline-flex; align-items: center; gap: .5em; }
+.brand__mark {
+  width: 22px; height: 22px; border-radius: 7px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,.55);
+}
+.brand__name { font-family: var(--font-serif); font-weight: 700; font-size: 1.15rem; }
+
+/* App bar */
+.appbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px calc(12px); padding-top: calc(12px + env(safe-area-inset-top));
+  background: rgba(251,247,240,.9); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.appbar__badge {
+  font-size: .72rem; font-weight: 600; color: var(--accent-2);
+  background: #e7f1ee; border: 1px solid #cfe3dd; padding: .25em .7em; border-radius: 999px;
+}
+
+/* Screens */
+.screen { max-width: 680px; margin-inline: auto; padding: 18px 16px 30px; }
+.view__title { font-size: 1.6rem; }
+.view__sub { color: var(--ink-soft); margin-bottom: 1.2rem; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4em;
+  font-family: inherit; font-weight: 600; font-size: .98rem; cursor: pointer;
+  padding: .7em 1.2em; border-radius: 999px; border: 1px solid transparent;
+  transition: transform .1s ease, background .18s ease;
+}
+.btn:active { transform: scale(.97); }
+.btn--primary { background: var(--accent); color: #fff; }
+.btn--primary:hover { background: var(--accent-dark); }
+.btn--ghost { background: #fff; color: var(--ink); border-color: var(--line); }
+.btn--danger { background: #fff; color: var(--danger); border-color: #eccac4; }
+.btn--small { padding: .45em .9em; font-size: .85rem; }
+.btn--block { display: block; width: 100%; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: .4rem; }
+.btn-row--split { align-items: center; }
+.btn-row__spacer { flex: 1; }
+
+/* Edit-person modal */
+.person-edit__head { display: flex; align-items: center; gap: 12px; margin: .4rem 0 .8rem; text-align: left; }
+.person-edit__face { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: var(--cream-2); flex: 0 0 auto; }
+.person-edit__head input { flex: 1; }
+
+/* Hero mini */
+.hero-mini h1 { font-size: clamp(1.6rem, 6vw, 2.1rem); }
+.hero-mini p { color: var(--ink-soft); }
+
+/* Dropzone */
+.dropzone {
+  display: grid; place-items: center; text-align: center; gap: 4px;
+  margin: 20px 0; padding: 38px 20px; cursor: pointer;
+  background: #fff; border: 2px dashed var(--accent); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm); transition: background .15s ease, border-color .15s ease;
+}
+.dropzone:hover, .dropzone.is-drag { background: #fff3ea; }
+.dropzone__icon { font-size: 2.2rem; }
+.dropzone__title { font-family: var(--font-serif); font-weight: 700; font-size: 1.3rem; }
+.dropzone__sub { color: var(--ink-soft); font-size: .92rem; }
+
+/* Watched folders */
+.watched-list { display: grid; gap: 8px; margin: 12px 0; }
+.watched-row { display: flex; align-items: stretch; gap: 8px; }
+.watched-row__main {
+  flex: 1; display: flex; align-items: center; gap: 10px; text-align: left;
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 10px 14px; cursor: pointer; font: inherit; color: var(--ink);
+}
+.watched-row__main:hover { background: var(--cream-2); }
+.watched-row__icon { font-size: 1.2rem; }
+.watched-row__name { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watched-row__hint { font-size: .78rem; color: var(--ink-soft); flex: 0 0 auto; }
+.watched-row__x {
+  flex: 0 0 auto; width: 40px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: #fff; color: var(--ink-soft); cursor: pointer; font-size: 1rem;
+}
+.watched-row__x:hover { background: #fff3ea; color: var(--accent-dark); }
+.empty--inline { padding: 8px 0; }
+.empty--inline p { color: var(--ink-soft); font-size: .9rem; margin: 0; }
+
+/* Stats */
+.stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin: 6px 0 18px; }
+.stat { background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 8px; text-align: center; font-family: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .05s; }
+.stat:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(36,31,27,.08); }
+.stat:active { transform: translateY(1px); }
+.stat--alert { border-color: #eccac4; background: #fff7f5; }
+.stat--alert .stat__num { color: var(--danger); }
+.stat__num { display: block; font-family: var(--font-serif); font-weight: 700; font-size: 1.5rem; color: var(--accent-dark); }
+.stat__label { font-size: .78rem; color: var(--ink-soft); }
+
+.tips { background: var(--cream-2); border-radius: var(--radius-sm); padding: 14px 16px; }
+.tips h3 { font-size: .9rem; text-transform: uppercase; letter-spacing: .1em; color: var(--accent-dark); margin-bottom: .3rem; }
+.tips p { margin: 0; color: var(--ink-soft); font-size: .92rem; }
+
+/* People grid */
+.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+/* "Found — needs tagging" block on the Albums screen */
+.to-tag { margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.person-card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); }
+.person-card__face { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--cream-2); }
+.person-card__face--btn { position: relative; padding: 0; border: 0; cursor: pointer; }
+.person-card__face--btn img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.person-card__view { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 0; text-align: center;
+  font-size: .72rem; font-weight: 700; color: #fff; background: rgba(0,0,0,.5);
+  opacity: 0; transition: opacity .15s ease; }
+.person-card__face--btn:hover .person-card__view,
+.person-card__face--btn:focus-visible .person-card__view { opacity: 1; }
+.person-card__body { padding: 10px 12px 12px; }
+.person-card__name { font-weight: 700; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; }
+.person-card__count { font-size: .8rem; color: var(--ink-soft); margin-bottom: 8px; }
+.person-card__actions { display: flex; gap: 8px; }
+.person-card__actions .btn { flex: 1; }
+.person-card--link { cursor: pointer; transition: box-shadow .15s ease, transform .1s ease; }
+.person-card--link:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
+.badge-kid { font-size: .62rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 700;
+  background: var(--accent-2); color: #fff; padding: .15em .5em; border-radius: 999px; }
+.people-subhead { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft);
+  margin: 18px 0 10px; }
+.people-subhead:first-of-type { margin-top: 4px; }
+
+/* Albums */
+.albums-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.toggle { display: inline-flex; align-items: center; gap: .4em; font-size: .85rem; font-weight: 600;
+  color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
+.toggle input { accent-color: var(--accent); }
+.tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 6px; }
+.tab {
+  flex: 0 0 auto; padding: .5em 1em; border-radius: 999px; border: 1px solid var(--line);
+  background: #fff; font-weight: 600; font-size: .9rem; cursor: pointer; color: var(--ink-soft);
+}
+.tab.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.album-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+@media (min-width: 520px) { .album-grid { grid-template-columns: repeat(4, 1fr); } }
+.album-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--cream-2); cursor: pointer; transition: transform .1s ease; }
+.album-grid img:hover { transform: scale(1.02); }
+.thumb { position: relative; }
+.thumb__play { position: absolute; left: 6px; bottom: 6px; background: rgba(0,0,0,.62); color: #fff;
+  font-size: .72rem; font-weight: 700; padding: 2px 6px; border-radius: 6px; pointer-events: none; }
+
+/* Lightbox (full photo viewer) */
+.lightbox { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px; padding: 24px; overflow-y: auto;
+  background: rgba(20,16,14,.92); }
+.lightbox__stage { position: relative; display: flex; align-items: center; justify-content: center;
+  width: 100%; max-width: 820px; }
+.lightbox__img { max-width: 100%; max-height: 54vh; object-fit: contain; border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0,0,0,.5); background: var(--cream-2); }
+.lightbox__nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 48px;
+  border-radius: 50%; border: none; background: rgba(255,255,255,.16); color: #fff;
+  font-size: 2rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.lightbox__nav:hover { background: rgba(255,255,255,.3); }
+.lightbox__nav--prev { left: 6px; }
+.lightbox__nav--next { right: 6px; }
+.lightbox__nav[hidden] { display: none; }
+.lightbox__strip { display: flex; gap: 8px; overflow-x: auto; max-width: 100%; padding: 2px; }
+.lightbox__strip[hidden] { display: none; }
+.lightbox__strip-thumb { position: relative; flex: 0 0 auto; width: 58px; height: 58px; padding: 0;
+  border: 2px solid transparent; border-radius: 8px; overflow: hidden; cursor: pointer; background: none; }
+.lightbox__strip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lightbox__strip-thumb.is-active { border-color: #fff; }
+.lightbox__strip-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: .8rem; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+.lightbox__close { position: absolute; top: 14px; right: 16px; width: 44px; height: 44px;
+  border-radius: 50%; border: none; background: rgba(255,255,255,.14); color: #fff;
+  font-size: 1.2rem; cursor: pointer; z-index: 2; }
+.lightbox__close:hover { background: rgba(255,255,255,.26); }
+.lightbox__actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+
+/* Manual tagging panel inside the lightbox */
+.lightbox__tag { width: 100%; max-width: 440px; max-height: 28vh; overflow-y: auto;
+  background: #fff; border-radius: var(--radius); padding: 12px 14px; }
+.tag-title { font-size: .82rem; font-weight: 700; color: var(--ink-soft); margin: 0 0 8px; text-transform: uppercase; letter-spacing: .03em; }
+.tag-face { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.tag-face:first-of-type { border-top: 0; }
+.tag-face__thumb { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; background: var(--cream-2); flex: none; }
+.tag-face__body { flex: 1; min-width: 0; }
+.tag-face__who { font-size: .9rem; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.tag-face__who .muted { color: var(--ink-soft); font-weight: 500; }
+.tag-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-chip { font: inherit; font-size: .8rem; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
+.tag-chip:hover { border-color: var(--accent); background: var(--cream-2); }
+.tag-chip.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tag-chip--new { color: var(--accent); border-style: dashed; }
+.tag-chip--ignore { color: var(--ink-soft); border-style: dashed; }
+.tag-chip--ignore:hover { border-color: var(--ink-soft); color: var(--ink); }
+.tag-chip--remove { border-style: solid; line-height: 1; padding: 6px 9px; }
+.tag-chip--remove:hover { border-color: var(--danger, #c0392b); color: var(--danger, #c0392b); }
+.tag-chip__x { font-weight: 800; margin-left: 2px; opacity: .85; }
+.album-chip-group { display: inline-flex; align-items: center; gap: 4px; }
+.tag-done-summary { margin: 2px 0 10px; }
+
+/* Runtime client-ID setup field in the cloud card */
+.cloud-setup { margin: 0 0 12px; }
+.field-row { display: flex; gap: 8px; align-items: center; }
+.text-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: inherit;
+  color: var(--ink);
+  background: #fff;
+}
+.text-input:focus { outline: none; border-color: var(--accent); }
+
+/* Album membership block inside the lightbox */
+.photo-albums { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.photo-albums .tag-title { margin-top: 10px; }
+.photo-albums .tag-title:first-child { margin-top: 0; }
+
+.empty { text-align: center; color: var(--ink-soft); padding: 40px 20px; }
+
+/* Settings cards */
+.card-plain { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; box-shadow: var(--shadow-sm); }
+.card-plain--muted { background: var(--cream-2); box-shadow: none; }
+.card-plain h3 { font-size: 1.1rem; }
+.card-plain p { color: var(--ink-soft); font-size: .93rem; }
+.card-plain__fine { color: var(--ink-soft); font-size: .82rem; margin-top: 8px; opacity: .9; }
+.ticks { margin: 0; padding-left: 0; list-style: none; display: grid; gap: .5rem; }
+.ticks li { position: relative; padding-left: 1.6rem; color: var(--ink-soft); font-size: .92rem; }
+.ticks li::before { content: "🔒"; position: absolute; left: 0; font-size: .85rem; }
+.msg { margin-top: 10px; font-size: .9rem; font-weight: 500; color: var(--accent-2); }
+
+/* Tab bar */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  background: #fff; border-top: 1px solid var(--line);
+}
+.tabbar__btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border: 0; background: none; font-family: inherit; font-size: .72rem; font-weight: 600;
+  color: var(--ink-soft); cursor: pointer;
+}
+.tabbar__btn span { font-size: 1.25rem; line-height: 1; }
+.tabbar__btn.is-active { color: var(--accent-dark); }
+
+/* Boot overlay */
+.boot {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+  background: var(--cream); padding: 24px;
+}
+.boot__card { max-width: 380px; text-align: center; }
+.boot .brand { justify-content: center; margin-bottom: 18px; }
+.boot__status { font-weight: 600; margin-bottom: 14px; }
+.boot__fine { font-size: .82rem; color: var(--ink-soft); margin-top: 14px; }
+
+.bar { height: 8px; background: var(--cream-2); border-radius: 999px; overflow: hidden; }
+.bar__fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s ease; }
+
+/* Processing overlay */
+.processing { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgba(36,31,27,.55); backdrop-filter: blur(3px); padding: 24px; }
+.processing__card { background: #fff; border-radius: var(--radius); padding: 26px 24px; text-align: center; max-width: 320px; width: 100%; box-shadow: var(--shadow); }
+.processing__count { font-size: .85rem; color: var(--ink-soft); margin: 8px 0 0; }
+.spinner {
+  width: 40px; height: 40px; margin: 0 auto 14px; border-radius: 50%;
+  border: 4px solid var(--cream-2); border-top-color: var(--accent); animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Modal */
+.modal { position: fixed; inset: 0; z-index: 95; display: grid; place-items: center; background: rgba(36,31,27,.55); padding: 24px; }
+.modal__card { background: #fff; border-radius: var(--radius); padding: 22px; width: 100%; max-width: 340px; text-align: center; box-shadow: var(--shadow); }
+.modal__card--wide { max-width: 560px; max-height: 86vh; overflow-y: auto; }
+/* "Remove all extras" pinned to the top of the duplicate list so it's reachable
+   without scrolling the whole list first. */
+.btn-row--top { position: sticky; top: -2px; z-index: 3; justify-content: flex-end; margin: 0 0 10px; padding: 6px 0; background: #fff; }
+.btn-row--top:empty { display: none; }
+.modal__face { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; margin-bottom: 10px; background: var(--cream-2); }
+.modal__card input[type="text"] { width: 100%; padding: .7em .9em; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 1rem; font-family: inherit; margin-bottom: 12px; }
+.modal__card input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,115,74,.18); }
+.check { display: flex; align-items: center; gap: .5em; justify-content: center; font-size: .9rem; color: var(--ink-soft); margin-bottom: 16px; }
+.check input { accent-color: var(--accent); }
+.modal__hint { font-size: .85rem; color: var(--ink-soft); margin-bottom: 10px; }
+.modal__or { font-size: .78rem; color: var(--ink-soft); margin: 12px 0; }
+.chips--people { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chip--person {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px;
+  border: 1px solid var(--line); border-radius: 999px; background: #fff; cursor: pointer;
+  font: inherit; font-size: .88rem; font-weight: 600; color: var(--ink);
+}
+.chip--person:hover { background: var(--cream-2); border-color: var(--accent); }
+.chip--person img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: var(--cream-2); }
+
+/* Selectable face grid in the naming modal */
+.name-faces { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px;
+  max-height: 232px; overflow-y: auto; margin: 4px 0 6px; }
+.name-face { position: relative; border: 0; padding: 0; background: none; cursor: pointer; border-radius: var(--radius-sm); }
+.name-face img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm);
+  background: var(--cream-2); display: block; outline: 3px solid var(--accent); outline-offset: -3px; transition: outline-color .12s, opacity .12s; }
+.name-face::after { content: "✓"; position: absolute; top: 3px; right: 3px; width: 18px; height: 18px;
+  border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; line-height: 18px; text-align: center; }
+.name-face--off img { outline-color: transparent; opacity: .4; filter: grayscale(1); }
+.name-face--off::after { content: ""; background: rgba(0,0,0,.35); }
+
+/* Duplicate review modal */
+.dup-body { display: flex; flex-direction: column; gap: 14px; margin: 12px 0 16px; text-align: left; }
+.dup-group { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; background: var(--cream); }
+.dup-group__head { font-size: .78rem; font-weight: 700; color: var(--ink-soft); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .03em; }
+.dup-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.dup-tile { width: 128px; display: flex; flex-direction: column; gap: 6px; }
+.dup-tile__imgwrap { position: relative; }
+.dup-tile__imgwrap img { width: 128px; height: 128px; object-fit: cover; border-radius: var(--radius-sm); background: var(--cream-2); display: block; }
+.dup-tile--master .dup-tile__imgwrap img { outline: 3px solid var(--accent); outline-offset: -3px; }
+.dup-tile__badge { position: absolute; top: 5px; left: 5px; background: var(--accent); color: #fff; font-size: .68rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+.dup-tile__play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.6); pointer-events: none; }
+.dup-tile__meta { font-size: .72rem; color: var(--ink-soft); text-align: center; }
+.dup-tile__actions { display: flex; gap: 6px; justify-content: center; }
+.dup-tile__actions .btn { flex: 1; }
+.name-faces__count { font-size: .78rem; color: var(--ink-soft); margin: 0 0 12px; }
+.cloud-ico { font-size: 1.05em; }
+
+[hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+</style>
+
+  <!-- On-device face recognition (bundled TF.js). Runs locally in the browser. -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+</head>
+<body>
+  <!-- Boot / model-loading overlay -->
+  <div id="boot" class="boot">
+    <div class="boot__card">
+      <div class="brand">
+        <span class="brand__mark"></span><span class="brand__name">Kinalbum</span>
+      </div>
+      <p class="boot__status" id="bootStatus">Warming up the on-device AI…</p>
+      <div class="bar"><div class="bar__fill" id="bootBar"></div></div>
+      <p class="boot__fine">First load downloads a small AI model (~6&nbsp;MB) once. After that it works offline. Your photos never leave this device.</p>
+    </div>
+  </div>
+
+  <header class="appbar">
+    <div class="brand"><span class="brand__mark"></span><span class="brand__name">Kinalbum</span></div>
+    <span class="appbar__badge">Private · on-device</span>
+  </header>
+
+  <main class="screen" id="screens">
+
+    <!-- ADD SCREEN -->
+    <section class="view" id="view-add" data-view="add">
+      <div class="hero-mini">
+        <h1>Sort your photos by <em>child</em> — automatically.</h1>
+        <p>Point Kinalbum at a folder (like your OneDrive camera roll). It finds the faces <strong>on this device</strong>, groups them, and keeps watching for new photos. Nothing is uploaded.</p>
+      </div>
+
+      <div class="card-plain" id="watchCard">
+        <h3>Watched folders</h3>
+        <p>Grant access to a folder once — Kinalbum auto-sorts everything in it and re-scans new photos each time you open the app. Add both parents' camera-roll folders for a merged album.</p>
+        <div class="watched-list" id="watchedList"></div>
+        <div class="empty empty--inline" id="watchedEmpty">
+          <p>No folders watched yet.</p>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn--primary" id="watchBtn">Watch a folder</button>
+          <button class="btn btn--ghost" id="rescanBtn">Re-scan all</button>
+          <button class="btn btn--ghost" id="rebuildBtn">Update &amp; re-scan</button>
+        </div>
+        <p class="card-plain__fine">“Update &amp; re-scan” re-reads your watched folders with the latest AI — use it after an app update to apply improvements without re-choosing the folder.</p>
+        <p class="msg" id="scanMsg" hidden></p>
+      </div>
+
+      <div class="card-plain" id="cloudCard" hidden>
+        <h3>Connect a cloud</h3>
+        <p>Pull photos straight from your personal cloud. Faces are still matched <strong>on this device</strong> — only the photos you choose are downloaded, nothing is sent out.</p>
+        <div class="cloud-setup" id="cloudSetup" hidden>
+          <p class="card-plain__fine">One-time setup: paste your Azure <strong>Application (client) ID</strong> to enable OneDrive. It's not secret. (Entra ID → App registrations → your app → Overview.)</p>
+          <div class="field-row">
+            <input class="text-input" id="clientIdInput" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="00000000-0000-0000-0000-000000000000" />
+            <button class="btn btn--ghost" id="clientIdSave">Save</button>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn--primary" id="oneDriveBtn">
+            <span class="cloud-ico">☁️</span> Connect OneDrive
+          </button>
+          <button class="btn btn--ghost" id="googlePhotosBtn" disabled>Google Photos — soon</button>
+        </div>
+        <p class="msg" id="cloudMsg" hidden></p>
+      </div>
+
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept="image/*,video/*" multiple hidden />
+        <div class="dropzone__icon">📷</div>
+        <div class="dropzone__title">Or add photos &amp; videos manually</div>
+        <div class="dropzone__sub">Tap to choose from your gallery</div>
+      </label>
+
+      <div class="stat-row" id="statRow" hidden>
+        <button type="button" class="stat" id="statPhotosBtn"><span class="stat__num" id="statPhotos">0</span><span class="stat__label">photos</span></button>
+        <button type="button" class="stat" id="statPeopleBtn"><span class="stat__num" id="statPeople">0</span><span class="stat__label">people found</span></button>
+        <button type="button" class="stat" id="statDupesBtn"><span class="stat__num" id="statDupes">0</span><span class="stat__label">duplicates</span></button>
+      </div>
+
+      <div class="tips">
+        <h3>Tip</h3>
+        <p>Start with 20–50 photos that include your kids. You can keep adding more later and they'll sort themselves.</p>
+      </div>
+    </section>
+
+    <!-- PEOPLE SCREEN -->
+    <section class="view" id="view-people" data-view="people" hidden>
+      <h2 class="view__title">Who's who?</h2>
+      <p class="view__sub">We grouped the faces we found. Name your children — tap <strong>Ignore</strong> for anyone who isn't one of your kids.</p>
+
+      <h3 class="people-subhead" id="namedHead" hidden>Your people</h3>
+      <div class="people-grid" id="namedGrid"></div>
+
+      <h3 class="people-subhead" id="toNameHead" hidden>Faces to name</h3>
+      <div class="people-grid" id="peopleGrid"></div>
+      <div class="empty" id="peopleEmpty" hidden>
+        <p>No new people to name right now.</p>
+      </div>
+    </section>
+
+    <!-- ALBUMS SCREEN -->
+    <section class="view" id="view-albums" data-view="albums" hidden>
+      <div class="albums-head">
+        <h2 class="view__title">Albums</h2>
+        <label class="toggle" id="kidsOnlyWrap" hidden>
+          <input type="checkbox" id="kidsOnly" /> Kids only
+        </label>
+      </div>
+
+      <div class="tabs" id="albumTabs"></div>
+      <p class="view__sub" id="awaitingSub" hidden>New faces we found. Name them so their photos sort into albums, or tap Ignore.</p>
+      <div class="people-grid" id="awaitingGrid" hidden></div>
+      <div class="album-grid" id="albumGrid"></div>
+      <div class="empty" id="albumsEmpty">
+        <p>No albums yet. Add photos and name your kids to see their albums here.</p>
+      </div>
+    </section>
+
+    <!-- SETTINGS SCREEN -->
+    <section class="view" id="view-settings" data-view="settings" hidden>
+      <h2 class="view__title">Family & privacy</h2>
+
+      <div class="card-plain">
+        <h3>Share recognition with your partner</h3>
+        <p>Export a tiny file that teaches your partner's phone to recognise your kids the same way — <strong>no photos included</strong>, just the face "fingerprints". They import it and their photos sort automatically too.</p>
+        <div class="btn-row">
+          <button class="btn btn--primary" id="exportBtn">Export face model</button>
+          <label class="btn btn--ghost">
+            Import face model
+            <input type="file" id="importInput" accept="application/json" hidden />
+          </label>
+        </div>
+        <p class="msg" id="shareMsg" hidden></p>
+      </div>
+
+      <div class="card-plain">
+        <h3>Automatic backup &amp; sorting</h3>
+        <p><strong>On by default</strong> — set up once and forget. Like your phone's auto-upload, Kinalbum keeps watching your folders, sorts new photos <strong>on this device</strong>, and — when OneDrive is connected — backs up organised copies into <strong>Kinalbum/&lt;album&gt;</strong> folders. Duplicates are skipped automatically. Turn it off only if you'd rather sort and back up by hand.</p>
+        <label class="toggle"><input type="checkbox" id="autoBackup" checked /> Auto-backup &amp; sort new photos</label>
+        <p class="card-plain__fine">True background upload while the app is fully closed needs the native app — browsers limit background work. Keep the tab open (or installed) for continuous sync.</p>
+        <p class="msg" id="autoBackupMsg" hidden></p>
+      </div>
+
+      <div class="card-plain">
+        <h3>Your data</h3>
+        <p>Everything lives only in this browser (thumbnails + face fingerprints). Originals stay in your gallery. You can wipe it all anytime.</p>
+        <div class="btn-row">
+          <button class="btn btn--ghost" id="reapplyBtn">Apply latest matching</button>
+          <button class="btn btn--danger" id="resetBtn">Delete everything on this device</button>
+        </div>
+        <p class="card-plain__fine">“Apply latest matching” re-groups and re-tags your existing photos using the newest logic — no re-import needed.</p>
+      </div>
+
+      <div class="card-plain card-plain--muted">
+        <h3>How your privacy is protected</h3>
+        <ul class="ticks">
+          <li>Face recognition runs in this browser — never on a server</li>
+          <li>Only downscaled thumbnails are kept locally; your full-res originals never move</li>
+          <li>No account, no tracking, no ads</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <!-- Bottom nav -->
+  <nav class="tabbar">
+    <button class="tabbar__btn is-active" data-nav="add"><span>➕</span>Add</button>
+    <button class="tabbar__btn" data-nav="people"><span>🙂</span>People</button>
+    <button class="tabbar__btn" data-nav="albums"><span>🖼️</span>Albums</button>
+    <button class="tabbar__btn" data-nav="settings"><span>⚙️</span>Family</button>
+  </nav>
+
+  <!-- Processing overlay -->
+  <div class="processing" id="processing" hidden>
+    <div class="processing__card">
+      <div class="spinner"></div>
+      <p id="processingText">Looking for faces…</p>
+      <div class="bar"><div class="bar__fill" id="procBar"></div></div>
+      <p class="processing__count" id="procCount"></p>
+    </div>
+  </div>
+
+  <!-- Lightweight modal for naming a person -->
+  <div class="modal" id="nameModal" hidden>
+    <div class="modal__card">
+      <h3>Name this person</h3>
+      <p class="modal__hint" id="nameHint">These faces look like the same person. Tap any that <strong>aren't</strong> them to leave them out.</p>
+      <div class="name-faces" id="nameFaces"></div>
+      <p class="name-faces__count" id="nameFacesCount"></p>
+
+      <div id="existingPeopleWrap" hidden>
+        <p class="modal__hint">Already added them? Tap to add these photos to the same person:</p>
+        <div class="chips chips--people" id="existingPeople"></div>
+        <p class="modal__or">— or add someone new —</p>
+      </div>
+
+      <input type="text" id="nameInput" placeholder="e.g. Ava" maxlength="30" />
+      <label class="check"><input type="checkbox" id="isChildInput" checked /> This is one of my children</label>
+      <div class="btn-row">
+        <button class="btn btn--ghost" id="nameCancel">Cancel</button>
+        <button class="btn btn--primary" id="nameSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Duplicate review -->
+  <div class="modal" id="dupModal" hidden>
+    <div class="modal__card modal__card--wide">
+      <h3>Review duplicates</h3>
+      <p class="modal__hint" id="dupCount"></p>
+      <p class="modal__hint">We keep the <strong>best-quality</strong> copy of each shot. Remove the extras, or mark one as <strong>&ldquo;Not a dupe&rdquo;</strong> if it's actually a different photo. Your original files are never touched.</p>
+      <div class="btn-row btn-row--top">
+        <button class="btn btn--danger" id="dupRemoveAll" hidden>Remove all extras</button>
+      </div>
+      <div class="dup-body" id="dupBody"></div>
+      <div class="btn-row">
+        <button class="btn btn--ghost" id="dupClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit a named person -->
+  <div class="modal" id="personModal" hidden>
+    <div class="modal__card">
+      <h3>Edit person</h3>
+      <div class="person-edit__head">
+        <img class="person-edit__face" id="personEditFace" alt="" />
+        <input type="text" id="personEditName" placeholder="Name" maxlength="30" />
+      </div>
+      <label class="check"><input type="checkbox" id="personEditChild" /> This is one of my children</label>
+      <button class="btn btn--ghost btn--block" id="personLinkContact" hidden>📇 Link a phone contact</button>
+      <p class="modal__hint" id="personContactMsg" hidden></p>
+      <div class="btn-row btn-row--split">
+        <button class="btn btn--danger btn--small" id="personDelete">Delete</button>
+        <span class="btn-row__spacer"></span>
+        <button class="btn btn--ghost" id="personCancel">Cancel</button>
+        <button class="btn btn--primary" id="personSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full-size photo viewer -->
+  <div class="lightbox" id="lightbox" hidden>
+    <button class="lightbox__close" id="lightboxClose" aria-label="Close">✕</button>
+    <div class="lightbox__stage">
+      <button class="lightbox__nav lightbox__nav--prev" id="lightboxPrev" aria-label="Previous photo" hidden>‹</button>
+      <img class="lightbox__img" id="lightboxImg" alt="" />
+      <video class="lightbox__img" id="lightboxVideo" controls playsinline hidden></video>
+      <button class="lightbox__nav lightbox__nav--next" id="lightboxNext" aria-label="Next photo" hidden>›</button>
+    </div>
+    <div class="lightbox__strip" id="lightboxStrip" hidden></div>
+    <div class="lightbox__tag" id="lightboxTag"></div>
+    <div class="lightbox__actions" id="lightboxActions"></div>
+  </div>
+
+  <script>
+(function () {
+"use strict";
+const db = (function () {
+// db.js — local persistence via IndexedDB. Nothing here leaves the device.
+// Stores: people (named persons + face descriptors), photos (thumbnail + face labels),
+// faces (face thumbnails + descriptor + assigned person, unassigned until named).
+
+const DB_NAME = "kinframe";
+const DB_VERSION = 3;
+// "meta" holds small key/value records: watched-folder handles and processed-file keys.
+// "media" holds original video blobs (keyed by photo id) so videos can be played back.
+const STORES = ["people", "photos", "faces", "meta", "media"];
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      for (const s of STORES) {
+        if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function tx(store, mode, fn) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(store, mode);
+    const os = t.objectStore(store);
+    let result;
+    Promise.resolve(fn(os)).then((r) => (result = r));
+    t.oncomplete = () => resolve(result);
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  });
+}
+
+function put(store, value) {
+  return tx(store, "readwrite", (os) => os.put(value));
+}
+
+function bulkPut(store, values) {
+  return tx(store, "readwrite", (os) => values.forEach((v) => os.put(v)));
+}
+
+function getAll(store) {
+  return tx(store, "readonly", (os) => new Promise((res) => {
+    const r = os.getAll();
+    r.onsuccess = () => res(r.result || []);
+  }));
+}
+
+function get(store, id) {
+  return tx(store, "readonly", (os) => new Promise((res) => {
+    const r = os.get(id);
+    r.onsuccess = () => res(r.result || null);
+  }));
+}
+
+function remove(store, id) {
+  return tx(store, "readwrite", (os) => os.delete(id));
+}
+
+function clearStore(store) {
+  return tx(store, "readwrite", (os) => os.clear());
+}
+
+async function clearAll() {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(STORES, "readwrite");
+    STORES.forEach((s) => t.objectStore(s).clear());
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+  });
+}
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+return { put, bulkPut, getAll, get, remove, clearStore, clearAll, uid };
+})();
+
+const face = (function () {
+// face.js — on-device face engine (wraps @vladmandic/face-api).
+// Everything here runs locally in the browser. No image data is ever uploaded.
+
+const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
+
+// Distance below which two face descriptors are considered the same person.
+const MATCH_THRESHOLD = 0.56; // match to a NAMED person: looser, tolerates pose/tilt (named people gather many angles)
+const CLUSTER_THRESHOLD = 0.52; // grouping UNKNOWN faces: stricter, keeps different kids in separate groups
+
+// Max longest-edge we feed to the detector (speed vs accuracy on phones).
+// Bigger = small/background faces survive the downscale and get found.
+const DETECT_MAX = 1280;
+const PHOTO_THUMB = 480;
+const FACE_THUMB = 128;
+
+// Quality gates. We favour RECALL at detect time (accurate detector, lower
+// score) so real faces aren't missed, then reject text/number/logo blobs with a
+// landmark-geometry check — and let the user deselect any stragglers by hand.
+const SSD_MIN_CONF = 0.35; // SSD MobileNet floor (primary detector, high recall)
+const DETECT_INPUT = 736; // TinyFaceDetector input (fallback) — larger finds more
+const DETECT_SCORE = 0.4; // min detector confidence to keep a detection at all
+const MIN_FACE_PX = 36; // reject tiny detections
+const MIN_FACE_FRAC = 0.009; // and anything smaller than ~0.9% of the image's long edge
+const MIN_AR = 0.5; // face bounding boxes are roughly square
+const MAX_AR = 1.8;
+const TRUST_SCORE = 0.72; // detections this confident are kept without the geometry gate
+const GEOM_MIN_SCORE = 0.62; // below TRUST_SCORE a detection must ALSO clear this floor + the geometry gate
+//   (real SSD faces score high — 0.85-1.0; spreadsheet/number blobs fire weakly ~0.5 and are rejected here)
+
+let ready = false;
+let ssdReady = false; // the more-accurate SSD detector loaded OK (else tiny-only)
+
+function waitForFaceApi() {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const tick = () => {
+      if (window.faceapi) return resolve(window.faceapi);
+      if (Date.now() - started > 20000) return reject(new Error("face-api failed to load"));
+      setTimeout(tick, 60);
+    };
+    tick();
+  });
+}
+
+async function loadModels(onProgress = () => {}) {
+  if (ready) return;
+  const faceapi = await waitForFaceApi();
+  onProgress(0.1, "Loading face detector…");
+  await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+  onProgress(0.3, "Loading landmarks…");
+  await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+  onProgress(0.55, "Loading recogniser…");
+  await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+  // The SSD detector is bigger but far better at actually finding faces in real
+  // photos (angles, shade, partial faces). Best-effort: if it won't load we
+  // silently fall back to the tiny detector so the app still works offline-ish.
+  onProgress(0.75, "Loading accurate detector…");
+  try {
+    await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+    ssdReady = true;
+  } catch {
+    ssdReady = false;
+  }
+  onProgress(1, "Ready");
+  ready = true;
+}
+
+// Run face detection on a canvas. Primary = SSD MobileNet v1 (best recall);
+// if it finds nothing (or isn't available) we retry with the tiny detector,
+// which occasionally catches faces SSD misses. Returns detections WITH
+// landmarks + descriptors ready for matching.
+async function detectFaces(canvas) {
+  const faceapi = window.faceapi;
+  let results = [];
+  if (ssdReady) {
+    try {
+      results = await faceapi
+        .detectAllFaces(canvas, new faceapi.SsdMobilenetv1Options({ minConfidence: SSD_MIN_CONF, maxResults: 100 }))
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+    } catch {
+      results = [];
+    }
+  }
+  if (!results.length) {
+    try {
+      results = await faceapi
+        .detectAllFaces(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: DETECT_INPUT, scoreThreshold: DETECT_SCORE }))
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+    } catch {
+      results = [];
+    }
+  }
+  return results;
+}
+
+// Load a File into an HTMLImageElement.
+function fileToImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not read image"));
+    };
+    img.src = url;
+  });
+}
+
+// Draw an image onto a canvas scaled so the longest edge <= maxEdge.
+function toScaledCanvas(img, maxEdge) {
+  const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+  return canvas;
+}
+
+function canvasToDataURL(canvas, maxEdge, quality = 0.82) {
+  const scale = Math.min(1, maxEdge / Math.max(canvas.width, canvas.height));
+  if (scale >= 1) return canvas.toDataURL("image/jpeg", quality);
+  const out = document.createElement("canvas");
+  out.width = Math.round(canvas.width * scale);
+  out.height = Math.round(canvas.height * scale);
+  out.getContext("2d").drawImage(canvas, 0, 0, out.width, out.height);
+  return out.toDataURL("image/jpeg", quality);
+}
+
+// Crop a face box (with padding) from a canvas into a square thumbnail dataURL.
+function cropFace(canvas, box, size = FACE_THUMB) {
+  const pad = box.width * 0.35;
+  const sx = Math.max(0, box.x - pad);
+  const sy = Math.max(0, box.y - pad);
+  const sw = Math.min(canvas.width - sx, box.width + pad * 2);
+  const sh = Math.min(canvas.height - sy, box.height + pad * 2);
+  const out = document.createElement("canvas");
+  out.width = size;
+  out.height = size;
+  out.getContext("2d").drawImage(canvas, sx, sy, sw, sh, 0, 0, size, size);
+  return out.toDataURL("image/jpeg", 0.85);
+}
+
+// Perceptual fingerprint for cross-source near-duplicate detection. Combines an
+// average hash (overall tones) with a difference hash (gradients) into a 128-bit
+// string. Hashing the *decoded* image means it survives rename, re-dating and
+// mild re-compression/resize — so the same shot from the phone gallery, OneDrive
+// and WhatsApp collapses to one record.
+function grayAt(canvas, w, h) {
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(canvas, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const g = new Array(w * h);
+  for (let i = 0; i < w * h; i++) g[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
+  return g;
+}
+
+// Average hash: each cell brighter/darker than the 8x8 mean -> 64 bits.
+function aHash(canvas) {
+  const g = grayAt(canvas, 8, 8);
+  const avg = g.reduce((a, b) => a + b, 0) / g.length;
+  return g.map((v) => (v >= avg ? 1 : 0)).join("");
+}
+
+// Difference hash: each pixel vs its right neighbour on a 9x8 grid -> 64 bits.
+function dHash(canvas) {
+  const w = 9;
+  const h = 8;
+  const g = grayAt(canvas, w, h);
+  let out = "";
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w - 1; x++) out += g[y * w + x] < g[y * w + x + 1] ? "1" : "0";
+  }
+  return out;
+}
+
+function perceptualHash(canvas) {
+  return aHash(canvas) + dHash(canvas); // 128-bit fingerprint
+}
+
+function hamming(a, b) {
+  if (!a || !b || a.length !== b.length) return Infinity;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
+  return d;
+}
+
+function euclidean(a, b) {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) {
+    const diff = a[i] - b[i];
+    sum += diff * diff;
+  }
+  return Math.sqrt(sum);
+}
+
+function meanDescriptor(descriptors) {
+  const n = descriptors.length;
+  const len = descriptors[0].length;
+  const out = new Array(len).fill(0);
+  for (const d of descriptors) for (let i = 0; i < len; i++) out[i] += d[i];
+  for (let i = 0; i < len; i++) out[i] /= n;
+  return out;
+}
+
+// Process one image file: returns photo thumb, hash, and detected faces (with descriptors + thumbs).
+async function analyzeFile(file) {
+  const img = await fileToImage(file);
+  const canvas = toScaledCanvas(img, DETECT_MAX);
+  const hash = perceptualHash(canvas);
+  const photoThumb = canvasToDataURL(canvas, PHOTO_THUMB);
+
+  const results = await detectFaces(canvas);
+
+  const minPx = Math.max(MIN_FACE_PX, Math.max(canvas.width, canvas.height) * MIN_FACE_FRAC);
+  const faces = results
+    .filter((r) => isPlausibleFace(r, minPx))
+    .map((r) => ({
+      descriptor: Array.from(r.descriptor),
+      thumb: cropFace(canvas, r.detection.box),
+      score: r.detection.score,
+    }));
+
+  return {
+    hash,
+    photoThumb,
+    faces,
+    name: file.name,
+    width: img.naturalWidth,
+    height: img.naturalHeight,
+    isVideo: false,
+  };
+}
+
+/* --------------------------------------------------------------- video */
+const VIDEO_MAX_FRAMES = 10; // keyframes sampled per video (speed vs coverage)
+
+function fileToVideo(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = "auto";
+    v.onloadedmetadata = () => resolve({ video: v, url });
+    v.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not read video"));
+    };
+    v.src = url;
+  });
+}
+
+function seekTo(video, t) {
+  return new Promise((resolve) => {
+    const onSeeked = () => {
+      video.removeEventListener("seeked", onSeeked);
+      resolve();
+    };
+    video.addEventListener("seeked", onSeeked);
+    const clamped = Math.max(0, Math.min(t, (video.duration || 0) - 0.05));
+    video.currentTime = isFinite(clamped) ? clamped : 0;
+  });
+}
+
+function videoFrameCanvas(video, maxEdge) {
+  const vw = video.videoWidth || 2;
+  const vh = video.videoHeight || 2;
+  const scale = Math.min(1, maxEdge / Math.max(vw, vh));
+  const w = Math.max(1, Math.round(vw * scale));
+  const h = Math.max(1, Math.round(vh * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d").drawImage(video, 0, 0, w, h);
+  return canvas;
+}
+
+// Process a video with the SAME on-device face engine: sample keyframes, detect
+// faces per frame, collapse the same person across frames into one, and build a
+// keyframe-hash sequence fingerprint for cross-source video de-duplication.
+async function analyzeVideoFile(file, onFrame = () => {}) {
+  const { video, url } = await fileToVideo(file);
+  try {
+    const duration = isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+    const frames = Math.max(1, Math.min(VIDEO_MAX_FRAMES, Math.ceil(duration) || 1));
+    const step = duration ? duration / frames : 0;
+
+    const allFaces = [];
+    const frameHashes = [];
+    let bestThumb = null;
+    let bestScore = -1;
+    let midThumb = null;
+
+    for (let i = 0; i < frames; i++) {
+      await seekTo(video, i * step + step * 0.5);
+      onFrame(i / frames);
+      const canvas = videoFrameCanvas(video, DETECT_MAX);
+      frameHashes.push(dHash(canvas));
+      if (i === Math.floor(frames / 2)) midThumb = canvasToDataURL(canvas, PHOTO_THUMB);
+
+      const minPx = Math.max(MIN_FACE_PX, Math.max(canvas.width, canvas.height) * MIN_FACE_FRAC);
+      const results = await detectFaces(canvas);
+      for (const r of results) {
+        if (!isPlausibleFace(r, minPx)) continue;
+        allFaces.push({
+          descriptor: Array.from(r.descriptor),
+          thumb: cropFace(canvas, r.detection.box),
+          score: r.detection.score,
+        });
+        if (r.detection.score > bestScore) {
+          bestScore = r.detection.score;
+          bestThumb = canvasToDataURL(canvas, PHOTO_THUMB);
+        }
+      }
+    }
+
+    // The same person appears in many frames — cluster and keep one face each.
+    const faces = clusterFaces(allFaces).map((c) => {
+      const rep = c.faces.reduce((a, b) => (b.score > a.score ? b : a));
+      return { descriptor: meanDescriptor(c.faces.map((f) => f.descriptor)), thumb: rep.thumb, score: rep.score };
+    });
+
+    const photoThumb = bestThumb || midThumb || canvasToDataURL(videoFrameCanvas(video, PHOTO_THUMB), PHOTO_THUMB);
+    return {
+      hash: frameHashes.join(""), // keyframe sequence fingerprint
+      photoThumb,
+      faces,
+      name: file.name,
+      width: video.videoWidth,
+      height: video.videoHeight,
+      isVideo: true,
+      duration: Math.round(duration),
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// Heuristic filter: reject weak, tiny or non-face-shaped detections, and ones
+// whose landmarks don't form a real face (eyes above nose above mouth, nose
+// sitting between the eyes). This is what catches numbers, text and logos.
+function isPlausibleFace(r, minPx) {
+  const b = r.detection.box;
+  if (r.detection.score < DETECT_SCORE) return false;
+  if (b.width < minPx || b.height < minPx) return false;
+  const ar = b.width / b.height;
+  if (ar < MIN_AR || ar > MAX_AR) return false;
+  // A confident detection is a real face — keep it without the geometry gate so
+  // tilted, partial or looking-away faces aren't dropped. The gate below only
+  // guards the lower-confidence detections where numbers/logos sneak in.
+  if (r.detection.score >= TRUST_SCORE) return true;
+  // Mid/low-confidence band: a real face still scores respectably. Reject the
+  // weak detections (spreadsheets, coloured cells, logos) before the geometry
+  // check, which they can clear by coincidence.
+  if (r.detection.score < GEOM_MIN_SCORE) return false;
+  try {
+    const lm = r.landmarks;
+    const le = centroid(lm.getLeftEye());
+    const re = centroid(lm.getRightEye());
+    const nose = centroid(lm.getNose());
+    const mouth = centroid(lm.getMouth());
+    const eyeY = (le.y + re.y) / 2;
+    const eyeDist = Math.abs(le.x - re.x);
+    // Eyes must be apart by a sensible fraction of the face width.
+    if (eyeDist < b.width * 0.15 || eyeDist > b.width * 0.82) return false;
+    // Vertical order of a real face: eyes, then nose, then mouth.
+    if (!(eyeY < nose.y && nose.y < mouth.y)) return false;
+    // Nose should sit roughly between the two eyes horizontally.
+    const minEyeX = Math.min(le.x, re.x);
+    const maxEyeX = Math.max(le.x, re.x);
+    if (nose.x < minEyeX - eyeDist * 0.6 || nose.x > maxEyeX + eyeDist * 0.6) return false;
+    // Eyes live in the upper portion of the box.
+    if (eyeY > b.y + b.height * 0.8) return false;
+  } catch {
+    /* landmarks should always be present; if not, keep the confident box */
+  }
+  return true;
+}
+
+function centroid(points) {
+  let x = 0;
+  let y = 0;
+  for (const p of points) {
+    x += p.x;
+    y += p.y;
+  }
+  return { x: x / points.length, y: y / points.length };
+}
+
+// Greedy clustering of face records (each with .descriptor) into person groups.
+function clusterFaces(faces, threshold = CLUSTER_THRESHOLD) {
+  const clusters = [];
+  for (const face of faces) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const c of clusters) {
+      const d = euclidean(face.descriptor, c.centroid);
+      if (d < bestDist) {
+        bestDist = d;
+        best = c;
+      }
+    }
+    if (best && bestDist < threshold) {
+      best.faces.push(face);
+      best.centroid = meanDescriptor(best.faces.map((f) => f.descriptor));
+    } else {
+      clusters.push({ faces: [face], centroid: face.descriptor.slice() });
+    }
+  }
+  return clusters;
+}
+
+// Find the best-matching known person for a descriptor. people: [{id, descriptors:[[...]]}].
+function matchPerson(descriptor, people, threshold = MATCH_THRESHOLD) {
+  let bestId = null;
+  let bestDist = Infinity;
+  for (const p of people) {
+    // Closest ACCEPTED example of this person.
+    let posDist = Infinity;
+    for (const d of p.descriptors) {
+      const dist = euclidean(descriptor, d);
+      if (dist < posDist) posDist = dist;
+    }
+    if (posDist >= threshold) continue;
+    // Self-teaching veto: when the user has corrected faces like this as "not
+    // them" (p.negatives), reject the match if this face resembles one of those
+    // rejections at least as much as it resembles the person.
+    if (p.negatives && p.negatives.length) {
+      let negDist = Infinity;
+      for (const d of p.negatives) {
+        const dist = euclidean(descriptor, d);
+        if (dist < negDist) negDist = dist;
+      }
+      if (negDist <= posDist) continue;
+    }
+    if (posDist < bestDist) {
+      bestDist = posDist;
+      bestId = p.id;
+    }
+  }
+  return bestId ? { id: bestId, dist: bestDist } : null;
+}
+
+return { MATCH_THRESHOLD, CLUSTER_THRESHOLD, loadModels, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, analyzeVideoFile, clusterFaces, matchPerson };
+})();
+
+const cloud = (function () {
+// cloud.js — optional cloud photo sources. Faces are still matched ON-DEVICE;
+// we only download the image bytes, nothing is uploaded anywhere.
+//
+// One-time setup to enable OneDrive:
+//   1. Go to https://portal.azure.com → Microsoft Entra ID → App registrations → New.
+//   2. Supported account types: "Personal Microsoft accounts" (or both).
+//   3. Add a *Single-page application* redirect URI equal to this app's URL
+//      (e.g. http://localhost:3000/app/ or your deployed https URL).
+//   4. API permissions → Microsoft Graph → Delegated → Files.ReadWrite
+//      (ReadWrite is needed so auto-backup can upload organised copies; it also
+//      covers reading your camera roll).
+//   5. Copy the "Application (client) ID" and either bake it into BAKED_CLIENT_ID
+//      below, OR just paste it into the app's "Connect a cloud" card at runtime
+//      (handy for a hosted build — no rebuild needed).
+const BAKED_CLIENT_ID = "d81ab416-a289-4d59-bfcb-15adde794cac"; // Kinalbum Entra app (personal account)
+const CLIENT_ID_KEY = "kinalbum_onedrive_client_id";
+
+// Effective client ID: a value saved in this browser wins over the baked default,
+// so a deployed copy can be configured on any device without rebuilding.
+function getClientId() {
+  try {
+    const saved = localStorage.getItem(CLIENT_ID_KEY);
+    if (saved && saved.trim()) return saved.trim();
+  } catch {
+    /* storage blocked */
+  }
+  return BAKED_CLIENT_ID;
+}
+
+// Save (or clear) the client ID at runtime. Drops any cached MSAL instance so the
+// new ID takes effect on the next sign-in.
+function setClientId(id) {
+  try {
+    if (id && id.trim()) localStorage.setItem(CLIENT_ID_KEY, id.trim());
+    else localStorage.removeItem(CLIENT_ID_KEY);
+  } catch {
+    /* storage blocked */
+  }
+  msalInstance = null;
+}
+
+const GRAPH = "https://graph.microsoft.com/v1.0";
+const SCOPES = ["Files.ReadWrite"];
+const MAX_FILES = 300;
+
+function oneDriveConfigured() {
+  return !!getClientId() && window.isSecureContext;
+}
+
+let msalInstance = null;
+
+async function ensureMsal() {
+  if (!msalInstance) {
+    const msal = await import("https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/+esm");
+    msalInstance = new msal.PublicClientApplication({
+      auth: {
+        clientId: getClientId(),
+        authority: "https://login.microsoftonline.com/consumers",
+        redirectUri: window.location.origin + window.location.pathname,
+      },
+      cache: { cacheLocation: "localStorage" },
+    });
+    await msalInstance.initialize();
+  }
+  return msalInstance;
+}
+
+async function getToken() {
+  const msal = await ensureMsal();
+  const account = msal.getAllAccounts()[0];
+  if (account) {
+    try {
+      const r = await msal.acquireTokenSilent({ scopes: SCOPES, account });
+      return r.accessToken;
+    } catch {
+      /* fall through to interactive sign-in */
+    }
+  }
+  const r = await msal.loginPopup({ scopes: SCOPES });
+  return r.accessToken;
+}
+
+// Silent only — returns null instead of prompting. Used by background model sync
+// so it never pops a sign-in window on its own.
+async function getTokenSilent() {
+  if (!oneDriveConfigured()) return null;
+  const msal = await ensureMsal();
+  const account = msal.getAllAccounts()[0];
+  if (!account) return null;
+  try {
+    const r = await msal.acquireTokenSilent({ scopes: SCOPES, account });
+    return r.accessToken;
+  } catch {
+    return null;
+  }
+}
+
+// Is there a cached, already-signed-in account? (No prompt.)
+async function hasCloudAccount() {
+  if (!oneDriveConfigured()) return false;
+  const msal = await ensureMsal();
+  return msal.getAllAccounts().length > 0;
+}
+
+async function graphGet(url, token) {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Graph ${res.status}`);
+  return res.json();
+}
+
+// Upload one file to OneDrive under /Apps or a given folder path, creating any
+// missing folders in the path. Used by auto-backup to mirror new photos into
+// organised, per-album folders (e.g. "Kinalbum/Ava/IMG_0001.jpg"). Simple upload
+// handles files up to 250 MB, which covers phone photos and short videos.
+async function uploadFileToOneDrive(file, folderPath) {
+  if (!oneDriveConfigured()) throw new Error("OneDrive not configured");
+  const token = await getToken();
+  const segs = String(folderPath || "Kinalbum")
+    .split("/")
+    .filter(Boolean)
+    .map((s) => encodeURIComponent(s.replace(/[\\/:*?"<>|]/g, "_")));
+  const name = encodeURIComponent(file.name.replace(/[\\/:*?"<>|]/g, "_"));
+  const path = [...segs, name].join("/");
+  const url = `${GRAPH}/me/drive/root:/${path}:/content`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  if (!res.ok) throw new Error(`Upload ${res.status}`);
+  return res.json();
+}
+
+// Sign in only (or confirm an existing session). Returns true on success. Kept
+// separate from the camera-roll import so a returning device can rebuild its
+// library from the saved manifest BEFORE deciding whether to re-scan anything.
+async function signIn(onStatus) {
+  if (!getClientId()) {
+    onStatus?.(
+      "Paste your Azure app (client) ID in the 'Connect a cloud' card to enable OneDrive. " +
+        "Register a free app in Azure (Entra ID → App registrations), add this page's URL as a " +
+        "single-page redirect, and allow Files.ReadWrite."
+    );
+    return false;
+  }
+  if (!window.isSecureContext) {
+    onStatus?.("Cloud connect needs https or localhost — run Kinalbum via the local server, not a file:// page.");
+    return false;
+  }
+  try {
+    onStatus?.("Opening sign-in…");
+    await getToken();
+    return true;
+  } catch {
+    onStatus?.("Sign-in was cancelled or failed.");
+    return false;
+  }
+}
+
+// Assuming we're signed in, list camera-roll images/videos, download them, and
+// pass File objects to onFiles for on-device sorting.
+async function importCameraRoll(onStatus, onFiles) {
+  const token = await getTokenSilent();
+  if (!token) {
+    onStatus?.("Please connect OneDrive first.");
+    return;
+  }
+
+  onStatus?.("Finding photos & videos in your camera roll…");
+  const items = [];
+  let next = `${GRAPH}/me/drive/special/cameraroll/children?$top=200&$select=id,name,file,@microsoft.graph.downloadUrl`;
+  try {
+    while (next && items.length < MAX_FILES) {
+      const page = await graphGet(next, token);
+      for (const it of page.value || []) {
+        const mt = String(it.file?.mimeType || "");
+        if (it.file && (mt.startsWith("image/") || mt.startsWith("video/"))) items.push(it);
+      }
+      next = page["@odata.nextLink"];
+    }
+  } catch {
+    onStatus?.("Couldn't read your OneDrive camera roll.");
+    return;
+  }
+  if (!items.length) {
+    onStatus?.("No photos found in your OneDrive camera roll.");
+    return;
+  }
+
+  onStatus?.(`Downloading ${Math.min(items.length, MAX_FILES)} photos…`);
+  const files = [];
+  for (const it of items.slice(0, MAX_FILES)) {
+    const url = it["@microsoft.graph.downloadUrl"]; // pre-authenticated, no header needed
+    if (!url) continue;
+    try {
+      const blob = await (await fetch(url)).blob();
+      files.push(new File([blob], it.name, { type: blob.type || "image/jpeg" }));
+    } catch {
+      /* skip a file that failed to download */
+    }
+  }
+  if (!files.length) {
+    onStatus?.("Couldn't download any photos.");
+    return;
+  }
+  onStatus?.(`Got ${files.length} photos — sorting them on this device…`);
+  await onFiles(files);
+}
+
+// Sign in, then import the camera roll (the original one-shot flow).
+async function connectOneDrive(onStatus, onFiles) {
+  if (!(await signIn(onStatus))) return;
+  await importCameraRoll(onStatus, onFiles);
+}
+
+// Download a file's original bytes by its OneDrive item id. Lets any device fetch
+// a full-resolution original it only knows about from the manifest.
+async function downloadCloudFile(cloudId) {
+  const token = await getTokenSilent();
+  if (!token || !cloudId) return null;
+  const res = await fetch(`${GRAPH}/me/drive/items/${cloudId}/content`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  return res.blob();
+}
+
+/* ---------------------------------------------------- account continuity */
+// The "identity model" (people + what the app has learned) is stored as a small
+// JSON in this app's PRIVATE OneDrive app-folder (/Apps/Kinalbum). No photos go
+// here — just the brains that let a new phone re-sort your library the same way
+// after a sign-in. The app-folder is sandboxed to this app via Files.ReadWrite.
+const MODEL_PATH = "kinalbum-model.json";
+
+// Upload the identity model. Silent + best-effort: returns false if not signed in.
+async function saveCloudModel(model) {
+  const token = await getTokenSilent();
+  if (!token) return false;
+  const url = `${GRAPH}/me/drive/special/approot:/${MODEL_PATH}:/content`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(model),
+  });
+  return res.ok;
+}
+
+// Download the identity model, or null if none has been saved yet (fresh account).
+async function loadCloudModel() {
+  const token = await getTokenSilent();
+  if (!token) return null;
+  const url = `${GRAPH}/me/drive/special/approot:/${MODEL_PATH}:/content`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Model load ${res.status}`);
+  return res.json();
+}
+
+// The "library manifest" is the authoritative organised OUTPUT: for every photo,
+// its album membership plus a small thumbnail and a pointer (cloudId) to the
+// original file. Stored alongside the model in the app-folder so any device can
+// rebuild the exact same albums instantly — no re-downloading or re-recognising.
+const LIBRARY_PATH = "kinalbum-library.json";
+
+async function saveCloudLibrary(manifest) {
+  const token = await getTokenSilent();
+  if (!token) return false;
+  const url = `${GRAPH}/me/drive/special/approot:/${LIBRARY_PATH}:/content`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(manifest),
+  });
+  return res.ok;
+}
+
+async function loadCloudLibrary() {
+  const token = await getTokenSilent();
+  if (!token) return null;
+  const url = `${GRAPH}/me/drive/special/approot:/${LIBRARY_PATH}:/content`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Library load ${res.status}`);
+  return res.json();
+}
+
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, signIn, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+})();
+
+// app.js — Kinalbum controller. Orchestrates UI, the on-device face engine, and local storage.
+
+
+
+
+const DUP_STRICT_FRAC = 0.03; // hamming/len below this = certain duplicate
+const DUP_LOOSE_FRAC = 0.09; // and below this = duplicate only if aspect ratios match too
+const IGNORED = "__ignored__";
+const IMAGE_RE = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i;
+const VIDEO_RE = /\.(mp4|mov|m4v|webm|3gp|3gpp|avi|mkv)$/i;
+const isImageName = (n) => IMAGE_RE.test(n);
+const isVideoName = (n) => VIDEO_RE.test(n);
+const isMediaName = (n) => IMAGE_RE.test(n) || VIDEO_RE.test(n);
+// Screenshots (spreadsheets, documents, web pages) aren't family photos and the
+// detector can hallucinate faces in busy grids/colours. We still import them but
+// skip face detection, so they never create phantom people.
+const SCREENSHOT_RE = /(^|[\\/_\- ])screen[ _-]?shot/i;
+const isScreenshot = (n) => SCREENSHOT_RE.test(n);
+// Folder watching needs the File System Access API AND a secure context
+// (https or localhost). From a plain file:// page we fall back to manual add.
+const supportsFolders = "showDirectoryPicker" in window && window.isSecureContext;
+
+const state = {
+  people: [], // {id, name, isChild, ignored, descriptors:[[..]], thumb}
+  photos: [], // {id, thumb, hash, name, personIds:[]}
+  faces: [], // {id, photoId, descriptor:[..], thumb, personId|null}
+  activeAlbum: null,
+  pendingClusters: [], // computed clusters of unassigned faces for the People screen
+  watched: [], // {id, name, handle} folders to auto-scan
+  processedKeys: new Set(), // "name|size|lastModified" of files already ingested
+  kidsOnly: false, // Albums screen filter driven by the "this is my child" flag
+  autoBackup: true, // continuously sort new photos and back organised copies to OneDrive
+  backedUpKeys: new Set(), // files already uploaded, so we never back up twice
+  keptDistinct: new Set(), // photo ids the user confirmed are NOT duplicates (stop flagging)
+};
+
+let autoScanning = false; // true during a background re-scan (suppresses nav + overlay)
+let autoSyncTimer = null;
+
+const $ = (sel) => document.querySelector(sel);
+const el = (id) => document.getElementById(id);
+
+/* ---------------------------------------------------------------- boot */
+async function boot() {
+  try {
+    await face.loadModels((p, msg) => {
+      el("bootBar").style.width = Math.round(p * 100) + "%";
+      if (msg) el("bootStatus").textContent = msg;
+    });
+  } catch (e) {
+    el("bootStatus").textContent = "Couldn't load the AI model. Check your connection and reload.";
+    return;
+  }
+  [state.people, state.photos, state.faces] = await Promise.all([
+    db.getAll("people"),
+    db.getAll("photos"),
+    db.getAll("faces"),
+  ]);
+  await loadWatched();
+  await loadAutoBackup();
+  el("boot").hidden = true;
+  recomputePending();
+  renderAll();
+  renderWatched();
+  // Re-scan any folder we already have permission for — no tap needed.
+  autoRescanGranted();
+  // Keep sorting/backing up new photos while the app stays open.
+  startAutoSync();
+  // If this device is already signed in to OneDrive, pull down the identity
+  // model AND rebuild the sorted library from its manifest — a returning/new
+  // phone restores its people and albums automatically.
+  cloudStartup();
+}
+
+/* ----------------------------------------------------- watched folders */
+async function loadWatched() {
+  const folders = await db.get("meta", "watched");
+  state.watched = (folders?.list || []).filter((w) => w.handle);
+  const keys = await db.get("meta", "processedKeys");
+  state.processedKeys = new Set(keys?.list || []);
+}
+
+async function saveWatched() {
+  // Strip nothing — FileSystemDirectoryHandle is structured-cloneable.
+  await db.put("meta", { id: "watched", list: state.watched });
+}
+
+async function saveProcessedKeys() {
+  await db.put("meta", { id: "processedKeys", list: [...state.processedKeys] });
+}
+
+async function pickFolder() {
+  if (!supportsFolders) {
+    showScanMsg("This browser can't watch folders yet. Use Chrome or Edge on desktop, or use ‘Add photos’ below.");
+    return;
+  }
+  let handle;
+  try {
+    handle = await window.showDirectoryPicker({ id: "kinalbum-src", mode: "read" });
+  } catch {
+    return; // user cancelled the picker
+  }
+  if (!state.watched.some((w) => w.name === handle.name)) {
+    state.watched.push({ id: db.uid(), name: handle.name, handle });
+    await saveWatched();
+    renderWatched();
+  }
+  await scanHandle(handle);
+}
+
+async function forgetFolder(id) {
+  state.watched = state.watched.filter((w) => w.id !== id);
+  await saveWatched();
+  renderWatched();
+}
+
+async function ensurePermission(handle) {
+  const opts = { mode: "read" };
+  if ((await handle.queryPermission(opts)) === "granted") return true;
+  try {
+    return (await handle.requestPermission(opts)) === "granted";
+  } catch {
+    return false;
+  }
+}
+
+async function* walkImages(dirHandle) {
+  for await (const entry of dirHandle.values()) {
+    if (entry.kind === "file") {
+      if (isMediaName(entry.name)) yield entry;
+    } else if (entry.kind === "directory") {
+      yield* walkImages(entry);
+    }
+  }
+}
+
+// Only ONE scan may run at a time. Without this, the auto-sync timer and the
+// focus/visibility handlers can fire a background scan WHILE a manual re-scan is
+// running — the two scans then split the files between them (via processedKeys)
+// and the progress counter jumps around (e.g. "300 of 622" bouncing back and
+// forth) while the shared overlay flag hides the progress bar.
+let scanBusy = false;
+
+async function withScanLock(fn, silent = false) {
+  if (scanBusy) return false; // a scan is already running — don't overlap it
+  scanBusy = true;
+  autoScanning = silent;
+  try {
+    await fn();
+  } finally {
+    autoScanning = false;
+    scanBusy = false;
+  }
+  return true;
+}
+
+// Read a folder and return only the files we haven't ingested yet (recording
+// their keys so the same file isn't picked up twice). Does NOT process them.
+async function collectFresh(handle, requireGranted = false) {
+  if (requireGranted) {
+    try {
+      if ((await handle.queryPermission({ mode: "read" })) !== "granted") return [];
+    } catch {
+      return [];
+    }
+  } else if (!(await ensurePermission(handle))) {
+    showScanMsg(`Permission needed to read “${handle.name}”. Tap the folder to grant access.`);
+    return [];
+  }
+  const fresh = [];
+  try {
+    for await (const entry of walkImages(handle)) {
+      let file;
+      try {
+        file = await entry.getFile();
+      } catch {
+        continue;
+      }
+      const key = `${file.name}|${file.size}|${file.lastModified}`;
+      if (state.processedKeys.has(key)) continue;
+      state.processedKeys.add(key);
+      fresh.push(file);
+    }
+  } catch {
+    showScanMsg(`Couldn't finish reading “${handle.name}”.`);
+  }
+  return fresh;
+}
+
+// Gather new files across one or more folders, then process them in a SINGLE
+// pass so the progress bar counts 1..total once (instead of resetting per folder).
+async function scanHandles(handles, requireGranted = false) {
+  const all = [];
+  for (const handle of handles) {
+    if (!autoScanning) showScanMsg(`Scanning “${handle.name}”…`);
+    const fresh = await collectFresh(handle, requireGranted);
+    all.push(...fresh);
+  }
+  if (all.length) await handleFiles(all);
+  await saveProcessedKeys();
+  return all.length;
+}
+
+async function scanHandle(handle) {
+  await withScanLock(async () => {
+    const n = await scanHandles([handle]);
+    if (!n) showScanMsg(`“${handle.name}” is up to date — no new photos.`);
+  });
+}
+
+async function rescanAll() {
+  if (!state.watched.length) {
+    showScanMsg("No watched folders yet. Add one above.");
+    return;
+  }
+  await withScanLock(async () => {
+    const n = await scanHandles(state.watched.map((w) => w.handle));
+    if (!n) showScanMsg("All folders are up to date — no new photos.");
+  });
+}
+
+async function autoRescanGranted(silent = false) {
+  // Silently sweep only the folders we already have permission for. Skips
+  // entirely if another scan is in progress (the lock), so it never collides
+  // with a manual re-scan.
+  await withScanLock(async () => {
+    await scanHandles(state.watched.map((w) => w.handle), true);
+  }, silent);
+}
+
+/* --------------------------------------------- automatic backup & sorting */
+async function loadAutoBackup() {
+  const m = await db.get("meta", "autoBackup");
+  // Default ON — the app is "set up once and forget": auto-sort, auto-dedup and
+  // auto-backup run unless the user deliberately turns them off in Settings.
+  state.autoBackup = m ? !!m.on : true;
+  const b = await db.get("meta", "backedUpKeys");
+  state.backedUpKeys = new Set(b?.list || []);
+  const kd = await db.get("meta", "keptDistinct");
+  state.keptDistinct = new Set(kd?.list || []);
+  const toggle = el("autoBackup");
+  if (toggle) toggle.checked = state.autoBackup;
+}
+
+async function saveAutoBackup() {
+  await db.put("meta", { id: "autoBackup", on: state.autoBackup });
+}
+
+async function saveBackedUpKeys() {
+  await db.put("meta", { id: "backedUpKeys", list: [...state.backedUpKeys] });
+}
+
+async function saveKeptDistinct() {
+  await db.put("meta", { id: "keptDistinct", list: [...state.keptDistinct] });
+}
+
+// Turn the setting on/off: persist it, (re)start the watch loop, update status.
+async function setAutoBackup(on) {
+  state.autoBackup = on;
+  await saveAutoBackup();
+  if (on) {
+    startAutoSync();
+    if (cloud.oneDriveConfigured()) {
+      setAutoBackupMsg("On — new photos will be sorted and backed up to OneDrive while the app is open.");
+    } else {
+      setAutoBackupMsg("On — new photos are sorted automatically. Connect OneDrive (on the Add screen) to also back up copies.");
+    }
+    autoRescanGranted(true); // sweep right away
+  } else {
+    stopAutoSync();
+    setAutoBackupMsg("Off.");
+  }
+}
+
+function setAutoBackupMsg(text) {
+  const m = el("autoBackupMsg");
+  if (!m) return;
+  m.textContent = text;
+  m.hidden = false;
+}
+
+// While the app is open, periodically re-scan watched folders and, on tab focus,
+// catch up on anything added since. This is the "auto-backup like your phone"
+// loop — browsers can't fully run it when the tab is closed (native app needed).
+function startAutoSync() {
+  stopAutoSync();
+  if (!state.autoBackup) return;
+  autoSyncTimer = setInterval(() => {
+    if (document.visibilityState === "visible") autoRescanGranted(true);
+  }, 90000);
+  registerPeriodicSync();
+}
+
+function stopAutoSync() {
+  if (autoSyncTimer) {
+    clearInterval(autoSyncTimer);
+    autoSyncTimer = null;
+  }
+}
+
+// Best-effort background sync for installed PWAs on supporting browsers.
+async function registerPeriodicSync() {
+  try {
+    const reg = await navigator.serviceWorker?.ready;
+    if (reg && "periodicSync" in reg) {
+      const status = await navigator.permissions.query({ name: "periodic-background-sync" });
+      if (status.state === "granted") {
+        await reg.periodicSync.register("kinalbum-backup", { minInterval: 6 * 60 * 60 * 1000 });
+      }
+    }
+  } catch {
+    /* unsupported — the in-app timer + focus sweep handle it instead */
+  }
+}
+
+// Choose the OneDrive sub-folder for a new photo: the child it was sorted into
+// (children first), else the first person, else "Unsorted".
+function backupFolderFor(personIds) {
+  const named = personIds.map((id) => state.people.find((p) => p.id === id)).filter((p) => p && !p.ignored);
+  const target = named.find((p) => p.isChild) || named[0];
+  return `Kinalbum/${target ? target.name : "Unsorted"}`;
+}
+
+// Upload freshly-ingested originals to OneDrive, organised by album. Skips
+// anything already uploaded (auto-dedup) and records what succeeded.
+async function backupPhotos(list) {
+  if (!state.autoBackup || !cloud.oneDriveConfigured() || !list.length) return;
+  setAutoBackupMsg(`Backing up ${list.length} new item${list.length > 1 ? "s" : ""} to OneDrive…`);
+  let ok = 0;
+  let fail = 0;
+  for (const { file, personIds, photoId } of list) {
+    const key = `${file.name}|${file.size}|${file.lastModified}`;
+    if (state.backedUpKeys.has(key)) continue;
+    try {
+      const folder = backupFolderFor(personIds);
+      const item = await cloud.uploadFileToOneDrive(file, folder);
+      state.backedUpKeys.add(key);
+      // Remember where it landed so any device can fetch the original later.
+      const photo = state.photos.find((p) => p.id === photoId);
+      if (photo && item && item.id) {
+        photo.cloudId = item.id;
+        await db.put("photos", photo);
+      }
+      ok++;
+    } catch {
+      fail++;
+    }
+  }
+  await saveBackedUpKeys();
+  setAutoBackupMsg(fail ? `Backed up ${ok}; ${fail} will retry later.` : `Backed up ${ok} to OneDrive.`);
+  scheduleCloudSync(); // keep the cloud copy of backed-up keys current
+  scheduleLibrarySync(); // persist the new cloud file pointers into the manifest
+}
+
+/* ----------------------------------------- cloud account continuity */
+// The identity model is the "brains" that let a NEW PHONE pick up where the old
+// one left off: who your people are and everything the app has learned about
+// them (including the "that's not them" corrections). Photos themselves live as
+// files in OneDrive; this small JSON lets any signed-in device re-sort that
+// library into the same albums. No photos are stored in it.
+function buildCloudModel() {
+  return {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    people: state.people.map((p) => ({
+      id: p.id,
+      name: p.name,
+      isChild: !!p.isChild,
+      ignored: !!p.ignored,
+      descriptors: p.descriptors || [],
+      negatives: p.negatives || [],
+      thumb: p.thumb || "",
+    })),
+    backedUpKeys: [...state.backedUpKeys],
+    settings: { autoBackup: state.autoBackup },
+  };
+}
+
+let cloudSyncTimer = null;
+// Debounced, silent, best-effort upload of the identity model after any change,
+// so the cloud copy stays current without hammering the network. Only runs when
+// already signed in; quietly retries on the next change if offline.
+function scheduleCloudSync() {
+  if (!cloud.oneDriveConfigured()) return;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(async () => {
+    try {
+      if (await cloud.hasCloudAccount()) await cloud.saveCloudModel(buildCloudModel());
+    } catch {
+      /* offline — the next change will try again */
+    }
+  }, 4000);
+}
+
+// Pull the identity model from OneDrive and merge it in. This is what makes a new
+// phone "just work": sign in, your people come back, and your camera roll re-sorts
+// into the same albums. Safe to call repeatedly — it merges, never clobbers.
+async function restoreCloudModel() {
+  if (!cloud.oneDriveConfigured()) return;
+  let model;
+  try {
+    if (!(await cloud.hasCloudAccount())) return;
+    model = await cloud.loadCloudModel();
+  } catch {
+    return;
+  }
+  if (!model || !Array.isArray(model.people)) return;
+
+  let changed = false;
+  for (const cp of model.people) {
+    let local = state.people.find((p) => p.id === cp.id);
+    if (!local) {
+      local = {
+        id: cp.id,
+        name: cp.name,
+        isChild: !!cp.isChild,
+        ignored: !!cp.ignored,
+        descriptors: cp.descriptors || [],
+        negatives: cp.negatives || [],
+        thumb: cp.thumb || "",
+      };
+      state.people.push(local);
+      changed = true;
+    } else {
+      const before = (local.descriptors?.length || 0) + (local.negatives?.length || 0);
+      local.descriptors = sample([...(local.descriptors || []), ...(cp.descriptors || [])], 12);
+      local.negatives = sample([...(local.negatives || []), ...(cp.negatives || [])], 20);
+      if (!local.thumb && cp.thumb) local.thumb = cp.thumb;
+      if (local.descriptors.length + local.negatives.length !== before) changed = true;
+    }
+    await db.put("people", local);
+  }
+
+  if (Array.isArray(model.backedUpKeys) && model.backedUpKeys.length) {
+    const before = state.backedUpKeys.size;
+    for (const k of model.backedUpKeys) state.backedUpKeys.add(k);
+    if (state.backedUpKeys.size !== before) await saveBackedUpKeys();
+  }
+
+  if (changed) {
+    // Re-sort anything already on this device to the restored people.
+    for (const p of namedPeople()) await assignMatchingUnassigned(p);
+    recomputePending();
+    renderAll();
+    showCloudMsg("Welcome back — your people and albums were restored from OneDrive.");
+  }
+}
+
+// The library manifest is the authoritative SORTED OUTPUT: every photo with its
+// album membership, a thumbnail, and a pointer to the original in OneDrive. This
+// is what makes the organised library permanent and identical on every device.
+function buildLibraryManifest() {
+  return {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    photos: state.photos.map((p) => ({
+      id: p.id,
+      name: p.name,
+      personIds: p.personIds || [],
+      manualIds: p.manualIds || [],
+      isVideo: !!p.isVideo,
+      duration: p.duration || 0,
+      dims: p.dims || { w: 0, h: 0 },
+      hash: p.hash,
+      thumb: p.thumb,
+      cloudId: p.cloudId || null,
+    })),
+  };
+}
+
+let librarySyncTimer = null;
+// Debounced, silent upload of the sorted-output manifest after photos or tags
+// change. Separate (slower) timer from the people model, since it's larger.
+function scheduleLibrarySync() {
+  if (!cloud.oneDriveConfigured()) return;
+  clearTimeout(librarySyncTimer);
+  librarySyncTimer = setTimeout(async () => {
+    try {
+      if (await cloud.hasCloudAccount()) await cloud.saveCloudLibrary(buildLibraryManifest());
+    } catch {
+      /* offline — the next change will try again */
+    }
+  }, 6000);
+}
+
+// Rebuild albums straight from the OneDrive manifest (the "build from the output
+// file" path). Adds any photo the manifest knows about that this device doesn't
+// yet have, using the stored thumbnail — no downloads, no re-recognition. Returns
+// how many were restored.
+async function rebuildFromManifest() {
+  if (!cloud.oneDriveConfigured()) return 0;
+  let lib;
+  try {
+    if (!(await cloud.hasCloudAccount())) return 0;
+    lib = await cloud.loadCloudLibrary();
+  } catch {
+    return 0;
+  }
+  if (!lib || !Array.isArray(lib.photos)) return 0;
+
+  const haveIds = new Set(state.photos.map((p) => p.id));
+  const toAdd = [];
+  for (const e of lib.photos) {
+    if (haveIds.has(e.id)) continue;
+    // Skip if the same shot is already here under a different id (dedupe by hash).
+    if (e.hash && state.photos.some((p) => p.hash && face.hamming(p.hash, e.hash) <= 2)) continue;
+    toAdd.push({
+      id: e.id,
+      thumb: e.thumb,
+      hash: e.hash,
+      name: e.name,
+      personIds: e.personIds || [],
+      manualIds: e.manualIds || [],
+      isVideo: !!e.isVideo,
+      duration: e.duration || 0,
+      dims: e.dims || { w: 0, h: 0 },
+      cloudId: e.cloudId || null,
+      fromCloud: true, // original lives in OneDrive, not on this device
+    });
+  }
+  if (toAdd.length) {
+    state.photos.push(...toAdd);
+    await db.bulkPut("photos", toAdd);
+    recomputePending();
+    renderAll();
+  }
+  return toAdd.length;
+}
+
+// On startup (when already signed in): bring back the people/learning, then
+// rebuild the sorted library from its manifest. Silent no-op if not signed in.
+async function cloudStartup() {
+  await restoreCloudModel();
+  await rebuildFromManifest();
+}
+
+function renderWatched() {
+  const list = el("watchedList");
+  const empty = el("watchedEmpty");
+  if (!list) return;
+  list.innerHTML = "";
+  empty.hidden = state.watched.length > 0;
+  for (const w of state.watched) {
+    const row = document.createElement("div");
+    row.className = "watched-row";
+    row.innerHTML = `
+      <button class="watched-row__main" data-scan="${w.id}">
+        <span class="watched-row__icon">📁</span>
+        <span class="watched-row__name">${w.name}</span>
+        <span class="watched-row__hint">Tap to re-scan</span>
+      </button>
+      <button class="watched-row__x" data-forget="${w.id}" aria-label="Stop watching">✕</button>`;
+    list.appendChild(row);
+  }
+  list.querySelectorAll("[data-scan]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const w = state.watched.find((x) => x.id === b.dataset.scan);
+      if (w) scanHandle(w.handle);
+    })
+  );
+  list.querySelectorAll("[data-forget]").forEach((b) =>
+    b.addEventListener("click", () => forgetFolder(b.dataset.forget))
+  );
+}
+
+function showScanMsg(text) {
+  const m = el("scanMsg");
+  if (!m) return;
+  m.textContent = text;
+  m.hidden = false;
+}
+
+/* ---------------------------------------------------------- cloud sources */
+async function connectCloud() {
+  el("oneDriveBtn").disabled = true;
+  try {
+    const ok = await cloud.signIn(showCloudMsg);
+    if (!ok) return;
+    // Signed in — bring back people + learning first.
+    await restoreCloudModel();
+    // If an organised library already exists in OneDrive, rebuild straight from
+    // it (no re-downloading or re-recognising the whole camera roll). Only fall
+    // back to a full camera-roll sort when there's nothing organised yet.
+    const restored = await rebuildFromManifest();
+    if (restored > 0) {
+      showCloudMsg(`Restored ${restored} sorted photo${restored === 1 ? "" : "s"} from OneDrive. Press the button again any time to pull in new photos.`);
+    } else {
+      await cloud.importCameraRoll(showCloudMsg, handleFiles);
+    }
+    scheduleCloudSync();
+    scheduleLibrarySync();
+  } finally {
+    el("oneDriveBtn").disabled = false;
+  }
+}
+
+function showCloudMsg(text) {
+  const m = el("cloudMsg");
+  if (!m) return;
+  m.textContent = text;
+  m.hidden = false;
+}
+
+/* ------------------------------------------------------------ add flow */
+async function handleFiles(fileList) {
+  // Hold the scan lock during a direct import too, so a timed/focus-triggered
+  // background scan can't start on top of it and fight over the progress bar.
+  // If we're already inside a folder scan (lock held), this is a no-op.
+  const ownLock = !scanBusy;
+  if (ownLock) scanBusy = true;
+  try {
+    await processFiles(fileList);
+  } finally {
+    if (ownLock) scanBusy = false;
+  }
+}
+
+async function processFiles(fileList) {
+  const files = Array.from(fileList).filter(
+    (f) => f.type.startsWith("image/") || f.type.startsWith("video/") || isMediaName(f.name)
+  );
+  if (!files.length) return;
+
+  if (!autoScanning) el("processing").hidden = false;
+  let added = 0;
+  let dupes = 0;
+  const newPhotos = [];
+  const newFaces = [];
+  const toBackup = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const isVid = files[i].type.startsWith("video/") || (isVideoName(files[i].name) && !isImageName(files[i].name));
+    el("processingText").textContent = isVid ? "Scanning video…" : "Looking for faces…";
+    el("procCount").textContent = `${i + 1} of ${files.length}`;
+    el("procBar").style.width = Math.round(((i + 1) / files.length) * 100) + "%";
+
+    let result;
+    try {
+      result = isVid ? await face.analyzeVideoFile(files[i]) : await face.analyzeFile(files[i]);
+    } catch {
+      continue;
+    }
+    // Screenshots are kept as photos but never scanned for faces.
+    if (!isVid && isScreenshot(files[i].name)) result.faces = [];
+
+    // Cross-source de-dup: the same shot can arrive from the gallery, OneDrive
+    // and WhatsApp with different names/dates/bytes. Collapse to one record and
+    // keep the highest-quality copy as the master.
+    const dup = findDuplicate(result, [...state.photos, ...newPhotos]);
+    if (dup) {
+      dupes++;
+      const newArea = (result.width || 0) * (result.height || 0);
+      const oldArea = dup.dims ? dup.dims.w * dup.dims.h : 0;
+      if (newArea > oldArea) {
+        dup.thumb = result.photoThumb;
+        dup.dims = { w: result.width || 0, h: result.height || 0 };
+        await db.put("photos", dup);
+      }
+      continue;
+    }
+
+    const photoId = db.uid();
+    const personIds = new Set();
+    for (const f of result.faces) {
+      const match = face.matchPerson(f.descriptor, state.people);
+      const personId = match ? match.id : null;
+      if (personId && personId !== IGNORED) personIds.add(personId);
+      newFaces.push({
+        id: db.uid(),
+        photoId,
+        descriptor: f.descriptor,
+        thumb: f.thumb,
+        personId,
+      });
+    }
+    // Keep the original video so it can be played back later (images stay as
+    // thumbnails only — videos need the real file to play).
+    if (isVid) {
+      try {
+        await db.put("media", { id: photoId, blob: files[i] });
+      } catch {
+        /* storage full or blob not cloneable — fall back to preview frame only */
+      }
+    }
+    newPhotos.push({
+      id: photoId,
+      thumb: result.photoThumb,
+      hash: result.hash,
+      name: result.name,
+      personIds: [...personIds],
+      manualIds: [], // albums the user added this photo to by hand (kept across re-labels)
+      isVideo: !!result.isVideo,
+      duration: result.duration || 0,
+      dims: { w: result.width || 0, h: result.height || 0 },
+    });
+    added++;
+    if (state.autoBackup && cloud.oneDriveConfigured()) {
+      toBackup.push({ file: files[i], personIds: [...personIds], photoId });
+    }
+
+    // Yield to the UI so the progress bar paints on mobile.
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  state.photos.push(...newPhotos);
+  state.faces.push(...newFaces);
+  await Promise.all([db.bulkPut("photos", newPhotos), db.bulkPut("faces", newFaces)]);
+
+  if (!autoScanning) el("processing").hidden = true;
+
+  // Stats on the Add screen (recomputed live — see renderStats).
+  recomputePending();
+
+  renderAll();
+
+  // Auto-backup organised copies of the new originals (if enabled + connected).
+  if (toBackup.length) backupPhotos(toBackup);
+
+  // Nudge the user to the People screen if there are faces to name — but never
+  // yank them around during a background auto-scan.
+  if (!autoScanning) {
+    if (state.pendingClusters.length) navTo("people");
+    else if (namedPeople().length) navTo("albums");
+  }
+}
+
+// Decide if a freshly analysed item is a copy of one we already have, combining
+// signals (never a single indicator): perceptual distance must be below a tight
+// threshold, and for the looser band the aspect ratios must agree too.
+function findDuplicate(result, pool) {
+  const len = result.hash.length || 1;
+  const strict = Math.max(2, Math.round(len * DUP_STRICT_FRAC));
+  const loose = Math.max(6, Math.round(len * DUP_LOOSE_FRAC));
+  const ar = result.width && result.height ? result.width / result.height : 0;
+  for (const p of pool) {
+    if (!!p.isVideo !== !!result.isVideo) continue; // don't cross photo/video
+    const d = face.hamming(p.hash, result.hash);
+    if (d === Infinity) continue;
+    if (d <= strict) return p;
+    if (d <= loose && ar) {
+      const par = p.dims && p.dims.h ? p.dims.w / p.dims.h : 0;
+      if (par && Math.abs(ar - par) / ar < 0.02) return p;
+    }
+  }
+  return null;
+}
+
+function fmtDur(s) {
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/* ------------------------------------------- duplicate review (library) */
+// Are two STORED photo records near-identical? Mirrors findDuplicate but works
+// on records already in the library. Video fingerprints can differ in length
+// between scans (frame-seek timing), so we compare the common prefix.
+function isDuplicatePair(a, b) {
+  if (!!a.isVideo !== !!b.isVideo) return false;
+  if (!a.hash || !b.hash) return false;
+  const len = Math.min(a.hash.length, b.hash.length);
+  if (!len) return false;
+  let d = 0;
+  for (let i = 0; i < len; i++) if (a.hash[i] !== b.hash[i]) d++;
+  const strict = Math.max(2, Math.round(len * DUP_STRICT_FRAC));
+  const loose = Math.max(6, Math.round(len * DUP_LOOSE_FRAC));
+  if (d <= strict) return true;
+  const ara = a.dims && a.dims.h ? a.dims.w / a.dims.h : 0;
+  const arb = b.dims && b.dims.h ? b.dims.w / b.dims.h : 0;
+  if (d <= loose && ara && arb && Math.abs(ara - arb) / ara < 0.02) return true;
+  return false;
+}
+
+// Group the current library into clusters of duplicates (2+ copies of the same
+// shot). The highest-resolution copy in each group is the "master" (kept first).
+function findDuplicateGroups() {
+  const photos = state.photos.filter((p) => !state.keptDistinct.has(p.id));
+  const assigned = new Set();
+  const groups = [];
+  for (let i = 0; i < photos.length; i++) {
+    if (assigned.has(photos[i].id)) continue;
+    const group = [photos[i]];
+    for (let j = i + 1; j < photos.length; j++) {
+      if (assigned.has(photos[j].id)) continue;
+      if (isDuplicatePair(photos[i], photos[j])) {
+        group.push(photos[j]);
+        assigned.add(photos[j].id);
+      }
+    }
+    if (group.length > 1) {
+      assigned.add(photos[i].id);
+      const area = (p) => (p.dims ? (p.dims.w || 0) * (p.dims.h || 0) : 0);
+      group.sort((a, b) => area(b) - area(a)); // best copy first = master
+      groups.push(group);
+    }
+  }
+  return groups;
+}
+
+// How many EXTRA copies exist across all duplicate groups (group size minus the
+// one master we'd keep). This is the number shown on the "duplicates" tile.
+function countDuplicateExtras() {
+  return findDuplicateGroups().reduce((n, g) => n + (g.length - 1), 0);
+}
+
+let dupGroups = [];
+
+function openDupModal() {
+  dupGroups = findDuplicateGroups();
+  el("dupModal").hidden = false;
+  renderDupModal();
+}
+
+function closeDupModal() {
+  el("dupModal").hidden = true;
+}
+
+function renderDupModal() {
+  const body = el("dupBody");
+  body.innerHTML = "";
+  const extras = dupGroups.reduce((n, g) => n + (g.length - 1), 0);
+  el("dupCount").textContent = extras
+    ? `${extras} duplicate cop${extras === 1 ? "y" : "ies"} across ${dupGroups.length} photo${dupGroups.length === 1 ? "" : "s"}.`
+    : "No duplicates found — your library is clean.";
+  el("dupRemoveAll").hidden = extras === 0;
+
+  dupGroups.forEach((group, gi) => {
+    const wrap = document.createElement("div");
+    wrap.className = "dup-group";
+    const master = group[0];
+    const masterDim = master.dims ? `${master.dims.w}×${master.dims.h}` : "";
+    wrap.innerHTML = `<div class="dup-group__head">${group.length} copies${master.isVideo ? " · video" : ""}</div>`;
+    const row = document.createElement("div");
+    row.className = "dup-row";
+    group.forEach((photo, pi) => {
+      const isMaster = pi === 0;
+      const tile = document.createElement("div");
+      tile.className = "dup-tile" + (isMaster ? " dup-tile--master" : "");
+      const dim = photo.dims ? `${photo.dims.w}×${photo.dims.h}` : "";
+      tile.innerHTML = `
+        <div class="dup-tile__imgwrap">
+          <img src="${photo.thumb}" alt="" />
+          ${isMaster ? '<span class="dup-tile__badge">keep</span>' : ""}
+          ${photo.isVideo ? '<span class="dup-tile__play">▶</span>' : ""}
+        </div>
+        <div class="dup-tile__meta">${dim}${isMaster ? " · best quality" : ""}</div>`;
+      if (!isMaster) {
+        const actions = document.createElement("div");
+        actions.className = "dup-tile__actions";
+        const rm = document.createElement("button");
+        rm.className = "btn btn--danger btn--small";
+        rm.textContent = "Remove";
+        rm.title = "Delete this duplicate copy";
+        rm.addEventListener("click", () => removeDuplicatePhoto(gi, photo.id));
+        const keep = document.createElement("button");
+        keep.className = "btn btn--ghost btn--small";
+        keep.textContent = "Not a dupe";
+        keep.title = "Keep this as a separate photo and stop flagging it";
+        keep.addEventListener("click", () => keepAsDistinct(gi, photo.id));
+        actions.append(rm, keep);
+        tile.appendChild(actions);
+      }
+      row.appendChild(tile);
+    });
+    wrap.appendChild(row);
+    body.appendChild(wrap);
+  });
+}
+
+async function removeDuplicatePhoto(groupIndex, photoId) {
+  await deletePhotoRecord(photoId);
+  const g = dupGroups[groupIndex];
+  if (g) dupGroups[groupIndex] = g.filter((p) => p.id !== photoId);
+  if (dupGroups[groupIndex] && dupGroups[groupIndex].length < 2) dupGroups.splice(groupIndex, 1);
+  recomputePending();
+  renderDupModal();
+  renderAll();
+}
+
+async function keepAsDistinct(groupIndex, photoId) {
+  state.keptDistinct.add(photoId);
+  await saveKeptDistinct();
+  const g = dupGroups[groupIndex];
+  if (g) dupGroups[groupIndex] = g.filter((p) => p.id !== photoId);
+  if (dupGroups[groupIndex] && dupGroups[groupIndex].length < 2) dupGroups.splice(groupIndex, 1);
+  renderDupModal();
+  renderAll();
+}
+
+async function removeAllDuplicates() {
+  const toRemove = [];
+  for (const g of dupGroups) for (let i = 1; i < g.length; i++) toRemove.push(g[i].id);
+  if (!toRemove.length) return;
+  if (!confirm(`Remove ${toRemove.length} duplicate cop${toRemove.length === 1 ? "y" : "ies"}? The best-quality copy of each is kept. Your original files are not touched.`)) return;
+  for (const id of toRemove) await deletePhotoRecord(id);
+  dupGroups = [];
+  recomputePending();
+  renderDupModal();
+  renderAll();
+}
+
+/* --------------------------------------------------------- clustering */
+function recomputePending() {
+  const unassigned = state.faces.filter((f) => !f.personId);
+  state.pendingClusters = face
+    .clusterFaces(unassigned)
+    .filter((c) => c.faces.length >= 1)
+    .sort((a, b) => b.faces.length - a.faces.length);
+  scheduleCloudSync(); // people/faces changed — keep the cloud model in step
+}
+
+function namedPeople() {
+  return state.people.filter((p) => !p.ignored);
+}
+
+/* ------------------------------------------------------- naming people */
+let modalCluster = null;
+let modalPhoto = null; // when set, the saved person's album also gets this photo
+let modalSelected = new Set(); // face ids currently marked as "this person"
+
+function openNameModal(cluster, photo = null) {
+  modalCluster = cluster;
+  modalPhoto = photo;
+  modalSelected = new Set(cluster.faces.map((f) => f.id));
+  const hasFaces = cluster.faces.length > 0;
+  el("nameFaces").hidden = !hasFaces;
+  el("nameFacesCount").hidden = !hasFaces;
+  el("nameHint").textContent = hasFaces
+    ? "These faces look like the same person. Tap any that aren't them to leave them out."
+    : "Name your new album. This photo will be added to it.";
+  renderModalFaces();
+  el("nameInput").value = "";
+  el("isChildInput").checked = true;
+  renderExistingPeopleChips();
+  el("nameModal").hidden = false;
+  setTimeout(() => el("nameInput").focus(), 50);
+}
+
+// Show every face in the cluster as a toggle so the user can drop any that
+// aren't this person before naming them.
+function renderModalFaces() {
+  const grid = el("nameFaces");
+  grid.innerHTML = "";
+  modalCluster.faces.forEach((f) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "name-face" + (modalSelected.has(f.id) ? "" : " name-face--off");
+    b.innerHTML = `<img src="${f.thumb}" alt="" />`;
+    b.addEventListener("click", () => {
+      if (modalSelected.has(f.id)) modalSelected.delete(f.id);
+      else modalSelected.add(f.id);
+      b.classList.toggle("name-face--off");
+      updateModalCount();
+    });
+    grid.appendChild(b);
+  });
+  updateModalCount();
+}
+
+function updateModalCount() {
+  el("nameFacesCount").textContent = `${modalSelected.size} of ${modalCluster.faces.length} selected`;
+}
+
+// The subset of the cluster the user left selected as "this person".
+function selectedCluster() {
+  return { faces: modalCluster.faces.filter((f) => modalSelected.has(f.id)) };
+}
+
+// Show already-named people in the modal so a cluster can be added to an
+// existing person instead of creating a second "Charbel".
+function renderExistingPeopleChips() {
+  const wrap = el("existingPeopleWrap");
+  const box = el("existingPeople");
+  const people = namedPeople();
+  box.innerHTML = "";
+  wrap.hidden = people.length === 0;
+  for (const p of people) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip chip--person";
+    chip.innerHTML = `<img src="${p.thumb}" alt="" /><span>${p.name}</span>`;
+    chip.addEventListener("click", () => assignToExistingPerson(p));
+    box.appendChild(chip);
+  }
+}
+
+async function assignToExistingPerson(person) {
+  if (!modalCluster) return;
+  const picked = selectedCluster();
+  if (picked.faces.length) await mergeClusterIntoPerson(picked, person);
+  if (modalPhoto) await addPhotoMembership(modalPhoto, person.id);
+  el("nameModal").hidden = true;
+  modalCluster = null;
+  modalPhoto = null;
+  recomputePending();
+  renderAll();
+}
+
+// Add a cluster's faces to an existing person and learn their descriptors.
+async function mergeClusterIntoPerson(cluster, person) {
+  person.descriptors = sample([...person.descriptors, ...cluster.faces.map((f) => f.descriptor)], 12);
+  await db.put("people", person);
+  assignClusterToPerson(cluster, person.id);
+  await assignMatchingUnassigned(person);
+}
+
+async function saveNamedPerson() {
+  const name = el("nameInput").value.trim();
+  if (!name || !modalCluster) {
+    el("nameModal").hidden = true;
+    return;
+  }
+  const picked = selectedCluster();
+  if (!picked.faces.length && !modalPhoto) {
+    el("nameInput").focus();
+    return; // nothing selected — don't create an empty person
+  }
+  // If someone with this name already exists, merge into them (no duplicate album).
+  const existing = namedPeople().find((p) => p.name.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    existing.isChild = el("isChildInput").checked;
+    if (picked.faces.length) await mergeClusterIntoPerson(picked, existing);
+    if (modalPhoto) await addPhotoMembership(modalPhoto, existing.id);
+  } else {
+    const descriptors = sample(picked.faces.map((f) => f.descriptor), 8);
+    const person = {
+      id: db.uid(),
+      name,
+      isChild: el("isChildInput").checked,
+      ignored: false,
+      descriptors,
+      thumb: picked.faces[0] ? picked.faces[0].thumb : modalPhoto ? modalPhoto.thumb : "",
+    };
+    state.people.push(person);
+    await db.put("people", person);
+    if (picked.faces.length) {
+      assignClusterToPerson(picked, person.id);
+      await assignMatchingUnassigned(person);
+    }
+    if (modalPhoto) await addPhotoMembership(modalPhoto, person.id);
+  }
+
+  el("nameModal").hidden = true;
+  modalCluster = null;
+  modalPhoto = null;
+  recomputePending();
+  renderAll();
+}
+
+// Self-teach from an ignore: after growing the hidden "Ignored" bucket, sweep
+// the remaining unnamed faces and auto-ignore any whose CLOSEST match is now
+// that bucket — so the same junk (or the same non-kid person) doesn't keep
+// coming back to be tagged. Uses the whole people set, so a face that's nearer
+// a real named person is never swept away.
+async function sweepIgnoredLookalikes() {
+  const ignored = state.people.find((p) => p.id === IGNORED);
+  if (!ignored || !ignored.descriptors.length) return;
+  const updated = [];
+  for (const f of state.faces) {
+    if (f.personId) continue;
+    const m = face.matchPerson(f.descriptor, state.people);
+    if (m && m.id === IGNORED) {
+      f.personId = IGNORED;
+      updated.push(f);
+    }
+  }
+  if (updated.length) await db.bulkPut("faces", updated);
+}
+
+async function ignoreCluster(cluster) {
+  // Ensure a hidden "ignored" bucket person exists so future lookalikes auto-skip.
+  let ignored = state.people.find((p) => p.id === IGNORED);
+  if (!ignored) {
+    ignored = { id: IGNORED, name: "Ignored", isChild: false, ignored: true, descriptors: [], thumb: cluster.faces[0].thumb };
+    state.people.push(ignored);
+  }
+  ignored.descriptors = sample([...ignored.descriptors, ...cluster.faces.map((f) => f.descriptor)], 20);
+  await db.put("people", ignored);
+  assignClusterToPerson(cluster, IGNORED);
+  await sweepIgnoredLookalikes();
+  recomputePending();
+  renderAll();
+}
+
+// Ignore a single face (from the lightbox) — add it to the hidden "ignored"
+// bucket so lookalikes auto-skip, and refresh the open photo + screens.
+async function ignoreFace(faceRec) {
+  let ignored = state.people.find((p) => p.id === IGNORED);
+  if (!ignored) {
+    ignored = { id: IGNORED, name: "Ignored", isChild: false, ignored: true, descriptors: [], thumb: faceRec.thumb };
+    state.people.push(ignored);
+  }
+  ignored.descriptors = sample([...ignored.descriptors, faceRec.descriptor], 20);
+  await db.put("people", ignored);
+  faceRec.personId = IGNORED;
+  faceRec.notIds = [];
+  await db.put("faces", faceRec);
+  updatePhotoLabels(new Set([faceRec.photoId]));
+  await sweepIgnoredLookalikes();
+  recomputePending();
+  renderAll();
+  // Ignored — stay on this photo if other faces still need a decision, else move on.
+  lightboxAfterFaceAction();
+}
+
+/* ------------------------------------------------- edit a named person */
+// The Contact Picker API only exists on Android Chrome (secure context). We use
+// it as progressive enhancement to pre-fill a person's name/photo from a phone
+// contact; everywhere else the "Link contact" button is simply hidden.
+const contactsSupported = "contacts" in navigator && "ContactsManager" in window;
+let editingPersonId = null;
+let editingContactIcon = null; // dataURL pulled from a linked contact, applied on Save
+
+function openPersonEdit(personId) {
+  const p = state.people.find((x) => x.id === personId);
+  if (!p) return;
+  editingPersonId = personId;
+  editingContactIcon = null;
+  el("personEditFace").src = p.thumb || "";
+  el("personEditName").value = p.name;
+  el("personEditChild").checked = !!p.isChild;
+  const linkBtn = el("personLinkContact");
+  if (linkBtn) linkBtn.hidden = !contactsSupported;
+  const msg = el("personContactMsg");
+  if (msg) {
+    msg.hidden = true;
+    msg.textContent = "";
+  }
+  el("personModal").hidden = false;
+  setTimeout(() => el("personEditName").focus(), 50);
+}
+
+function closePersonEdit() {
+  el("personModal").hidden = true;
+  editingPersonId = null;
+  editingContactIcon = null;
+}
+
+async function savePersonEdit() {
+  const p = state.people.find((x) => x.id === editingPersonId);
+  if (!p) return closePersonEdit();
+  const name = el("personEditName").value.trim();
+  if (!name) {
+    el("personEditName").focus();
+    return;
+  }
+  p.name = name;
+  p.isChild = el("personEditChild").checked;
+  if (editingContactIcon) p.thumb = editingContactIcon;
+  await db.put("people", p);
+  closePersonEdit();
+  scheduleCloudSync();
+  renderAll();
+}
+
+// Delete a named person: their album disappears and every face that was tagged
+// as them returns to the "to name" pool (so nothing is lost). Originals are
+// never touched.
+async function deletePerson() {
+  const p = state.people.find((x) => x.id === editingPersonId);
+  if (!p) return closePersonEdit();
+  const count = state.photos.filter((ph) => ph.personIds.includes(p.id)).length;
+  if (!confirm(`Delete "${p.name}"? Their album is removed and ${count} photo${count === 1 ? "" : "s"} go back to "to name". Your original files aren't touched.`)) return;
+
+  const id = p.id;
+  // Faces tagged as this person → back to unassigned.
+  const freedFaces = [];
+  const touchedPhotos = new Set();
+  for (const f of state.faces) {
+    if (f.personId === id) {
+      f.personId = null;
+      f.notIds = (f.notIds || []).filter((n) => n !== id);
+      freedFaces.push(f);
+      touchedPhotos.add(f.photoId);
+    }
+  }
+  // Strip the person from manual album memberships too.
+  for (const ph of state.photos) {
+    if (ph.manualIds && ph.manualIds.includes(id)) {
+      ph.manualIds = ph.manualIds.filter((m) => m !== id);
+      touchedPhotos.add(ph.id);
+    }
+  }
+  state.people = state.people.filter((x) => x.id !== id);
+  if (freedFaces.length) await db.bulkPut("faces", freedFaces);
+  updatePhotoLabels(touchedPhotos);
+  await db.remove("people", id);
+  if (state.activeAlbum === id) state.activeAlbum = ALL_ALBUM;
+  closePersonEdit();
+  recomputePending();
+  renderAll();
+}
+
+// Progressive enhancement: pull a name (and photo, if the OS exposes it) from a
+// phone contact. Android Chrome only — the button is hidden elsewhere.
+async function linkPhoneContact() {
+  const msg = el("personContactMsg");
+  const show = (t) => {
+    if (msg) {
+      msg.hidden = false;
+      msg.textContent = t;
+    }
+  };
+  try {
+    const avail = (await navigator.contacts.getProperties?.()) || ["name"];
+    const props = ["name"];
+    if (avail.includes("icon")) props.push("icon");
+    const picked = await navigator.contacts.select(props, { multiple: false });
+    if (!picked || !picked.length) return;
+    const c = picked[0];
+    if (c.name && c.name.length) el("personEditName").value = c.name[0];
+    if (c.icon && c.icon.length) {
+      editingContactIcon = await blobToDataURL(c.icon[0]);
+      el("personEditFace").src = editingContactIcon;
+    }
+    show(`Linked ${c.name?.[0] || "contact"}${editingContactIcon ? " (photo updated)" : ""}. Tap Save to keep.`);
+  } catch (e) {
+    show("Couldn't open contacts: " + e.message);
+  }
+}
+
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+function assignClusterToPerson(cluster, personId) {
+  const faceIds = new Set(cluster.faces.map((f) => f.id));
+  const touchedPhotos = new Set();
+  for (const f of state.faces) {
+    if (faceIds.has(f.id)) {
+      f.personId = personId;
+      touchedPhotos.add(f.photoId);
+    }
+  }
+  const updatedFaces = state.faces.filter((f) => faceIds.has(f.id));
+  db.bulkPut("faces", updatedFaces);
+  updatePhotoLabels(touchedPhotos);
+}
+
+// After naming someone, sweep remaining unassigned faces that match them.
+async function assignMatchingUnassigned(person) {
+  const touchedPhotos = new Set();
+  const updated = [];
+  for (const f of state.faces) {
+    if (f.personId) continue;
+    if ((f.notIds || []).includes(person.id)) continue;
+    const m = face.matchPerson(f.descriptor, [person]);
+    if (m) {
+      f.personId = person.id;
+      touchedPhotos.add(f.photoId);
+      updated.push(f);
+    }
+  }
+  if (updated.length) await db.bulkPut("faces", updated);
+  updatePhotoLabels(touchedPhotos);
+}
+
+function updatePhotoLabels(photoIds) {
+  const updated = [];
+  for (const p of state.photos) {
+    if (!photoIds.has(p.id)) continue;
+    // A photo's albums = the people on its faces PLUS any albums the user added
+    // it to by hand. Manual shares survive re-labelling of the faces.
+    const ids = new Set(p.manualIds || []);
+    for (const f of state.faces) {
+      if (f.photoId === p.id && f.personId && f.personId !== IGNORED) ids.add(f.personId);
+    }
+    p.personIds = [...ids];
+    updated.push(p);
+  }
+  if (updated.length) db.bulkPut("photos", updated);
+  scheduleLibrarySync(); // album membership changed — keep the sorted-output manifest current
+}
+
+function sample(arr, n) {
+  if (arr.length <= n) return arr.slice();
+  const step = arr.length / n;
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(arr[Math.floor(i * step)]);
+  return out;
+}
+
+/* ------------------------------------------------------------- render */
+function renderAll() {
+  renderPeople();
+  renderAlbums();
+  renderStats();
+}
+
+// The three Add-screen tiles are live counts of the whole library and double as
+// shortcuts: photos → Everyone album, people → People screen, duplicates →
+// the duplicate review. They update on every render, not just after an import.
+function renderStats() {
+  const people = state.pendingClusters.length + namedPeople().length;
+  const dupeExtras = countDuplicateExtras();
+  el("statPhotos").textContent = state.photos.length;
+  el("statPeople").textContent = people;
+  el("statDupes").textContent = dupeExtras;
+  const dupBtn = el("statDupesBtn");
+  if (dupBtn) dupBtn.classList.toggle("stat--alert", dupeExtras > 0);
+  el("statRow").hidden = state.photos.length === 0 && people === 0;
+}
+
+function renderPeople() {
+  // Named people first — so naming visibly creates a person here, not just an album.
+  const named = namedPeople();
+  const namedGrid = el("namedGrid");
+  namedGrid.innerHTML = "";
+  el("namedHead").hidden = named.length === 0;
+  for (const p of named) {
+    const count = state.photos.filter((ph) => ph.personIds.includes(p.id)).length;
+    const card = document.createElement("div");
+    card.className = "person-card";
+    card.innerHTML = `
+      <button class="person-card__face person-card__face--btn" data-nav="${p.id}" aria-label="Open ${p.name}'s album">
+        <img src="${p.thumb}" alt="${p.name}" />
+      </button>
+      <div class="person-card__body">
+        <div class="person-card__name">${p.name}${p.isChild ? ' <span class="badge-kid">child</span>' : ""}</div>
+        <div class="person-card__count">${count} photo${count === 1 ? "" : "s"}</div>
+        <div class="person-card__actions">
+          <button class="btn btn--primary btn--small" data-nav="${p.id}">Open</button>
+          <button class="btn btn--ghost btn--small" data-edit="${p.id}">Edit</button>
+        </div>
+      </div>`;
+    namedGrid.appendChild(card);
+  }
+  namedGrid.querySelectorAll("[data-nav]").forEach((b) =>
+    b.addEventListener("click", () => {
+      state.activeAlbum = b.dataset.nav;
+      renderAlbums();
+      navTo("albums");
+    })
+  );
+  namedGrid.querySelectorAll("[data-edit]").forEach((b) =>
+    b.addEventListener("click", () => openPersonEdit(b.dataset.edit))
+  );
+
+  // Unnamed clusters still waiting to be named.
+  const grid = el("peopleGrid");
+  el("toNameHead").hidden = state.pendingClusters.length === 0;
+  el("peopleEmpty").hidden = state.pendingClusters.length > 0 || named.length > 0;
+  renderClusterCards(grid);
+}
+
+// Render the "faces waiting to be named" cards into a grid element. Shared by
+// the People screen and the "Found — needs tagging" section on Albums.
+function renderClusterCards(grid) {
+  grid.innerHTML = "";
+  state.pendingClusters.forEach((cluster, idx) => {
+    const card = document.createElement("div");
+    card.className = "person-card";
+    card.innerHTML = `
+      <button class="person-card__face person-card__face--btn" data-open="${idx}" aria-label="Open photo">
+        <img src="${cluster.faces[0].thumb}" alt="Unnamed person" />
+        <span class="person-card__view">Tap to view</span>
+      </button>
+      <div class="person-card__body">
+        <div class="person-card__count">${cluster.faces.length} photo${cluster.faces.length > 1 ? "s" : ""}</div>
+        <div class="person-card__actions">
+          <button class="btn btn--primary btn--small" data-name="${idx}">Name</button>
+          <button class="btn btn--ghost btn--small" data-ignore="${idx}">Ignore</button>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+  });
+
+  grid.querySelectorAll("[data-open]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const cluster = state.pendingClusters[+b.dataset.open];
+      if (cluster?.faces[0]) {
+        // Browse every photo this unnamed person appears in, as a gallery.
+        const ids = [...new Set(cluster.faces.map((f) => f.photoId))];
+        openLightbox(cluster.faces[0].photoId, true, ids);
+      }
+    })
+  );
+  grid.querySelectorAll("[data-name]").forEach((b) =>
+    b.addEventListener("click", () => openNameModal(state.pendingClusters[+b.dataset.name]))
+  );
+  grid.querySelectorAll("[data-ignore]").forEach((b) =>
+    b.addEventListener("click", () => ignoreCluster(state.pendingClusters[+b.dataset.ignore]))
+  );
+}
+
+const ALL_ALBUM = "__all__";
+const UNTAGGED = "__untagged__";
+const AWAITING = "__awaiting__";
+
+function renderAlbums() {
+  const people = namedPeople();
+  const tabs = el("albumTabs");
+  const grid = el("albumGrid");
+  tabs.innerHTML = "";
+  grid.innerHTML = "";
+
+  if (!people.length && !state.photos.length) {
+    el("albumsEmpty").hidden = false;
+    return;
+  }
+  el("albumsEmpty").hidden = true;
+
+  // Roster for album tabs: children first, then adults. The "Kids only" toggle
+  // (uses the "this is my child" flag) hides non-child albums entirely.
+  let roster = people.slice().sort((a, b) => Number(b.isChild) - Number(a.isChild));
+  const hasAdults = roster.some((p) => !p.isChild);
+  el("kidsOnlyWrap").hidden = !hasAdults;
+  if (state.kidsOnly) roster = roster.filter((p) => p.isChild);
+
+  // Build the tab list: a merged "Everyone" album first, then Untagged, then a
+  // dedicated "Awaiting tag" album for faces still waiting to be named, then one
+  // album per named person.
+  const albums = [{ id: ALL_ALBUM, name: "Everyone", count: state.photos.length }];
+  const untaggedCount = state.photos.filter((ph) => !ph.personIds.length).length;
+  if (untaggedCount) albums.push({ id: UNTAGGED, name: "Untagged", count: untaggedCount });
+  if (state.pendingClusters.length) albums.push({ id: AWAITING, name: "Awaiting tag", count: state.pendingClusters.length });
+  for (const p of roster) {
+    albums.push({ id: p.id, name: p.name, count: state.photos.filter((ph) => ph.personIds.includes(p.id)).length });
+  }
+
+  if (!state.activeAlbum || !albums.some((a) => a.id === state.activeAlbum)) {
+    state.activeAlbum = albums[0].id;
+  }
+
+  albums.forEach((a) => {
+    const tab = document.createElement("button");
+    tab.className = "tab" + (a.id === state.activeAlbum ? " is-active" : "");
+    tab.textContent = `${a.name} (${a.count})`;
+    tab.addEventListener("click", () => {
+      state.activeAlbum = a.id;
+      renderAlbums();
+    });
+    tabs.appendChild(tab);
+  });
+
+  // The "Awaiting tag" album shows the unnamed-face cards instead of photos.
+  if (state.activeAlbum === AWAITING) {
+    el("awaitingSub").hidden = false;
+    el("awaitingGrid").hidden = false;
+    grid.hidden = true;
+    renderClusterCards(el("awaitingGrid"));
+    return;
+  }
+  el("awaitingSub").hidden = true;
+  el("awaitingGrid").hidden = true;
+  el("awaitingGrid").innerHTML = "";
+  grid.hidden = false;
+
+  const album = state.activeAlbum === ALL_ALBUM
+    ? state.photos
+    : state.activeAlbum === UNTAGGED
+      ? state.photos.filter((ph) => !ph.personIds.length)
+      : state.photos.filter((ph) => ph.personIds.includes(state.activeAlbum));
+  for (const ph of album) {
+    const cell = document.createElement("div");
+    cell.className = "thumb";
+    const img = document.createElement("img");
+    img.src = ph.thumb;
+    img.alt = ph.name;
+    img.loading = "lazy";
+    img.addEventListener("click", () => openLightbox(ph.id, false, album.map((p) => p.id)));
+    cell.appendChild(img);
+    if (ph.isVideo) {
+      const play = document.createElement("span");
+      play.className = "thumb__play";
+      play.textContent = ph.duration ? `▶ ${fmtDur(ph.duration)}` : "▶";
+      cell.appendChild(play);
+    }
+    grid.appendChild(cell);
+  }
+}
+
+/* --------------------------------------------------------- lightbox */
+let lightboxPhotoId = null;
+let lightboxMediaUrl = null; // object URL for a playing video, revoked on close
+let lightboxSet = []; // the photo ids being browsed (album or naming pool)
+let lightboxIndex = 0; // position within lightboxSet
+let lightboxPoolView = false; // true when opened from the "to name" pool
+
+// Open the gallery viewer. `set` is the list of photo ids to browse (so you can
+// flick through a whole album or a person's photos); defaults to just this one.
+async function openLightbox(photoId, poolView = false, set = null) {
+  lightboxSet = set && set.length ? set.slice() : [photoId];
+  lightboxIndex = Math.max(0, lightboxSet.indexOf(photoId));
+  lightboxPoolView = poolView;
+  el("lightbox").hidden = false;
+  await showLightboxPhoto();
+}
+
+// Jump forward/back through the set, wrapping around the ends.
+function lightboxStep(delta) {
+  if (lightboxSet.length < 2) return;
+  lightboxIndex = (lightboxIndex + delta + lightboxSet.length) % lightboxSet.length;
+  showLightboxPhoto();
+}
+
+// After tagging the current photo, move on: show the next photo if we're
+// browsing several, otherwise (single photo / manual tag) just close the viewer.
+function lightboxAdvanceOrClose() {
+  if (lightboxIndex < lightboxSet.length - 1) {
+    lightboxIndex++;
+    showLightboxPhoto();
+  } else {
+    closeLightbox();
+  }
+}
+
+// After tagging/ignoring ONE face in a photo, stay put while that photo still
+// has faces awaiting a decision — the resolved face drops out of the list so you
+// only ever see who's left to tag in a group shot. Once every face is tagged or
+// ignored, move on (next photo or close) just like a single-face photo.
+function lightboxAfterFaceAction() {
+  const photoId = lightboxSet[lightboxIndex];
+  const unresolved = state.faces.some((f) => f.photoId === photoId && !f.personId);
+  if (unresolved) {
+    showLightboxPhoto();
+  } else {
+    lightboxAdvanceOrClose();
+  }
+}
+
+// Render the thumbnail filmstrip and the prev/next arrows for the current set.
+function renderLightboxStrip() {
+  const multi = lightboxSet.length > 1;
+  el("lightboxPrev").hidden = !multi;
+  el("lightboxNext").hidden = !multi;
+  const strip = el("lightboxStrip");
+  strip.hidden = !multi;
+  strip.innerHTML = "";
+  if (!multi) return;
+  lightboxSet.forEach((id, i) => {
+    const photo = state.photos.find((p) => p.id === id);
+    if (!photo) return;
+    const b = document.createElement("button");
+    b.className = "lightbox__strip-thumb" + (i === lightboxIndex ? " is-active" : "");
+    b.innerHTML = `<img src="${photo.thumb}" alt="" />` + (photo.isVideo ? '<span class="lightbox__strip-play">▶</span>' : "");
+    b.addEventListener("click", () => {
+      lightboxIndex = i;
+      showLightboxPhoto();
+    });
+    strip.appendChild(b);
+  });
+  const active = strip.querySelector(".is-active");
+  if (active) active.scrollIntoView({ inline: "center", block: "nearest" });
+}
+
+async function showLightboxPhoto() {
+  const photoId = lightboxSet[lightboxIndex];
+  const photo = state.photos.find((p) => p.id === photoId);
+  if (!photo) return;
+  lightboxPhotoId = photoId;
+
+  const img = el("lightboxImg");
+  const vid = el("lightboxVideo");
+  if (lightboxMediaUrl) {
+    URL.revokeObjectURL(lightboxMediaUrl);
+    lightboxMediaUrl = null;
+  }
+
+  if (photo.isVideo) {
+    // Load the original file and play it. Fall back to the preview frame if the
+    // blob isn't stored (e.g. videos added before playback was supported).
+    let blob = null;
+    const media = await db.get("media", photoId);
+    if (media && media.blob) blob = media.blob;
+    // Rebuilt-from-cloud video: stream the original down from OneDrive on demand.
+    if (!blob && photo.cloudId) blob = await cloud.downloadCloudFile(photo.cloudId);
+    if (blob) {
+      lightboxMediaUrl = URL.createObjectURL(blob);
+      vid.src = lightboxMediaUrl;
+      vid.hidden = false;
+      img.hidden = true;
+      img.src = "";
+    } else {
+      img.src = photo.thumb;
+      img.hidden = false;
+      vid.hidden = true;
+      vid.removeAttribute("src");
+    }
+  } else {
+    img.src = photo.thumb;
+    img.hidden = false;
+    vid.hidden = true;
+    vid.pause?.();
+    vid.removeAttribute("src");
+  }
+
+  renderLightboxTagging(photo);
+  renderLightboxStrip();
+
+  const actions = el("lightboxActions");
+  actions.innerHTML = "";
+
+  // A clear, obvious way to finish tagging and close — tags save as you tap, so
+  // "Done" just closes the viewer.
+  const done = document.createElement("button");
+  done.className = "btn btn--primary";
+  done.textContent = "Done";
+  done.addEventListener("click", closeLightbox);
+  actions.appendChild(done);
+
+  // Inside a specific person's album (not when opened from the naming pool):
+  // allow removing the photo from that album.
+  if (!lightboxPoolView && state.activeAlbum && state.activeAlbum !== ALL_ALBUM && state.activeAlbum !== UNTAGGED) {
+    const person = state.people.find((p) => p.id === state.activeAlbum);
+    if (person) {
+      // "Not them" — this face was misidentified. Untag, remember it's not
+      // this person, and send it back to the naming pool to label correctly.
+      const not = document.createElement("button");
+      not.className = "btn btn--ghost";
+      not.textContent = `Not ${person.name}`;
+      not.addEventListener("click", () => notThisPerson(photoId, person.id));
+      actions.appendChild(not);
+
+      const rm = document.createElement("button");
+      rm.className = "btn btn--ghost";
+      rm.textContent = `Remove from ${person.name}'s album`;
+      rm.addEventListener("click", () => removePhotoFromPerson(photoId, person.id));
+      actions.appendChild(rm);
+    }
+  }
+
+  const dl = document.createElement("button");
+  dl.className = "btn btn--ghost";
+  dl.textContent = photo.isVideo ? "Download video" : "Download photo";
+  dl.addEventListener("click", () => downloadPhoto(photo, dl));
+  actions.appendChild(dl);
+
+  const del = document.createElement("button");
+  del.className = "btn btn--danger";
+  del.textContent = "Delete photo everywhere";
+  del.addEventListener("click", () => deletePhoto(photoId));
+  actions.appendChild(del);
+}
+
+function closeLightbox() {
+  el("lightbox").hidden = true;
+  el("lightboxImg").src = "";
+  const vid = el("lightboxVideo");
+  vid.pause?.();
+  vid.removeAttribute("src");
+  vid.hidden = true;
+  if (lightboxMediaUrl) {
+    URL.revokeObjectURL(lightboxMediaUrl);
+    lightboxMediaUrl = null;
+  }
+  lightboxPhotoId = null;
+}
+
+// Manual tagging panel: for each detected face, show who it's tagged as and let
+// the user assign it to any named person or a brand-new one. Below that, every
+// photo gets an "albums" section so it can be shared into any number of albums.
+function renderLightboxTagging(photo) {
+  const box = el("lightboxTag");
+  box.innerHTML = "";
+  const faces = state.faces.filter((f) => f.photoId === photo.id);
+  const people = namedPeople();
+
+  if (photo.isVideo) {
+    const v = document.createElement("p");
+    v.className = "tag-title";
+    v.textContent = `▶ Video${photo.duration ? " · " + fmtDur(photo.duration) : ""}`;
+    box.appendChild(v);
+  }
+
+  if (faces.length) {
+    const untagged = faces.filter((f) => !f.personId);
+    const resolved = faces.filter((f) => f.personId);
+
+    // While any face still needs a decision, show ONLY those — each face drops
+    // out as it's tagged or ignored, so in a group photo you're never hunting
+    // for who's left. Once everyone's resolved, show the full list again so you
+    // can still fix a mistake.
+    const toShow = untagged.length ? untagged : faces;
+
+    const title = document.createElement("p");
+    title.className = "tag-title";
+    title.textContent = untagged.length
+      ? faces.length > 1
+        ? `Who's in this photo? (${untagged.length} still to tag)`
+        : "Who's this?"
+      : "People in this photo";
+    box.appendChild(title);
+
+    // A compact reminder of who's already sorted, so hiding them isn't jarring.
+    if (untagged.length && resolved.length) {
+      const doneNames = resolved
+        .map((f) => (f.personId === IGNORED ? "Ignored" : people.find((p) => p.id === f.personId)?.name || "Tagged"))
+        .join(", ");
+      const summary = document.createElement("p");
+      summary.className = "tag-face__who muted tag-done-summary";
+      summary.textContent = `Already sorted: ${doneNames}`;
+      box.appendChild(summary);
+    }
+
+    toShow.forEach((f) => {
+      const person = f.personId && f.personId !== IGNORED ? people.find((p) => p.id === f.personId) : null;
+      const row = document.createElement("div");
+      row.className = "tag-face";
+
+      const img = document.createElement("img");
+      img.className = "tag-face__thumb";
+      img.src = f.thumb;
+      img.alt = "";
+      row.appendChild(img);
+
+      const body = document.createElement("div");
+      body.className = "tag-face__body";
+      const who = document.createElement("div");
+      who.className = "tag-face__who";
+      who.innerHTML = person
+        ? person.name
+        : f.personId === IGNORED
+          ? '<span class="muted">Ignored</span>'
+          : '<span class="muted">Not tagged</span>';
+      body.appendChild(who);
+
+      const chips = document.createElement("div");
+      chips.className = "tag-chips";
+      for (const p of people) {
+        const chip = document.createElement("button");
+        chip.className = "tag-chip" + (f.personId === p.id ? " is-on" : "");
+        chip.textContent = p.name;
+        chip.addEventListener("click", () => tagFaceAs(f, p));
+        chips.appendChild(chip);
+      }
+      const nw = document.createElement("button");
+      nw.className = "tag-chip tag-chip--new";
+      nw.textContent = "+ New";
+      nw.addEventListener("click", () => {
+        closeLightbox();
+        openNameModal({ faces: [f] });
+      });
+      chips.appendChild(nw);
+
+      // Let the user dismiss anyone who isn't one of their people, right here.
+      if (f.personId !== IGNORED) {
+        const ig = document.createElement("button");
+        ig.className = "tag-chip tag-chip--ignore";
+        ig.textContent = "Ignore";
+        ig.addEventListener("click", () => ignoreFace(f));
+        chips.appendChild(ig);
+      }
+
+      body.appendChild(chips);
+      row.appendChild(body);
+      box.appendChild(row);
+    });
+  }
+
+  // Album membership — works for EVERY photo (with or without detected faces).
+  // Add it to any number of albums, remove it, or spin up a new album.
+  box.appendChild(renderPhotoAlbums(photo, people));
+}
+
+// The "in these albums / add to album" block. Multi-select: tapping an album
+// adds the photo and leaves the viewer open so you can add it to several.
+function renderPhotoAlbums(photo, people) {
+  const wrap = document.createElement("div");
+  wrap.className = "photo-albums";
+
+  const t1 = document.createElement("p");
+  t1.className = "tag-title";
+  t1.textContent = "In these albums";
+  wrap.appendChild(t1);
+
+  const inIds = photo.personIds.filter((id) => people.some((p) => p.id === id));
+  const current = document.createElement("div");
+  current.className = "tag-chips";
+  if (!inIds.length) {
+    const none = document.createElement("span");
+    none.className = "tag-face__who muted";
+    none.textContent = "Not in any album yet";
+    current.appendChild(none);
+  } else {
+    for (const id of inIds) {
+      const p = people.find((x) => x.id === id);
+      // A name chip plus a small "✕" to take the photo back out of that album.
+      const grp = document.createElement("span");
+      grp.className = "album-chip-group";
+      const label = document.createElement("span");
+      label.className = "tag-chip is-on";
+      label.textContent = p.name;
+      grp.appendChild(label);
+      const ig = document.createElement("button");
+      ig.className = "tag-chip tag-chip--ignore tag-chip--remove";
+      ig.textContent = "\u2715";
+      ig.title = `Remove this photo from ${p.name}'s album`;
+      ig.setAttribute("aria-label", `Remove from ${p.name}'s album`);
+      ig.addEventListener("click", () => removePhotoFromAlbum(photo, id));
+      grp.appendChild(ig);
+      current.appendChild(grp);
+    }
+  }
+  wrap.appendChild(current);
+
+  const t2 = document.createElement("p");
+  t2.className = "tag-title";
+  t2.textContent = "Add to album";
+  wrap.appendChild(t2);
+
+  const add = document.createElement("div");
+  add.className = "tag-chips";
+  const notIn = people.filter((p) => !photo.personIds.includes(p.id));
+  for (const p of notIn) {
+    const chip = document.createElement("button");
+    chip.className = "tag-chip";
+    chip.textContent = `+ ${p.name}`;
+    chip.addEventListener("click", () => addPhotoToPerson(photo, p));
+    add.appendChild(chip);
+  }
+  const nw = document.createElement("button");
+  nw.className = "tag-chip tag-chip--new";
+  nw.textContent = "+ Create new album";
+  nw.addEventListener("click", () => createAlbumFromPhoto(photo));
+  add.appendChild(nw);
+  wrap.appendChild(add);
+
+  return wrap;
+}
+
+// Assign a single face to a person, learn their look, and refresh.
+async function tagFaceAs(faceRec, person) {
+  faceRec.personId = person.id;
+  faceRec.notIds = (faceRec.notIds || []).filter((id) => id !== person.id);
+  await db.put("faces", faceRec);
+  // Learn this face so future photos match the person better.
+  person.descriptors = sample([...person.descriptors, faceRec.descriptor], 12);
+  await db.put("people", person);
+  updatePhotoLabels(new Set([faceRec.photoId]));
+  recomputePending();
+  renderAll();
+  // Tagged — stay on this photo if other faces still need a decision, else move on.
+  lightboxAfterFaceAction();
+}
+
+// Record a hand-picked album membership that survives face re-labelling.
+async function addPhotoMembership(photo, personId) {
+  photo.manualIds = Array.from(new Set([...(photo.manualIds || []), personId]));
+  await db.put("photos", photo);
+  updatePhotoLabels(new Set([photo.id]));
+}
+
+// Share a photo into another person's album (keeps it in every other album too).
+async function addPhotoToPerson(photo, person) {
+  await addPhotoMembership(photo, person.id);
+  renderAll();
+  lightboxAdvanceOrClose();
+}
+
+// Remove a photo from one album — drops the manual share AND hides any of that
+// person's faces in this photo so it isn't re-added automatically.
+async function removePhotoFromAlbum(photo, personId) {
+  photo.manualIds = (photo.manualIds || []).filter((id) => id !== personId);
+  const updated = [];
+  for (const f of state.faces) {
+    if (f.photoId === photo.id && f.personId === personId) {
+      f.personId = IGNORED;
+      updated.push(f);
+    }
+  }
+  if (updated.length) await db.bulkPut("faces", updated);
+  updatePhotoLabels(new Set([photo.id]));
+  await db.put("photos", photo);
+  recomputePending();
+  renderAll();
+  lightboxAdvanceOrClose();
+}
+
+// "Create new album" from the viewer. Reuses the name modal in "photo" mode so
+// the photo joins the new album even when no face was detected.
+function createAlbumFromPhoto(photo) {
+  const faces = state.faces.filter((f) => f.photoId === photo.id && !f.personId);
+  openNameModal({ faces }, photo);
+}
+
+// "Not them": the face was misidentified. Untag this person from the photo,
+// remember the face is NOT this person (so it won't be auto-matched back), and
+// return it to the unnamed pool so it can be labelled correctly.
+async function notThisPerson(photoId, personId) {
+  const photo = state.photos.find((p) => p.id === photoId);
+  if (!photo) return;
+  photo.manualIds = (photo.manualIds || []).filter((id) => id !== personId);
+  photo.personIds = photo.personIds.filter((id) => id !== personId);
+  await db.put("photos", photo);
+  const person = state.people.find((p) => p.id === personId);
+  const updated = [];
+  for (const f of state.faces) {
+    if (f.photoId === photoId && f.personId === personId) {
+      f.personId = null;
+      f.notIds = Array.from(new Set([...(f.notIds || []), personId]));
+      updated.push(f);
+      // Self-teach: remember this face as "NOT this person" so similar faces in
+      // future photos stop being mis-matched to them.
+      if (person) person.negatives = sample([...(person.negatives || []), f.descriptor], 20);
+    }
+  }
+  if (updated.length) await db.bulkPut("faces", updated);
+  if (person) await db.put("people", person);
+  closeLightbox();
+  recomputePending();
+  renderAll();
+}
+
+// Remove a photo from one person's album (keeps it in "Everyone" and other albums).
+async function removePhotoFromPerson(photoId, personId) {
+  const photo = state.photos.find((p) => p.id === photoId);
+  if (!photo) return;
+  photo.manualIds = (photo.manualIds || []).filter((id) => id !== personId);
+  photo.personIds = photo.personIds.filter((id) => id !== personId);
+  await db.put("photos", photo);
+  // Hide that person's faces in this photo so they aren't re-added on a rescan.
+  const updated = [];
+  for (const f of state.faces) {
+    if (f.photoId === photoId && f.personId === personId) {
+      f.personId = IGNORED;
+      updated.push(f);
+    }
+  }
+  if (updated.length) await db.bulkPut("faces", updated);
+  closeLightbox();
+  recomputePending();
+  renderAll();
+}
+
+// Delete a photo entirely — from every album and the "Everyone" view.
+async function deletePhotoRecord(photoId) {
+  state.photos = state.photos.filter((p) => p.id !== photoId);
+  const faceIds = state.faces.filter((f) => f.photoId === photoId).map((f) => f.id);
+  state.faces = state.faces.filter((f) => f.photoId !== photoId);
+  state.keptDistinct.delete(photoId);
+  await db.remove("photos", photoId);
+  await db.remove("media", photoId);
+  for (const fid of faceIds) await db.remove("faces", fid);
+  scheduleLibrarySync(); // photo removed — update the sorted-output manifest
+}
+
+async function deletePhoto(photoId) {
+  await deletePhotoRecord(photoId);
+  closeLightbox();
+  recomputePending();
+  renderAll();
+}
+
+// Try to re-read the original file from a watched folder by name, so a download
+// gives the full-resolution original rather than our downscaled thumbnail.
+async function findOriginalFile(photo) {
+  if (!supportsFolders || !photo.name) return null;
+  for (const w of state.watched) {
+    try {
+      if ((await w.handle.queryPermission({ mode: "read" })) !== "granted") continue;
+      for await (const entry of walkImages(w.handle)) {
+        if (entry.name === photo.name) return await entry.getFile();
+      }
+    } catch {
+      /* folder gone or no permission — try the next one */
+    }
+  }
+  return null;
+}
+
+// Download the best copy we can get: the original video blob, the original image
+// re-read from a watched folder, or (last resort) the stored thumbnail.
+async function downloadPhoto(photo, btn) {
+  const label = btn ? btn.textContent : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Preparing…";
+  }
+  try {
+    let blob = null;
+    let filename = photo.name || (photo.isVideo ? "kinalbum-video.mp4" : "kinalbum-photo.jpg");
+
+    if (photo.isVideo) {
+      const media = await db.get("media", photo.id);
+      if (media && media.blob) blob = media.blob;
+    }
+    if (!blob) {
+      const orig = await findOriginalFile(photo);
+      if (orig) blob = orig;
+    }
+    if (!blob && photo.cloudId) {
+      // Rebuilt-from-cloud photo: fetch the full-resolution original from OneDrive.
+      const cb = await cloud.downloadCloudFile(photo.cloudId);
+      if (cb) blob = cb;
+    }
+    if (!blob) {
+      // Fall back to the stored thumbnail (downscaled copy).
+      blob = await (await fetch(photo.thumb)).blob();
+      if (!/\.(jpe?g|png|webp|gif)$/i.test(filename)) filename += ".jpg";
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch {
+    /* ignore — download was cancelled or blocked */
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+}
+
+/* ----------------------------------------------- co-parent export/import */
+function exportModel() {
+  const people = namedPeople().map((p) => ({
+    name: p.name,
+    isChild: p.isChild,
+    descriptors: p.descriptors,
+    negatives: p.negatives || [],
+    thumb: p.thumb,
+  }));
+  if (!people.length) {
+    showShareMsg("Name at least one child first.");
+    return;
+  }
+  const blob = new Blob([JSON.stringify({ version: 1, people }, null, 2)], {
+    type: "application/json",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "kinalbum-family.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showShareMsg("Exported! Send this file to your partner to import on their phone.");
+}
+
+async function importModel(file) {
+  try {
+    const data = JSON.parse(await file.text());
+    if (!data.people || !Array.isArray(data.people)) throw new Error("bad");
+    let addedPeople = 0;
+    for (const imp of data.people) {
+      const existing = namedPeople().find((p) => p.name.toLowerCase() === imp.name.toLowerCase());
+      if (existing) {
+        existing.descriptors = sample([...existing.descriptors, ...imp.descriptors], 12);
+        if (imp.negatives && imp.negatives.length) existing.negatives = sample([...(existing.negatives || []), ...imp.negatives], 20);
+        await db.put("people", existing);
+        await assignMatchingUnassigned(existing);
+      } else {
+        const person = {
+          id: db.uid(),
+          name: imp.name,
+          isChild: !!imp.isChild,
+          ignored: false,
+          descriptors: imp.descriptors,
+          negatives: imp.negatives || [],
+          thumb: imp.thumb,
+        };
+        state.people.push(person);
+        await db.put("people", person);
+        await assignMatchingUnassigned(person);
+        addedPeople++;
+      }
+    }
+    recomputePending();
+    renderAll();
+    showShareMsg(`Imported ${data.people.length} ${data.people.length === 1 ? "person" : "people"}. Your photos will now sort for them too.`);
+  } catch {
+    showShareMsg("That file didn't look like a Kinalbum model.");
+  }
+}
+
+function showShareMsg(text) {
+  const m = el("shareMsg");
+  m.textContent = text;
+  m.hidden = false;
+}
+
+// Re-apply the latest clustering + known-person matching to the photos already
+// on the device — no re-import needed. Picks up matching-logic improvements
+// (better grouping/auto-tagging) using the face fingerprints we already stored.
+async function reapplyMatching() {
+  showShareMsg("Re-applying the latest matching…");
+  recomputePending();
+  for (const p of namedPeople()) await assignMatchingUnassigned(p);
+  recomputePending();
+  renderAll();
+  showShareMsg("Done — the latest matching has been applied to your photos.");
+}
+
+// Re-scan the watched folders from scratch with the latest AI. Keeps your named
+// people (so nothing needs re-naming) but rebuilds thumbnails and face groups
+// from the original files — this is how detection improvements reach old photos.
+async function rebuildFromWatched() {
+  if (!supportsFolders || !state.watched.length) {
+    showScanMsg("Add a watched folder first — then this re-scans it with the latest AI.");
+    return;
+  }
+  if (!confirm("Re-scan your watched folders with the latest AI?\n\nYour named people AND your manual album tags are kept. Photo thumbnails and face groups are rebuilt from the originals.")) return;
+  const didRun = await withScanLock(async () => {
+    // Remember every hand-made album membership (keyed by filename) so a re-scan
+    // never empties an album the user built by hand.
+    const manualByName = new Map();
+    for (const p of state.photos) {
+      if (p.manualIds && p.manualIds.length) {
+        const prev = manualByName.get(p.name) || [];
+        manualByName.set(p.name, Array.from(new Set([...prev, ...p.manualIds])));
+      }
+    }
+    state.photos = [];
+    state.faces = [];
+    state.pendingClusters = [];
+    state.processedKeys = new Set();
+    await Promise.all([db.clearStore("photos"), db.clearStore("faces"), db.clearStore("media")]);
+    await saveProcessedKeys();
+    renderAll();
+    const n = await scanHandles(state.watched.map((w) => w.handle));
+    // Re-attach the manual album tags to the freshly-scanned photos.
+    if (manualByName.size) {
+      const touched = new Set();
+      for (const photo of state.photos) {
+        const ids = manualByName.get(photo.name);
+        if (ids && ids.length) {
+          photo.manualIds = Array.from(new Set([...(photo.manualIds || []), ...ids]));
+          await db.put("photos", photo);
+          touched.add(photo.id);
+        }
+      }
+      if (touched.size) updatePhotoLabels(touched);
+      recomputePending();
+      renderAll();
+    }
+    showScanMsg(
+      n
+        ? "Re-scan complete — your library was rebuilt and your manual albums were kept."
+        : "No photos found in your watched folders."
+    );
+  });
+  if (!didRun) showScanMsg("A scan is already running — give it a moment, then try again.");
+}
+
+async function resetAll() {
+  if (!confirm("Delete all Kinalbum data on this device? Your original photos are not affected.")) return;
+  await db.clearAll();
+  state.people = [];
+  state.photos = [];
+  state.faces = [];
+  state.pendingClusters = [];
+  state.activeAlbum = null;
+  state.watched = [];
+  state.processedKeys = new Set();
+  el("statRow").hidden = true;
+  renderAll();
+  renderWatched();
+  navTo("add");
+}
+
+/* --------------------------------------------------------- navigation */
+function navTo(view) {
+  document.querySelectorAll(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
+  document.querySelectorAll(".tabbar__btn").forEach((b) =>
+    b.classList.toggle("is-active", b.dataset.nav === view)
+  );
+  window.scrollTo(0, 0);
+}
+
+/* ------------------------------------------------------------- wiring */
+function wire() {
+  if (supportsFolders) {
+    el("watchBtn").addEventListener("click", pickFolder);
+    el("rescanBtn").addEventListener("click", rescanAll);
+    el("rebuildBtn").addEventListener("click", rebuildFromWatched);
+  } else {
+    el("watchCard").hidden = true;
+  }
+
+  el("fileInput").addEventListener("change", (e) => {
+    handleFiles(e.target.files);
+    e.target.value = "";
+  });
+
+  // Cloud sources (OneDrive). Shown on https/localhost; hidden on file:// pages.
+  if (window.isSecureContext) {
+    el("cloudCard").hidden = false;
+    el("oneDriveBtn").addEventListener("click", connectCloud);
+    // Runtime client-ID setup: show the paste field until an ID is saved, so a
+    // deployed build can be configured on-device without a rebuild.
+    const refreshCloudSetup = () => {
+      el("cloudSetup").hidden = !!cloud.getClientId();
+      el("clientIdInput").value = cloud.getClientId() || "";
+    };
+    refreshCloudSetup();
+    el("clientIdSave").addEventListener("click", () => {
+      cloud.setClientId(el("clientIdInput").value);
+      refreshCloudSetup();
+      showCloudMsg(
+        cloud.getClientId()
+          ? "Saved. Make sure this page's URL is a Single-page redirect URI in your Azure app, then press Connect OneDrive."
+          : "Client ID cleared."
+      );
+    });
+  }
+
+  // Drag & drop (desktop testing).
+  const dz = el("dropzone");
+  ["dragover", "dragenter"].forEach((ev) =>
+    dz.addEventListener(ev, (e) => {
+      e.preventDefault();
+      dz.classList.add("is-drag");
+    })
+  );
+  ["dragleave", "drop"].forEach((ev) =>
+    dz.addEventListener(ev, (e) => {
+      e.preventDefault();
+      dz.classList.remove("is-drag");
+    })
+  );
+  dz.addEventListener("drop", (e) => {
+    if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
+  });
+
+  document.querySelectorAll(".tabbar__btn").forEach((b) =>
+    b.addEventListener("click", () => navTo(b.dataset.nav))
+  );
+
+  // Add-screen stat tiles double as shortcuts.
+  el("statPhotosBtn").addEventListener("click", () => {
+    state.activeAlbum = ALL_ALBUM;
+    renderAlbums();
+    navTo("albums");
+  });
+  el("statPeopleBtn").addEventListener("click", () => navTo("people"));
+  el("statDupesBtn").addEventListener("click", openDupModal);
+  el("dupClose").addEventListener("click", closeDupModal);
+  el("dupRemoveAll").addEventListener("click", removeAllDuplicates);
+  el("dupModal").addEventListener("click", (e) => {
+    if (e.target === el("dupModal")) closeDupModal();
+  });
+
+  el("personSave").addEventListener("click", savePersonEdit);
+  el("personCancel").addEventListener("click", closePersonEdit);
+  el("personDelete").addEventListener("click", deletePerson);
+  el("personLinkContact").addEventListener("click", linkPhoneContact);
+  el("personEditName").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") savePersonEdit();
+  });
+  el("personModal").addEventListener("click", (e) => {
+    if (e.target === el("personModal")) closePersonEdit();
+  });
+
+  el("nameSave").addEventListener("click", saveNamedPerson);
+  el("nameCancel").addEventListener("click", () => {
+    el("nameModal").hidden = true;
+    modalCluster = null;
+    modalPhoto = null;
+  });
+  el("nameInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") saveNamedPerson();
+  });
+
+  el("exportBtn").addEventListener("click", exportModel);
+  el("importInput").addEventListener("change", (e) => {
+    if (e.target.files[0]) importModel(e.target.files[0]);
+    e.target.value = "";
+  });
+  el("reapplyBtn").addEventListener("click", reapplyMatching);
+  el("resetBtn").addEventListener("click", resetAll);
+
+  el("kidsOnly").addEventListener("change", (e) => {
+    state.kidsOnly = e.target.checked;
+    renderAlbums();
+  });
+
+  const autoToggle = el("autoBackup");
+  if (autoToggle) autoToggle.addEventListener("change", (e) => setAutoBackup(e.target.checked));
+
+  // Catch up on new photos whenever the user returns to the app.
+  window.addEventListener("focus", () => {
+    if (state.autoBackup) autoRescanGranted(true);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (state.autoBackup && document.visibilityState === "visible") autoRescanGranted(true);
+  });
+  el("lightboxClose").addEventListener("click", closeLightbox);
+  el("lightboxPrev").addEventListener("click", () => lightboxStep(-1));
+  el("lightboxNext").addEventListener("click", () => lightboxStep(1));
+  el("lightbox").addEventListener("click", (e) => {
+    if (e.target === el("lightbox")) closeLightbox();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (el("lightbox").hidden) return;
+    if (e.key === "Escape") closeLightbox();
+    else if (e.key === "ArrowLeft") lightboxStep(-1);
+    else if (e.key === "ArrowRight") lightboxStep(1);
+  });
+}
+
+wire();
+boot();
+})();
+</script>
+</body>
+</html>
