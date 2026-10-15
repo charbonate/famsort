@@ -1346,7 +1346,10 @@ async function importCameraRoll(onStatus, onFiles) {
 
   onStatus?.("Finding photos & videos in your camera roll…");
   const items = [];
-  let next = `${GRAPH}/me/drive/special/cameraroll/children?$top=200&$select=id,name,file,@microsoft.graph.downloadUrl`;
+  // NOTE: do NOT use $select here — on personal OneDrive, selecting fields drops
+  // the transient @microsoft.graph.downloadUrl annotation, leaving nothing to
+  // download. The default children response includes it.
+  let next = `${GRAPH}/me/drive/special/cameraroll/children?$top=200`;
   try {
     while (next && items.length < MAX_FILES) {
       const page = await graphGet(next, token);
@@ -1367,18 +1370,38 @@ async function importCameraRoll(onStatus, onFiles) {
 
   onStatus?.(`Downloading ${Math.min(items.length, MAX_FILES)} photos…`);
   const files = [];
+  let failed = 0;
   for (const it of items.slice(0, MAX_FILES)) {
-    const url = it["@microsoft.graph.downloadUrl"]; // pre-authenticated, no header needed
-    if (!url) continue;
-    try {
-      const blob = await (await fetch(url)).blob();
-      files.push(new File([blob], it.name, { type: blob.type || "image/jpeg" }));
-    } catch {
-      /* skip a file that failed to download */
+    let blob = null;
+    // Preferred: the pre-authenticated download URL (no auth header needed).
+    const url = it["@microsoft.graph.downloadUrl"];
+    if (url) {
+      try {
+        blob = await (await fetch(url)).blob();
+      } catch {
+        /* fall through to the Graph content endpoint */
+      }
     }
+    // Fallback: fetch the bytes straight from Graph with the access token. Covers
+    // a missing downloadUrl or a blocked cross-origin fetch of the pre-auth link.
+    if (!blob) {
+      try {
+        const res = await fetch(`${GRAPH}/me/drive/items/${it.id}/content`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) blob = await res.blob();
+      } catch {
+        /* give up on this one */
+      }
+    }
+    if (!blob) {
+      failed++;
+      continue;
+    }
+    files.push(new File([blob], it.name, { type: blob.type || "image/jpeg" }));
   }
   if (!files.length) {
-    onStatus?.("Couldn't download any photos.");
+    onStatus?.(`Couldn't download any photos (${failed} failed). Try again, or check OneDrive is reachable.`);
     return;
   }
   onStatus?.(`Got ${files.length} photos — sorting them on this device…`);
