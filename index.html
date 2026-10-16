@@ -458,7 +458,7 @@ p { margin: 0 0 .9rem; }
             <span class="wizard-step-badge">Step 1 of 2</span>
             <h3>Where are your photos?</h3>
           </div>
-          <p>Add as many places as you like — folders on <strong>this device</strong> and folders in your <strong>cloud</strong>. Kinalbum pulls from all of them and sorts the faces <strong>on this device</strong>. Nothing is uploaded.</p>
+          <p>Add as many places as you like — folders on <strong>this device</strong>, folders in your <strong>cloud</strong>, or pick photos straight from your gallery. Kinalbum pulls from all of them and sorts the faces <strong>on this device</strong>. Nothing is uploaded.</p>
 
           <div class="source-list" id="sourceList"></div>
           <div class="empty empty--inline" id="sourceEmpty">
@@ -468,6 +468,9 @@ p { margin: 0 0 .9rem; }
           <div class="btn-row">
             <button class="btn btn--ghost" id="addDeviceBtn"><span>📁</span> Add folder on this device</button>
             <button class="btn btn--ghost" id="addCloudBtn"><span>☁️</span> Add from OneDrive</button>
+            <label class="btn btn--ghost" id="addManualBtn"><span>📷</span> Add photos &amp; videos
+              <input type="file" id="fileInput" accept="image/*,video/*" multiple hidden />
+            </label>
           </div>
 
           <!-- One-time OneDrive client-ID setup (revealed when needed). -->
@@ -506,13 +509,6 @@ p { margin: 0 0 .9rem; }
           <p class="msg" id="cloudMsg" hidden></p>
         </div>
       </div>
-
-      <label class="dropzone" id="dropzone">
-        <input type="file" id="fileInput" accept="image/*,video/*" multiple hidden />
-        <div class="dropzone__icon">📷</div>
-        <div class="dropzone__title">Or add photos &amp; videos manually</div>
-        <div class="dropzone__sub">Tap to choose from your gallery</div>
-      </label>
 
       <div class="stat-row" id="statRow" hidden>
         <button type="button" class="stat" id="statPhotosBtn"><span class="stat__num" id="statPhotos">0</span><span class="stat__label">photos</span></button>
@@ -1891,7 +1887,7 @@ async function withScanLock(fn, silent = false) {
 
 // Read a folder and return only the files we haven't ingested yet (recording
 // their keys so the same file isn't picked up twice). Does NOT process them.
-async function collectFresh(handle, requireGranted = false) {
+async function collectFresh(handle, requireGranted = false, runningTotal = 0) {
   if (requireGranted) {
     try {
       if ((await handle.queryPermission({ mode: "read" })) !== "granted") return [];
@@ -1915,6 +1911,12 @@ async function collectFresh(handle, requireGranted = false) {
       if (state.processedKeys.has(key)) continue;
       state.processedKeys.add(key);
       fresh.push(file);
+      // Keep the overlay alive with a running count while we walk the folder.
+      if (!autoScanning && fresh.length % 15 === 0) {
+        const n = runningTotal + fresh.length;
+        el("procCount").textContent = `${n} new photo${n === 1 ? "" : "s"} found…`;
+        await new Promise((r) => setTimeout(r, 0));
+      }
     }
   } catch {
     showScanMsg(`Couldn't finish reading “${handle.name}”.`);
@@ -1927,11 +1929,23 @@ async function collectFresh(handle, requireGranted = false) {
 async function scanHandles(handles, requireGranted = false) {
   const all = [];
   for (const handle of handles) {
-    if (!autoScanning) showScanMsg(`Scanning “${handle.name}”…`);
-    const fresh = await collectFresh(handle, requireGranted);
+    if (!autoScanning) {
+      showScanMsg(`Scanning “${handle.name}”…`);
+      // Reading a large folder can take a while before face-detection even
+      // starts. Show the overlay immediately so the Sort never looks frozen.
+      el("processingText").textContent = `Reading “${handle.name}”…`;
+      el("procCount").textContent = "Looking for photos…";
+      el("procBar").style.width = "8%";
+      el("processing").hidden = false;
+    }
+    const fresh = await collectFresh(handle, requireGranted, all.length);
     all.push(...fresh);
   }
-  if (all.length) await handleFiles(all);
+  if (all.length) {
+    await handleFiles(all); // processFiles drives the overlay + progress bar
+  } else if (!autoScanning) {
+    el("processing").hidden = true; // nothing new found — take the overlay down
+  }
   await saveProcessedKeys();
   return all.length;
 }
@@ -2667,7 +2681,10 @@ async function processFiles(fileList) {
   const files = Array.from(fileList).filter(
     (f) => f.type.startsWith("image/") || f.type.startsWith("video/") || isMediaName(f.name)
   );
-  if (!files.length) return;
+  if (!files.length) {
+    if (!autoScanning) el("processing").hidden = true;
+    return;
+  }
 
   if (!autoScanning) el("processing").hidden = false;
   let added = 0;
@@ -2768,7 +2785,7 @@ async function processFiles(fileList) {
   // yank them around during a background auto-scan.
   if (!autoScanning) {
     if (state.pendingClusters.length) navTo("people");
-    else if (namedPeople().length) navTo("albums");
+    else if (namedPeopleHere().length) navTo("albums");
   }
 }
 
@@ -2958,6 +2975,14 @@ function recomputePending() {
 
 function namedPeople() {
   return state.people.filter((p) => !p.ignored);
+}
+
+// Named people who actually have at least one photo on THIS device. People can
+// arrive from the OneDrive model (synced from another device) as a face
+// template with no local photos yet — we keep them for matching but don't show
+// them as empty "ghost" albums until a matching photo turns up here.
+function namedPeopleHere() {
+  return namedPeople().filter((p) => state.photos.some((ph) => ph.personIds.includes(p.id)));
 }
 
 /* ------------------------------------------------------- naming people */
@@ -3350,7 +3375,7 @@ function renderAll() {
 // shortcuts: photos → Everyone album, people → People screen, duplicates →
 // the duplicate review. They update on every render, not just after an import.
 function renderStats() {
-  const people = state.pendingClusters.length + namedPeople().length;
+  const people = state.pendingClusters.length + namedPeopleHere().length;
   const dupeExtras = countDuplicateExtras();
   el("statPhotos").textContent = state.photos.length;
   el("statPeople").textContent = people;
@@ -3361,8 +3386,10 @@ function renderStats() {
 }
 
 function renderPeople() {
-  // Named people first — so naming visibly creates a person here, not just an album.
-  const named = namedPeople();
+  // Named people first — so naming visibly creates a person here, not just an
+  // album. People synced from another device with no local photos yet are held
+  // back (see namedPeopleHere) so they don't look like broken empty albums.
+  const named = namedPeopleHere();
   const namedGrid = el("namedGrid");
   namedGrid.innerHTML = "";
   el("namedHead").hidden = named.length === 0;
@@ -3447,7 +3474,7 @@ const UNTAGGED = "__untagged__";
 const AWAITING = "__awaiting__";
 
 function renderAlbums() {
-  const people = namedPeople();
+  const people = namedPeopleHere();
   const tabs = el("albumTabs");
   const grid = el("albumGrid");
   tabs.innerHTML = "";
@@ -4292,8 +4319,8 @@ function wire() {
     });
   }
 
-  // Drag & drop (desktop testing).
-  const dz = el("dropzone");
+  // Drag & drop (desktop testing). The wizard card is the drop target.
+  const dz = el("sourceWizard");
   ["dragover", "dragenter"].forEach((ev) =>
     dz.addEventListener(ev, (e) => {
       e.preventDefault();
