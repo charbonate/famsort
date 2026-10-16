@@ -178,6 +178,8 @@ p { margin: 0 0 .9rem; }
 .person-card__body { padding: 10px 12px 12px; }
 .person-card__name { font-weight: 700; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; }
 .person-card__count { font-size: .8rem; color: var(--ink-soft); margin-bottom: 8px; }
+.person-card__rel { display: inline-block; font-size: .7rem; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft, #f3cfcc); padding: 2px 8px; border-radius: 999px; margin-bottom: 7px; }
 .person-card__actions { display: flex; gap: 8px; }
 .person-card__actions .btn { flex: 1; }
 .person-card--link { cursor: pointer; transition: box-shadow .15s ease, transform .1s ease; }
@@ -187,6 +189,13 @@ p { margin: 0 0 .9rem; }
 .people-subhead { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft);
   margin: 18px 0 10px; }
 .people-subhead:first-of-type { margin-top: 4px; }
+
+/* "Faces to name" highlighted panel — sits on top of your people */
+.to-name { background: var(--accent-soft, #f3cfcc); border: 1px solid var(--accent, #e8734a);
+  border-radius: 16px; padding: 14px 14px 16px; margin: 4px 0 20px; }
+.people-subhead--hot { color: var(--accent); margin: 0 0 2px; }
+.to-name__sub { font-size: .82rem; color: var(--ink-soft); margin: 0 0 12px; }
+.to-name .people-grid { gap: 12px; }
 
 /* Albums */
 .albums-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -233,6 +242,23 @@ p { margin: 0 0 .9rem; }
 .album-card__foot { display: flex; align-items: center; gap: 6px; padding: 9px 11px; }
 .album-card__name { font-weight: 700; font-size: .92rem; color: var(--ink); overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.album-card__rel { flex: 0 0 auto; font-size: .7rem; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft, #f3cfcc); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.album-card__saved { position: absolute; left: 8px; bottom: 8px; background: rgba(46,125,74,.9);
+  color: #fff; font-size: .72rem; line-height: 1; padding: 3px 6px; border-radius: 999px; pointer-events: none; }
+
+/* Where-it-lives breadcrumb inside an open album */
+.album-path { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 2px 0 12px;
+  padding: 8px 11px; background: var(--cream-2); border: 1px solid var(--line); border-radius: 12px;
+  font-size: .8rem; color: var(--ink-soft); }
+.album-path__icon { font-size: .95rem; }
+.album-path__seg { font-weight: 600; color: var(--ink-soft); }
+.album-path__seg.is-leaf { color: var(--ink); font-weight: 800; }
+.album-path__sep { color: var(--ink-soft); opacity: .55; }
+.album-path__tag { margin-left: auto; font-size: .72rem; font-weight: 700; color: var(--ink-soft);
+  background: #fff; border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px; }
+.album-path__tag--ok { color: #2e7d4a; border-color: #bfe2cc; background: #eefaf1; }
+.album-path__tag--off { color: #b06a00; border-color: #f0d79a; background: #fff7e8; }
 
 /* Open album header */
 .albumdet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
@@ -526,6 +552,25 @@ p { margin: 0 0 .9rem; }
 .rescan-opt__count { font-size: .78rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 .cloud-ico { font-size: 1.05em; }
 
+/* Relationship "data layer" picker (person edit modal) */
+.rel-field { margin: 12px 0 4px; }
+.rel-field__label { display: block; font-size: .82rem; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.rel-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.rel-chip { border: 1px solid var(--line); background: #fff; color: var(--ink-soft); font: inherit;
+  font-size: .82rem; font-weight: 600; padding: .4em .8em; border-radius: 999px; cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s; }
+.rel-chip:hover { border-color: var(--accent); color: var(--accent); }
+.rel-chip.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.rel-custom { margin-top: 10px; }
+
+/* Same-name "is this the same person?" modal */
+.samename-who { display: flex; align-items: center; gap: 12px; margin: 6px 0 14px; }
+.samename-face { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; flex: 0 0 auto;
+  background: var(--cream-2); border: 2px solid var(--line); }
+.samename-who .modal__hint { margin: 0; }
+.btn-row--stack { flex-direction: column; gap: 8px; }
+.btn--block { width: 100%; }
+
 [hidden] { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -663,11 +708,15 @@ p { margin: 0 0 .9rem; }
       <h2 class="view__title">Who's who?</h2>
       <p class="view__sub">We grouped the faces we found. Name your children — tap <strong>Ignore</strong> for anyone who isn't one of your kids.</p>
 
+      <section class="to-name" id="toNamePanel" hidden>
+        <h3 class="people-subhead people-subhead--hot" id="toNameHead">Faces to name</h3>
+        <p class="to-name__sub">New faces we found — name them first so their photos sort into albums.</p>
+        <div class="people-grid" id="peopleGrid"></div>
+      </section>
+
       <h3 class="people-subhead" id="namedHead" hidden>Your people</h3>
       <div class="people-grid" id="namedGrid"></div>
 
-      <h3 class="people-subhead" id="toNameHead" hidden>Faces to name</h3>
-      <div class="people-grid" id="peopleGrid"></div>
       <div class="empty" id="peopleEmpty" hidden>
         <p>No new people to name right now.</p>
       </div>
@@ -680,13 +729,12 @@ p { margin: 0 0 .9rem; }
         <div class="albums-head">
           <h2 class="view__title">Albums</h2>
           <label class="toggle" id="kidsOnlyWrap" hidden>
-            <input type="checkbox" id="kidsOnly" /> Kids only
+            <input type="checkbox" id="kidsOnly" /> My Children
           </label>
         </div>
         <div class="albums-toolbar" id="albumsToolbar" hidden>
           <label class="sortsel">Sort
             <select id="albumSort">
-              <option value="smart">Kids &amp; most photos</option>
               <option value="count">Most photos</option>
               <option value="name">Name A–Z</option>
             </select>
@@ -707,6 +755,7 @@ p { margin: 0 0 .9rem; }
         </div>
         <h2 class="view__title" id="albumDetailTitle">Album</h2>
         <p class="view__sub albumdet-meta" id="albumDetailMeta"></p>
+        <nav class="album-path" id="albumPath" hidden aria-label="Where this album is saved"></nav>
         <div class="albums-toolbar" id="albumPhotoSortWrap">
           <label class="sortsel">Sort
             <select id="albumPhotoSort">
@@ -835,6 +884,22 @@ p { margin: 0 0 .9rem; }
     </div>
   </div>
 
+  <!-- Same-name check: a person with this name already exists -->
+  <div class="modal" id="sameNameModal" hidden>
+    <div class="modal__card">
+      <h3 id="sameNameTitle">Is this the same person?</h3>
+      <div class="samename-who">
+        <img class="samename-face" id="sameNameFace" alt="" />
+        <p class="modal__hint" id="sameNameHint"></p>
+      </div>
+      <div class="btn-row btn-row--stack">
+        <button class="btn btn--primary btn--block" id="sameNameYes">Yes — same person, add to them</button>
+        <button class="btn btn--ghost btn--block" id="sameNameNo">No — different person, change the name</button>
+        <button class="btn btn--ghost btn--block" id="sameNameCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Duplicate review -->
   <div class="modal" id="dupModal" hidden>
     <div class="modal__card modal__card--wide">
@@ -860,6 +925,11 @@ p { margin: 0 0 .9rem; }
         <input type="text" id="personEditName" placeholder="Name" maxlength="30" />
       </div>
       <label class="check"><input type="checkbox" id="personEditChild" /> This is one of my children</label>
+      <div class="rel-field">
+        <span class="rel-field__label">How are they related to you?</span>
+        <div class="rel-chips" id="relChips"></div>
+        <input type="text" id="relCustom" class="rel-custom" placeholder="Type a relationship" maxlength="24" hidden />
+      </div>
       <button class="btn btn--ghost btn--block" id="personLinkContact" hidden>📇 Link a phone contact</button>
       <p class="modal__hint" id="personContactMsg" hidden></p>
       <div class="btn-row btn-row--split">
@@ -1980,6 +2050,14 @@ return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFi
 const DUP_STRICT_FRAC = 0.03; // hamming/len below this = certain duplicate
 const DUP_LOOSE_FRAC = 0.09; // and below this = duplicate only if aspect ratios match too
 const IGNORED = "__ignored__";
+// Relationship "data layer" — Samsung-style quick picks for how a person relates
+// to the user. Stored on person.relationship (a label string); "Other" opens a
+// free-text box so any relationship can be typed. Purely descriptive metadata.
+const RELATIONSHIPS = [
+  "Me", "Daughter", "Son", "Mother", "Father", "Sister", "Brother",
+  "Wife", "Husband", "Partner", "Grandmother", "Grandfather",
+  "Aunt", "Uncle", "Niece", "Nephew", "Cousin", "Friend", "Other",
+];
 const IMAGE_RE = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i;
 const VIDEO_RE = /\.(mp4|mov|m4v|webm|3gp|3gpp|avi|mkv)$/i;
 const isImageName = (n) => IMAGE_RE.test(n);
@@ -2003,7 +2081,7 @@ const state = {
   watched: [], // {id, name, handle} folders to auto-scan
   processedKeys: new Set(), // "name|size|lastModified" of files already ingested
   kidsOnly: false, // Albums screen filter driven by the "this is my child" flag
-  albumSort: "smart", // album index order: "smart" | "count" | "name"
+  albumSort: "count", // album index order: "count" (most photos) | "name"
   albumPhotoSort: "newest", // photo order inside an open album: "newest" | "oldest"
   favAlbums: [], // album ids pinned to the top of the Albums screen
   autoBackup: true, // continuously sort new photos and back organised copies to OneDrive
@@ -2561,6 +2639,7 @@ function buildCloudModel() {
       id: p.id,
       name: p.name,
       isChild: !!p.isChild,
+      relationship: p.relationship || "",
       ignored: !!p.ignored,
       descriptors: p.descriptors || [],
       negatives: p.negatives || [],
@@ -2609,6 +2688,7 @@ async function restoreCloudModel() {
         id: cp.id,
         name: cp.name,
         isChild: !!cp.isChild,
+        relationship: cp.relationship || "",
         ignored: !!cp.ignored,
         descriptors: cp.descriptors || [],
         negatives: cp.negatives || [],
@@ -2617,6 +2697,7 @@ async function restoreCloudModel() {
       state.people.push(local);
       changed = true;
     } else {
+      if (!local.relationship && cp.relationship) local.relationship = cp.relationship;
       const before = (local.descriptors?.length || 0) + (local.negatives?.length || 0);
       local.descriptors = sample([...(local.descriptors || []), ...(cp.descriptors || [])], 12);
       local.negatives = sample([...(local.negatives || []), ...(cp.negatives || [])], 20);
@@ -2923,7 +3004,7 @@ async function saveCloudPrefs() {
 async function loadAlbumPrefs() {
   const p = await db.get("meta", "albumPrefs");
   if (!p) return;
-  if (p.sort) state.albumSort = p.sort;
+  if (p.sort) state.albumSort = p.sort === "smart" ? "count" : p.sort;
   if (p.photoSort) state.albumPhotoSort = p.photoSort;
   if (Array.isArray(p.fav)) state.favAlbums = p.fav;
   if (typeof p.kidsOnly === "boolean") state.kidsOnly = p.kidsOnly;
@@ -3752,36 +3833,25 @@ async function saveNamedPerson() {
     return;
   }
   const picked = selectedCluster();
-  const rejected = modalCluster.faces.filter((f) => !modalSelected.has(f.id));
   if (!picked.faces.length && !modalPhoto) {
     el("nameInput").focus();
     return; // nothing selected — don't create an empty person
   }
-  // If someone with this name already exists, merge into them (no duplicate album).
+  // If someone with this name already exists, DON'T silently merge — ask whether
+  // it's the same person, or let them change the name to tell two apart.
   const existing = namedPeople().find((p) => p.name.toLowerCase() === name.toLowerCase());
   if (existing) {
-    existing.isChild = el("isChildInput").checked;
-    await rejectFacesFromPerson(rejected, existing.id);
-    if (picked.faces.length) await mergeClusterIntoPerson(picked, existing);
-    if (modalPhoto) await addPhotoMembership(modalPhoto, existing.id);
-  } else {
-    const descriptors = sample(picked.faces.map((f) => f.descriptor), 8);
-    const person = {
-      id: db.uid(),
-      name,
-      isChild: el("isChildInput").checked,
-      ignored: false,
-      descriptors,
-      thumb: picked.faces[0] ? picked.faces[0].thumb : modalPhoto ? modalPhoto.thumb : "",
-    };
-    state.people.push(person);
-    await db.put("people", person);
-    await rejectFacesFromPerson(rejected, person.id);
-    if (picked.faces.length) {
-      assignClusterToPerson(picked, person.id);
-      await assignMatchingUnassigned(person);
+    const answer = await confirmSameName(existing);
+    if (answer === "cancel") return; // leave the name modal open, unchanged
+    if (answer === "no") {
+      // Different person who happens to share a name — let them rename.
+      el("nameInput").focus();
+      el("nameInput").select();
+      return;
     }
-    if (modalPhoto) await addPhotoMembership(modalPhoto, person.id);
+    await commitToExistingPerson(existing, picked);
+  } else {
+    await commitNewPerson(name, picked);
   }
 
   el("nameModal").hidden = true;
@@ -3789,6 +3859,58 @@ async function saveNamedPerson() {
   modalPhoto = null;
   recomputePending();
   renderAll();
+}
+
+// Add the picked faces (and any rejected negatives) to an EXISTING person.
+async function commitToExistingPerson(existing, picked) {
+  const rejected = modalCluster.faces.filter((f) => !modalSelected.has(f.id));
+  existing.isChild = el("isChildInput").checked;
+  await rejectFacesFromPerson(rejected, existing.id);
+  if (picked.faces.length) await mergeClusterIntoPerson(picked, existing);
+  if (modalPhoto) await addPhotoMembership(modalPhoto, existing.id);
+}
+
+// Create a brand-new person from the picked faces.
+async function commitNewPerson(name, picked) {
+  const rejected = modalCluster.faces.filter((f) => !modalSelected.has(f.id));
+  const descriptors = sample(picked.faces.map((f) => f.descriptor), 8);
+  const person = {
+    id: db.uid(),
+    name,
+    isChild: el("isChildInput").checked,
+    ignored: false,
+    descriptors,
+    thumb: picked.faces[0] ? picked.faces[0].thumb : modalPhoto ? modalPhoto.thumb : "",
+  };
+  state.people.push(person);
+  await db.put("people", person);
+  await rejectFacesFromPerson(rejected, person.id);
+  if (picked.faces.length) {
+    assignClusterToPerson(picked, person.id);
+    await assignMatchingUnassigned(person);
+  }
+  if (modalPhoto) await addPhotoMembership(modalPhoto, person.id);
+}
+
+// Ask "is this the same person?" when the typed name already exists. Resolves
+// "yes" (merge), "no" (go back and rename), or "cancel".
+let sameNameResolver = null;
+function confirmSameName(existing) {
+  const count = state.photos.filter((ph) => ph.personIds.includes(existing.id)).length;
+  el("sameNameFace").src = existing.thumb || "";
+  el("sameNameHint").innerHTML =
+    `You already have <strong>${existing.name}</strong>${count ? ` with ${count} photo${count === 1 ? "" : "s"}` : ""}. Add these photos to them?`;
+  el("sameNameModal").hidden = false;
+  return new Promise((resolve) => {
+    sameNameResolver = resolve;
+  });
+}
+
+function resolveSameName(answer) {
+  el("sameNameModal").hidden = true;
+  const r = sameNameResolver;
+  sameNameResolver = null;
+  if (r) r(answer);
 }
 
 // Self-teach from an ignore: after growing the hidden "Ignored" bucket, sweep
@@ -4111,15 +4233,68 @@ async function redetectFaces(photoIds) {
 const contactsSupported = "contacts" in navigator && "ContactsManager" in window;
 let editingPersonId = null;
 let editingContactIcon = null; // dataURL pulled from a linked contact, applied on Save
+let editingRelationship = ""; // relationship chosen in the edit modal, applied on Save
+
+// The display label for a person's relationship, if set (and not a child badge
+// duplicate). Empty string when none chosen.
+function relationshipLabel(p) {
+  return p && p.relationship ? p.relationship : "";
+}
+
+// Build the relationship quick-pick chips inside the edit modal. One chip is
+// selectable at a time; "Other" reveals a free-text box so any label can be typed.
+function renderRelChips() {
+  const box = el("relChips");
+  const custom = el("relCustom");
+  if (!box) return;
+  const known = RELATIONSHIPS.includes(editingRelationship);
+  const isCustom = !!editingRelationship && !known;
+  box.innerHTML = "";
+  for (const label of RELATIONSHIPS) {
+    const on = label === "Other" ? isCustom : editingRelationship === label;
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "rel-chip" + (on ? " is-on" : "");
+    chip.textContent = label;
+    chip.addEventListener("click", () => {
+      if (label === "Other") {
+        editingRelationship = isCustomNow() ? "" : (custom.value.trim() || " ");
+        custom.hidden = false;
+        renderRelChips();
+        custom.focus();
+        return;
+      }
+      // Toggle off if tapping the active chip, else select it.
+      editingRelationship = editingRelationship === label ? "" : label;
+      custom.hidden = true;
+      custom.value = "";
+      renderRelChips();
+    });
+    box.appendChild(chip);
+  }
+  if (isCustom) {
+    custom.hidden = false;
+    if (custom.value.trim() !== editingRelationship.trim()) custom.value = editingRelationship.trim();
+  } else if (!isCustom && document.activeElement !== custom) {
+    custom.hidden = true;
+  }
+  function isCustomNow() {
+    return !!editingRelationship && !RELATIONSHIPS.includes(editingRelationship);
+  }
+}
 
 function openPersonEdit(personId) {
   const p = state.people.find((x) => x.id === personId);
   if (!p) return;
   editingPersonId = personId;
   editingContactIcon = null;
+  editingRelationship = p.relationship || "";
   el("personEditFace").src = p.thumb || "";
   el("personEditName").value = p.name;
   el("personEditChild").checked = !!p.isChild;
+  const custom = el("relCustom");
+  if (custom) custom.value = RELATIONSHIPS.includes(editingRelationship) ? "" : editingRelationship;
+  renderRelChips();
   const linkBtn = el("personLinkContact");
   if (linkBtn) linkBtn.hidden = !contactsSupported;
   const msg = el("personContactMsg");
@@ -4135,6 +4310,7 @@ function closePersonEdit() {
   el("personModal").hidden = true;
   editingPersonId = null;
   editingContactIcon = null;
+  editingRelationship = "";
 }
 
 async function savePersonEdit() {
@@ -4147,6 +4323,10 @@ async function savePersonEdit() {
   }
   p.name = name;
   p.isChild = el("personEditChild").checked;
+  // Resolve the relationship: a custom-typed label wins over the chosen chip.
+  const custom = el("relCustom");
+  if (custom && !custom.hidden && custom.value.trim()) editingRelationship = custom.value.trim();
+  p.relationship = editingRelationship ? editingRelationship.trim() : "";
   if (editingContactIcon) p.thumb = editingContactIcon;
   await db.put("people", p);
   closePersonEdit();
@@ -4315,15 +4495,21 @@ function renderStats() {
 }
 
 function renderPeople() {
-  // Named people first — so naming visibly creates a person here, not just an
-  // album. People synced from another device with no local photos yet are held
-  // back (see namedPeopleHere) so they don't look like broken empty albums.
+  // Faces still waiting to be named come FIRST and in their own highlighted
+  // panel — that's the action the user needs to take. Named people sit below.
+  const grid = el("peopleGrid");
+  el("toNamePanel").hidden = state.pendingClusters.length === 0;
+  renderClusterCards(grid);
+
+  // Named people. People synced from another device with no local photos yet are
+  // held back (see namedPeopleHere) so they don't look like broken empty albums.
   const named = namedPeopleHere();
   const namedGrid = el("namedGrid");
   namedGrid.innerHTML = "";
   el("namedHead").hidden = named.length === 0;
   for (const p of named) {
     const count = state.photos.filter((ph) => ph.personIds.includes(p.id)).length;
+    const rel = relationshipLabel(p);
     const card = document.createElement("div");
     card.className = "person-card";
     card.innerHTML = `
@@ -4332,6 +4518,7 @@ function renderPeople() {
       </button>
       <div class="person-card__body">
         <div class="person-card__name">${p.name}${p.isChild ? ' <span class="badge-kid">child</span>' : ""}</div>
+        ${rel ? `<div class="person-card__rel">${rel}</div>` : ""}
         <div class="person-card__count">${count} photo${count === 1 ? "" : "s"}</div>
         <div class="person-card__actions">
           <button class="btn btn--primary btn--small" data-nav="${p.id}">Open</button>
@@ -4351,11 +4538,7 @@ function renderPeople() {
     b.addEventListener("click", () => openPersonEdit(b.dataset.edit))
   );
 
-  // Unnamed clusters still waiting to be named.
-  const grid = el("peopleGrid");
-  el("toNameHead").hidden = state.pendingClusters.length === 0;
   el("peopleEmpty").hidden = state.pendingClusters.length > 0 || named.length > 0;
-  renderClusterCards(grid);
 }
 
 // Render the "faces waiting to be named" cards into a grid element. Shared by
@@ -4509,11 +4692,10 @@ function renderAlbumIndex() {
   el("kidsOnlyWrap").hidden = !hasAdults;
   if (state.kidsOnly) roster = roster.filter((p) => p.isChild);
 
-  // Sort the people albums by the chosen order.
+  // Sort the people albums by the chosen order (favourites float up after).
   const byCount = (a, b) => albumPhotoCount(b.id) - albumPhotoCount(a.id);
   if (state.albumSort === "name") roster.sort((a, b) => a.name.localeCompare(b.name));
-  else if (state.albumSort === "count") roster.sort(byCount);
-  else roster.sort((a, b) => Number(b.isChild) - Number(a.isChild) || byCount(a, b)); // smart
+  else roster.sort(byCount); // "count" = most photos first (default)
   // Favourites float to the top, keeping their order otherwise.
   roster.sort((a, b) => Number(isFavAlbum(b.id)) - Number(isFavAlbum(a.id)));
 
@@ -4542,14 +4724,21 @@ function albumCard(a) {
   card.setAttribute("tabindex", "0");
   card.setAttribute("aria-label", `Open ${a.name}`);
   const ph = a.id === AWAITING ? "🔍" : "📷";
+  // Show a cloud tick when every photo in this album is saved to the output.
+  const cs = a.special ? { saved: 0, total: 0 } : albumCloudStatus(id);
+  const savedBadge = !a.special && state.autoBackup && cs.total && cs.saved >= cs.total
+    ? '<span class="album-card__saved" title="Saved to your output folder">☁</span>'
+    : "";
+  const rel = a.person ? relationshipLabel(a.person) : "";
   card.innerHTML = `
     <div class="album-card__cover">
       ${cover ? `<img src="${cover}" alt="" loading="lazy" />` : `<span class="album-card__ph">${ph}</span>`}
       <span class="album-card__count">${count}</span>
+      ${savedBadge}
     </div>
     <div class="album-card__foot">
       <span class="album-card__name">${a.name}</span>
-      ${a.isChild ? '<span class="badge-kid">child</span>' : ""}
+      ${rel ? `<span class="album-card__rel">${escapeHtml(rel)}</span>` : a.isChild ? '<span class="badge-kid">child</span>' : ""}
     </div>`;
   card.addEventListener("click", () => openAlbum(id));
   card.addEventListener("keydown", (e) => {
@@ -4573,6 +4762,35 @@ function albumCard(a) {
   return card;
 }
 
+// Show WHERE an album lives in the user's output as a breadcrumb — e.g.
+// "☁ OneDrive › Famsort › George" — plus whether it's actually saved yet. Only
+// real person albums map to a dedicated folder, so specials hide it.
+function renderAlbumPath(id, special) {
+  const nav = el("albumPath");
+  if (!nav) return;
+  const person = state.people.find((p) => p.id === id);
+  if (special || !person) {
+    nav.hidden = true;
+    nav.innerHTML = "";
+    return;
+  }
+  const folder = backupFolderFor([id]); // e.g. "Famsort/George"
+  const rootLabel = state.outputMode === "device" ? state.outputHandleName || "This device" : "OneDrive";
+  const segs = [rootLabel, ...folder.split("/").filter(Boolean)];
+  const cs = albumCloudStatus(id);
+  const icon = state.outputMode === "device" ? "💻" : "☁";
+  let tag;
+  if (!state.autoBackup) tag = '<span class="album-path__tag album-path__tag--off">Backup off</span>';
+  else if (cs.total && cs.saved >= cs.total) tag = '<span class="album-path__tag album-path__tag--ok">✓ Saved here</span>';
+  else if (cs.total && cs.saved > 0) tag = `<span class="album-path__tag">${cs.saved}/${cs.total} saved</span>`;
+  else tag = '<span class="album-path__tag">Saving…</span>';
+  const crumbs = segs
+    .map((s, i) => `<span class="album-path__seg${i === segs.length - 1 ? " is-leaf" : ""}">${escapeHtml(s)}</span>`)
+    .join('<span class="album-path__sep">›</span>');
+  nav.hidden = false;
+  nav.innerHTML = `<span class="album-path__icon">${icon}</span>${crumbs}${tag}`;
+}
+
 function renderAlbumDetail() {
   const id = state.activeAlbum;
   el("albumDetailTitle").textContent = albumDisplayName(id);
@@ -4581,6 +4799,7 @@ function renderAlbumDetail() {
   favBtn.hidden = special;
   favBtn.textContent = isFavAlbum(id) ? "★" : "☆";
   favBtn.classList.toggle("is-on", isFavAlbum(id));
+  renderAlbumPath(id, special);
 
   const grid = el("albumGrid");
 
@@ -4606,8 +4825,10 @@ function renderAlbumDetail() {
 
   const cs = albumCloudStatus(id);
   const info = cloudInfoText(cs);
+  const person = state.people.find((p) => p.id === id);
+  const rel = person ? relationshipLabel(person) : "";
   el("albumDetailMeta").textContent =
-    `${photos.length} photo${photos.length === 1 ? "" : "s"}` + (info ? ` · ${info}` : "");
+    (rel ? `${rel} · ` : "") + `${photos.length} photo${photos.length === 1 ? "" : "s"}` + (info ? ` · ${info}` : "");
 
   grid.innerHTML = "";
   const orderedIds = photos.map((p) => p.id);
@@ -5185,6 +5406,7 @@ function exportModel() {
   const people = namedPeople().map((p) => ({
     name: p.name,
     isChild: p.isChild,
+    relationship: p.relationship || "",
     descriptors: p.descriptors,
     negatives: p.negatives || [],
     thumb: p.thumb,
@@ -5221,6 +5443,7 @@ async function importModel(file) {
           id: db.uid(),
           name: imp.name,
           isChild: !!imp.isChild,
+          relationship: imp.relationship || "",
           ignored: false,
           descriptors: imp.descriptors,
           negatives: imp.negatives || [],
@@ -5472,6 +5695,16 @@ function wire() {
   });
   el("nameInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") saveNamedPerson();
+  });
+
+  el("sameNameYes").addEventListener("click", () => resolveSameName("yes"));
+  el("sameNameNo").addEventListener("click", () => resolveSameName("no"));
+  el("sameNameCancel").addEventListener("click", () => resolveSameName("cancel"));
+  el("sameNameModal").addEventListener("click", (e) => {
+    if (e.target === el("sameNameModal")) resolveSameName("cancel");
+  });
+  el("relCustom").addEventListener("input", (e) => {
+    editingRelationship = e.target.value.trim();
   });
 
   el("exportBtn").addEventListener("click", exportModel);
