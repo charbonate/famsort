@@ -380,8 +380,9 @@ p { margin: 0 0 .9rem; }
 .bar { height: 8px; background: var(--cream-2); border-radius: 999px; overflow: hidden; }
 .bar__fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s ease; }
 
-/* Global progress banner — sits just above the bottom tab bar, spans the width,
-   and never blocks taps so you can keep navigating while a sort runs. */
+/* Global progress pop-up — a floating card just above the bottom tab bar. It
+   never blocks taps so you can keep navigating while a sort runs, and it shows
+   a tick + lingers briefly when the sort finishes. */
 .processing {
   position: fixed; left: 0; right: 0; z-index: 35;
   bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 10px);
@@ -392,11 +393,22 @@ p { margin: 0 0 .9rem; }
   display: flex; align-items: center; gap: 12px; text-align: left;
   margin: 0 auto; max-width: 560px; width: 100%;
   background: #fff; border: 1px solid var(--line); border-radius: 14px;
-  padding: 10px 14px; box-shadow: var(--shadow);
+  padding: 12px 16px; box-shadow: 0 10px 30px rgba(36,31,27,.22);
+  animation: proc-rise .25s ease;
 }
+@keyframes proc-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .processing__body { flex: 1; min-width: 0; }
 .processing__body p { margin: 0 0 6px; font-weight: 600; font-size: .9rem; }
 .processing__count { font-size: .8rem; color: var(--ink-soft); margin: 0; white-space: nowrap; }
+/* Green tick shown in place of the spinner once the sort completes. */
+.processing__check {
+  flex: none; width: 24px; height: 24px; border-radius: 50%;
+  background: #1f9d55; color: #fff; font-size: .9rem; font-weight: 700;
+  display: grid; place-items: center; animation: proc-pop .3s ease;
+}
+@keyframes proc-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
+.processing--done .processing__card { border-color: #bfe3cc; }
+.processing--done .bar__fill { background: #1f9d55; }
 .spinner {
   width: 40px; height: 40px; margin: 0 auto 14px; border-radius: 50%;
   border: 4px solid var(--cream-2); border-top-color: var(--accent); animation: spin .8s linear infinite;
@@ -664,9 +676,11 @@ p { margin: 0 0 .9rem; }
         <p>Everything lives only in this browser (thumbnails + face fingerprints). Originals stay in your gallery. You can wipe it all anytime.</p>
         <div class="btn-row">
           <button class="btn btn--ghost" id="reapplyBtn">Reupdate &amp; reorganise albums</button>
+          <button class="btn btn--ghost" id="resetIgnoredBtn">Restore skipped faces</button>
           <button class="btn btn--danger" id="resetBtn">Delete everything on this device</button>
         </div>
         <p class="card-plain__fine">“Reupdate &amp; reorganise” rebuilds each person from the faces you’ve <strong>confirmed</strong> (tap a name in a photo to confirm it ✓), then re-checks every auto-tagged face — so a wrong face in an album gets cleaned out. No re-import needed.</p>
+        <p class="card-plain__fine">“Restore skipped faces” brings back everyone that was auto-hidden as <strong>ignored</strong> — use this if people have stopped being found after you pressed Ignore a lot.</p>
       </div>
 
       <div class="card-plain card-plain--muted">
@@ -689,11 +703,13 @@ p { margin: 0 0 .9rem; }
     <button class="tabbar__btn" data-nav="settings"><span>⚙️</span>Family</button>
   </nav>
 
-  <!-- Global progress banner — non-blocking, visible on every screen while a
-       scan/sort runs so you can navigate freely and still see what's happening. -->
+  <!-- Global progress pop-up — a floating card, visible on every screen while a
+       scan/sort runs so you can navigate freely and still see what's happening.
+       Shows a tick and lingers briefly once the sort finishes. -->
   <div class="processing" id="processing" hidden>
     <div class="processing__card">
-      <div class="spinner spinner--sm"></div>
+      <div class="spinner spinner--sm" id="procSpinner"></div>
+      <div class="processing__check" id="procCheck" hidden>✓</div>
       <div class="processing__body">
         <p id="processingText">Looking for faces…</p>
         <div class="bar"><div class="bar__fill" id="procBar"></div></div>
@@ -888,6 +904,10 @@ const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
 const MATCH_THRESHOLD = 0.5; // match to a NAMED person with several confirmed angles
 const STRICT_MATCH_THRESHOLD = 0.44; // match when the person has only 1–2 confirmed faces (weak template → avoid false positives)
 const CLUSTER_THRESHOLD = 0.52; // grouping UNKNOWN faces: stricter, keeps different kids in separate groups
+// The hidden "Ignored" bucket collects many unrelated junk/non-face descriptors.
+// Matching it at the normal 0.5 would swallow real faces that merely resemble
+// ANY of them, so it only auto-skips near-identical repeats of ignored items.
+const IGNORE_MATCH_THRESHOLD = 0.38;
 
 // Max longest-edge we feed to the detector (speed vs accuracy on phones).
 // Bigger = small/background faces survive the downscale and get found.
@@ -1308,13 +1328,16 @@ function matchPerson(descriptor, people, threshold = MATCH_THRESHOLD) {
   let bestId = null;
   let bestDist = Infinity;
   for (const p of people) {
+    // The Ignored bucket matches much more strictly (see IGNORE_MATCH_THRESHOLD)
+    // so a lookalike never gets hidden away as "ignored".
+    const thr = p.ignored ? IGNORE_MATCH_THRESHOLD : threshold;
     // Closest ACCEPTED example of this person.
     let posDist = Infinity;
     for (const d of p.descriptors) {
       const dist = euclidean(descriptor, d);
       if (dist < posDist) posDist = dist;
     }
-    if (posDist >= threshold) continue;
+    if (posDist >= thr) continue;
     // Self-teaching veto: when the user has corrected faces like this as "not
     // them" (p.negatives), reject the match if this face resembles one of those
     // rejections at least as much as it resembles the person.
@@ -1334,7 +1357,7 @@ function matchPerson(descriptor, people, threshold = MATCH_THRESHOLD) {
   return bestId ? { id: bestId, dist: bestDist } : null;
 }
 
-return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, loadModels, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, analyzeVideoFile, clusterFaces, matchPerson };
+return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, analyzeVideoFile, clusterFaces, matchPerson };
 })();
 
 const cloud = (function () {
@@ -2975,6 +2998,39 @@ async function handleFiles(fileList) {
   }
 }
 
+// ---- progress pop-up (floating card above the tab bar) ----
+let progressDoneTimer = null;
+
+// Reset the pop-up to its "in progress" look and show it.
+function startProgressUI() {
+  clearTimeout(progressDoneTimer);
+  const p = el("processing");
+  p.classList.remove("processing--done");
+  el("procSpinner").hidden = false;
+  el("procCheck").hidden = true;
+  p.hidden = false;
+}
+
+// Swap the spinner for a green tick, show a summary, then auto-dismiss.
+function showProgressDone(added, dupes) {
+  clearTimeout(progressDoneTimer);
+  const p = el("processing");
+  p.classList.add("processing--done");
+  el("procSpinner").hidden = true;
+  el("procCheck").hidden = false;
+  el("procBar").style.width = "100%";
+  el("processingText").textContent = "All done";
+  const parts = [`Sorted ${added} photo${added === 1 ? "" : "s"}`];
+  if (dupes) parts.push(`${dupes} duplicate${dupes === 1 ? "" : "s"} skipped`);
+  el("procCount").textContent = parts.join(" · ");
+  progressDoneTimer = setTimeout(() => {
+    p.hidden = true;
+    p.classList.remove("processing--done");
+    el("procSpinner").hidden = false;
+    el("procCheck").hidden = true;
+  }, 3400);
+}
+
 async function processFiles(fileList) {
   const files = Array.from(fileList).filter(
     (f) => f.type.startsWith("image/") || f.type.startsWith("video/") || isMediaName(f.name)
@@ -2984,7 +3040,7 @@ async function processFiles(fileList) {
     return;
   }
 
-  if (!autoScanning) el("processing").hidden = false;
+  if (!autoScanning) startProgressUI();
   let added = 0;
   let dupes = 0;
   const toBackup = [];
@@ -3096,7 +3152,7 @@ async function processFiles(fileList) {
 
   await flush(); // final partial batch
 
-  if (!autoScanning) el("processing").hidden = true;
+  if (!autoScanning) showProgressDone(added, dupes);
 
   // Stats on the Add screen (recomputed live — see renderStats).
   recomputePending();
@@ -3600,6 +3656,36 @@ async function ignoreFace(faceRec) {
   renderAll();
   // Ignored — stay on this photo if other faces still need a decision, else move on.
   lightboxAfterFaceAction();
+}
+
+// Recover from an over-grown "Ignored" bucket. Pressing Ignore on wrongly
+// auto-tagged clusters could fill the hidden bucket with varied faces, after
+// which too many real faces got auto-hidden as "ignored" and never showed up to
+// be named. This wipes the bucket and returns every ignored face to the pool so
+// they re-appear for tagging. (Named people and their photos are untouched.)
+async function resetIgnored() {
+  const ignored = state.people.find((p) => p.id === IGNORED);
+  const released = state.faces.filter((f) => f.personId === IGNORED);
+  if (!ignored && !released.length) {
+    setAutoBackupMsg("No skipped faces to restore.");
+    return;
+  }
+  for (const f of released) {
+    f.personId = null;
+    f.notIds = [];
+  }
+  if (released.length) await db.bulkPut("faces", released);
+  if (ignored) {
+    state.people = state.people.filter((p) => p.id !== IGNORED);
+    await db.remove("people", IGNORED);
+  }
+  // Re-run matching to real people, then rebuild the to-tag clusters.
+  for (const p of namedPeople()) await assignMatchingUnassigned(p);
+  recomputePending();
+  renderAll();
+  scheduleCloudSync(); // push the cleaned model so other devices stop hiding faces too
+  setAutoBackupMsg(`Restored ${released.length} skipped face${released.length === 1 ? "" : "s"}. Check the People tab to name them.`);
+  if (state.pendingClusters.length) navTo("people");
 }
 
 /* ------------------------------------------------- edit a named person */
@@ -4820,6 +4906,7 @@ function wire() {
     e.target.value = "";
   });
   el("reapplyBtn").addEventListener("click", reapplyMatching);
+  el("resetIgnoredBtn").addEventListener("click", resetIgnored);
   el("resetBtn").addEventListener("click", resetAll);
 
   el("kidsOnly").addEventListener("change", (e) => {
