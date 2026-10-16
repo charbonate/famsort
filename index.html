@@ -416,6 +416,13 @@ p { margin: 0 0 .9rem; }
 .spinner--sm { width: 22px; height: 22px; margin: 0; border-width: 3px; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Diagnostics readout (Settings → Your data) */
+.diag-out {
+  margin: 10px 0 0; padding: 12px 14px; white-space: pre-wrap;
+  background: var(--cream-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .82rem; line-height: 1.5; color: var(--ink);
+}
+
 /* Modal */
 .modal { position: fixed; inset: 0; z-index: 95; display: grid; place-items: center; background: rgba(36,31,27,.55); padding: 24px; }
 .modal__card { background: #fff; border-radius: var(--radius); padding: 22px; width: 100%; max-width: 340px; text-align: center; box-shadow: var(--shadow); }
@@ -681,6 +688,10 @@ p { margin: 0 0 .9rem; }
         </div>
         <p class="card-plain__fine">“Reupdate &amp; reorganise” rebuilds each person from the faces you’ve <strong>confirmed</strong> (tap a name in a photo to confirm it ✓), then re-checks every auto-tagged face — so a wrong face in an album gets cleaned out. No re-import needed.</p>
         <p class="card-plain__fine">“Restore skipped faces” brings back everyone that was auto-hidden as <strong>ignored</strong> — use this if people have stopped being found after you pressed Ignore a lot.</p>
+        <div class="btn-row">
+          <button class="btn btn--ghost" id="diagBtn">Show diagnostics</button>
+        </div>
+        <pre class="diag-out" id="diagOut" hidden></pre>
       </div>
 
       <div class="card-plain card-plain--muted">
@@ -965,6 +976,11 @@ async function loadModels(onProgress = () => {}) {
   }
   onProgress(1, "Ready");
   ready = true;
+}
+
+// Which detectors are active (for diagnostics): SSD is the accurate primary.
+function detectorInfo() {
+  return { ready, ssd: ssdReady };
 }
 
 // Run face detection on a canvas. Primary = SSD MobileNet v1 (best recall);
@@ -1357,7 +1373,7 @@ function matchPerson(descriptor, people, threshold = MATCH_THRESHOLD) {
   return bestId ? { id: bestId, dist: bestDist } : null;
 }
 
-return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, analyzeVideoFile, clusterFaces, matchPerson };
+return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, detectorInfo, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, analyzeVideoFile, clusterFaces, matchPerson };
 })();
 
 const cloud = (function () {
@@ -3688,6 +3704,33 @@ async function resetIgnored() {
   if (state.pendingClusters.length) navTo("people");
 }
 
+// Plain-language readout of what's actually in the database, so we can tell
+// whether faces aren't being DETECTED vs detected-but-hidden. Shown in Settings.
+function showDiagnostics() {
+  const faces = state.faces;
+  const withDesc = faces.filter((f) => f.descriptor && f.descriptor.length).length;
+  const ignored = faces.filter((f) => f.personId === IGNORED).length;
+  const named = faces.filter((f) => f.personId && f.personId !== IGNORED).length;
+  const unassigned = faces.filter((f) => !f.personId).length;
+  const photos = state.photos.length;
+  const vids = state.photos.filter((p) => p.isVideo).length;
+  const people = namedPeople().length;
+  const det = face.detectorInfo();
+  const lines = [
+    `Photos: ${photos} (${vids} video)`,
+    `Faces found: ${faces.length}`,
+    `· in a named album: ${named}`,
+    `· waiting to tag: ${unassigned}`,
+    `· hidden as ignored: ${ignored}`,
+    `Named people: ${people}`,
+    `Detector: ${det.ssd ? "accurate (SSD) ✓" : det.ready ? "basic only — SSD didn't load" : "NOT loaded"}`,
+  ];
+  const diag = el("diagOut");
+  diag.textContent = lines.join("\n");
+  diag.hidden = false;
+  console.log("[Famsort diagnostics]\n" + lines.join("\n"));
+}
+
 /* ------------------------------------------------- edit a named person */
 // The Contact Picker API only exists on Android Chrome (secure context). We use
 // it as progressive enhancement to pre-fill a person's name/photo from a phone
@@ -4907,6 +4950,7 @@ function wire() {
   });
   el("reapplyBtn").addEventListener("click", reapplyMatching);
   el("resetIgnoredBtn").addEventListener("click", resetIgnored);
+  el("diagBtn").addEventListener("click", showDiagnostics);
   el("resetBtn").addEventListener("click", resetAll);
 
   el("kidsOnly").addEventListener("change", (e) => {
