@@ -236,6 +236,7 @@ p { margin: 0 0 .9rem; }
   border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
 .tag-chip:hover { border-color: var(--accent); background: var(--cream-2); }
 .tag-chip.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tag-chip.is-confirmed { background: #1a7f3c; border-color: #1a7f3c; color: #fff; }
 .tag-chip--new { color: var(--accent); border-style: dashed; }
 .tag-chip--ignore { color: var(--ink-soft); border-style: dashed; }
 .tag-chip--ignore:hover { border-color: var(--ink-soft); color: var(--ink); }
@@ -521,10 +522,10 @@ p { margin: 0 0 .9rem; }
         <h3>Your data</h3>
         <p>Everything lives only in this browser (thumbnails + face fingerprints). Originals stay in your gallery. You can wipe it all anytime.</p>
         <div class="btn-row">
-          <button class="btn btn--ghost" id="reapplyBtn">Apply latest matching</button>
+          <button class="btn btn--ghost" id="reapplyBtn">Reupdate &amp; reorganise albums</button>
           <button class="btn btn--danger" id="resetBtn">Delete everything on this device</button>
         </div>
-        <p class="card-plain__fine">“Apply latest matching” re-groups and re-tags your existing photos using the newest logic — no re-import needed.</p>
+        <p class="card-plain__fine">“Reupdate &amp; reorganise” rebuilds each person from the faces you’ve <strong>confirmed</strong> (tap a name in a photo to confirm it ✓), then re-checks every auto-tagged face — so a wrong face in an album gets cleaned out. No re-import needed.</p>
       </div>
 
       <div class="card-plain card-plain--muted">
@@ -2875,6 +2876,7 @@ function assignClusterToPerson(cluster, personId) {
   for (const f of state.faces) {
     if (faceIds.has(f.id)) {
       f.personId = personId;
+      f.confirmed = true; // user reviewed this cluster grid and kept this face → a trusted template face
       touchedPhotos.add(f.photoId);
     }
   }
@@ -3361,7 +3363,9 @@ function renderLightboxTagging(photo) {
       const who = document.createElement("div");
       who.className = "tag-face__who";
       who.innerHTML = person
-        ? person.name
+        ? f.confirmed
+          ? `${person.name} <span class="muted">· confirmed ✓</span>`
+          : `${person.name} <span class="muted">· tap the name to confirm</span>`
         : f.personId === IGNORED
           ? '<span class="muted">Ignored</span>'
           : '<span class="muted">Not tagged</span>';
@@ -3370,9 +3374,11 @@ function renderLightboxTagging(photo) {
       const chips = document.createElement("div");
       chips.className = "tag-chips";
       for (const p of people) {
+        const on = f.personId === p.id;
         const chip = document.createElement("button");
-        chip.className = "tag-chip" + (f.personId === p.id ? " is-on" : "");
-        chip.textContent = p.name;
+        chip.className = "tag-chip" + (on ? " is-on" : "") + (on && f.confirmed ? " is-confirmed" : "");
+        chip.textContent = on && f.confirmed ? `✓ ${p.name}` : p.name;
+        if (on && !f.confirmed) chip.title = `Tap to confirm this really is ${p.name}`;
         chip.addEventListener("click", () => tagFaceAs(f, p));
         chips.appendChild(chip);
       }
@@ -3474,6 +3480,7 @@ function renderPhotoAlbums(photo, people) {
 // Assign a single face to a person, learn their look, and refresh.
 async function tagFaceAs(faceRec, person) {
   faceRec.personId = person.id;
+  faceRec.confirmed = true; // explicit user decision → trusted template face (survives reorganise)
   faceRec.notIds = (faceRec.notIds || []).filter((id) => id !== person.id);
   await db.put("faces", faceRec);
   // Learn this face so future photos match the person better.
@@ -3730,12 +3737,42 @@ function showShareMsg(text) {
 // on the device — no re-import needed. Picks up matching-logic improvements
 // (better grouping/auto-tagging) using the face fingerprints we already stored.
 async function reapplyMatching() {
-  showShareMsg("Re-applying the latest matching…");
+  showShareMsg("Re-organising your albums…");
+  // The crux of "press Reupdate and it reorganises": we must re-examine faces
+  // that were AUTO-matched before, not just unassigned ones. For each named
+  // person we (1) rebuild their face template from ONLY the faces you confirmed
+  // (dropping any look-alikes that crept into the gallery and caused the album to
+  // fill with the wrong person), then (2) release that person's auto-matched
+  // faces back to the pool so they can be re-judged against the clean template.
+  // People you haven't confirmed any face for yet (legacy data) are left as-is,
+  // so this never wipes your existing manual work.
+  const released = [];
+  for (const p of namedPeople()) {
+    const confirmedDescs = state.faces
+      .filter((f) => f.personId === p.id && f.confirmed)
+      .map((f) => f.descriptor);
+    if (!confirmedDescs.length) continue; // nothing confirmed for this person — don't disturb them
+    p.descriptors = sample(confirmedDescs, 12); // clean template from confirmed faces only
+    await db.put("people", p);
+    for (const f of state.faces) {
+      if (f.personId === p.id && !f.confirmed) {
+        f.personId = null; // auto-match — put it back for re-judging
+        released.push(f);
+      }
+    }
+  }
+  if (released.length) await db.bulkPut("faces", released);
   recomputePending();
   for (const p of namedPeople()) await assignMatchingUnassigned(p);
   recomputePending();
+  // Every photo's album list may have changed — recompute them all.
+  updatePhotoLabels(new Set(state.photos.map((p) => p.id)));
   renderAll();
-  showShareMsg("Done — the latest matching has been applied to your photos.");
+  showShareMsg(
+    released.length
+      ? `Re-organised — rechecked ${released.length} auto-tagged face${released.length === 1 ? "" : "s"} against the faces you confirmed.`
+      : "Matching re-applied. Tip: confirm a few faces in an album first, then Reupdate cleans the rest."
+  );
 }
 
 // Re-scan the watched folders from scratch with the latest AI. Keeps your named
