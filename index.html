@@ -6194,8 +6194,31 @@ function wire() {
   });
 }
 
-wire();
-boot();
+// Surface any fatal startup error directly on the boot screen, so a blank/stuck
+// "Warming up…" turns into an actionable message instead of a dead end.
+function showFatal(where, err) {
+  try {
+    const msg = (err && (err.stack || err.message)) || String(err);
+    const s = el("bootStatus");
+    if (s) s.textContent = "Startup error in " + where + ": " + msg;
+    const r = el("bootRetry");
+    if (r) r.hidden = false;
+    console.error("[famsort] fatal in " + where, err);
+    // Dev-only: mirror to disk so the error can be read from data/diag.txt.
+    try { fetch("/api/diag", { method: "POST", body: "fatal in " + where + ": " + msg }); } catch (_) {}
+  } catch (_) { /* last-resort: nothing we can do */ }
+}
+window.addEventListener("error", (e) => showFatal("script", e.error || e.message));
+window.addEventListener("unhandledrejection", (e) => showFatal("promise", e.reason));
+
+// wire() must never block boot(): if a listener hookup throws, the app would be
+// stuck forever on the boot overlay. Isolate it so boot() always runs.
+try {
+  wire();
+} catch (e) {
+  showFatal("wire()", e);
+}
+boot().catch((e) => showFatal("boot()", e));
 })();
 </script>
 </body>
