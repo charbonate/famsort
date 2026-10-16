@@ -353,14 +353,28 @@ p { margin: 0 0 .9rem; }
 .bar { height: 8px; background: var(--cream-2); border-radius: 999px; overflow: hidden; }
 .bar__fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s ease; }
 
-/* Processing overlay */
-.processing { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgba(36,31,27,.55); backdrop-filter: blur(3px); padding: 24px; }
-.processing__card { background: #fff; border-radius: var(--radius); padding: 26px 24px; text-align: center; max-width: 320px; width: 100%; box-shadow: var(--shadow); }
-.processing__count { font-size: .85rem; color: var(--ink-soft); margin: 8px 0 0; }
+/* Global progress banner — sits just above the bottom tab bar, spans the width,
+   and never blocks taps so you can keep navigating while a sort runs. */
+.processing {
+  position: fixed; left: 0; right: 0; z-index: 35;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 10px);
+  display: block; padding: 0 12px; pointer-events: none;
+}
+.processing__card {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  margin: 0 auto; max-width: 560px; width: 100%;
+  background: #fff; border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 14px; box-shadow: var(--shadow);
+}
+.processing__body { flex: 1; min-width: 0; }
+.processing__body p { margin: 0 0 6px; font-weight: 600; font-size: .9rem; }
+.processing__count { font-size: .8rem; color: var(--ink-soft); margin: 0; white-space: nowrap; }
 .spinner {
   width: 40px; height: 40px; margin: 0 auto 14px; border-radius: 50%;
   border: 4px solid var(--cream-2); border-top-color: var(--accent); animation: spin .8s linear infinite;
 }
+.spinner--sm { width: 22px; height: 22px; margin: 0; border-width: 3px; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Modal */
@@ -609,12 +623,15 @@ p { margin: 0 0 .9rem; }
     <button class="tabbar__btn" data-nav="settings"><span>⚙️</span>Family</button>
   </nav>
 
-  <!-- Processing overlay -->
+  <!-- Global progress banner — non-blocking, visible on every screen while a
+       scan/sort runs so you can navigate freely and still see what's happening. -->
   <div class="processing" id="processing" hidden>
     <div class="processing__card">
-      <div class="spinner"></div>
-      <p id="processingText">Looking for faces…</p>
-      <div class="bar"><div class="bar__fill" id="procBar"></div></div>
+      <div class="spinner spinner--sm"></div>
+      <div class="processing__body">
+        <p id="processingText">Looking for faces…</p>
+        <div class="bar"><div class="bar__fill" id="procBar"></div></div>
+      </div>
       <p class="processing__count" id="procCount"></p>
     </div>
   </div>
@@ -1793,10 +1810,9 @@ async function boot() {
   recomputePending();
   renderAll();
   renderWatched();
-  // Re-scan any folder we already have permission for — no tap needed.
-  autoRescanGranted();
-  // Keep sorting/backing up new photos while the app stays open.
-  startAutoSync();
+  // Don't scan on launch — the user chooses sources + output in the wizard and
+  // presses “Sort my photos” to start. The watch loop (auto-backup) only kicks
+  // in AFTER the first manual sort, so a reload never surprises them with a scan.
   // If this device is already signed in to OneDrive, pull down the identity
   // model AND rebuild the sorted library from its manifest — a returning/new
   // phone restores its people and albums automatically.
@@ -2551,6 +2567,9 @@ async function sortNow() {
     }
     scheduleCloudSync();
     scheduleLibrarySync();
+    // Now that the user has sorted once, keep watching for new photos while the
+    // app stays open (auto-backup). Never starts on its own before this.
+    startAutoSync();
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -2689,9 +2708,22 @@ async function processFiles(fileList) {
   if (!autoScanning) el("processing").hidden = false;
   let added = 0;
   let dupes = 0;
-  const newPhotos = [];
-  const newFaces = [];
   const toBackup = [];
+  // We write to the database (and re-render) in small batches as we go, instead
+  // of only at the very end. That way a reload mid-sort keeps everything already
+  // processed, photos/people appear live, and a single bad file can't lose 300.
+  let batchPhotos = [];
+  let batchFaces = [];
+  const flush = async () => {
+    if (!batchPhotos.length && !batchFaces.length) return;
+    const ps = batchPhotos;
+    const fs = batchFaces;
+    batchPhotos = [];
+    batchFaces = [];
+    await Promise.all([db.bulkPut("photos", ps), db.bulkPut("faces", fs)]);
+    recomputePending();
+    renderAll();
+  };
 
   for (let i = 0; i < files.length; i++) {
     const isVid = files[i].type.startsWith("video/") || (isVideoName(files[i].name) && !isImageName(files[i].name));
@@ -2701,7 +2733,10 @@ async function processFiles(fileList) {
 
     let result;
     try {
-      result = isVid ? await face.analyzeVideoFile(files[i]) : await face.analyzeFile(files[i]);
+      // Per-file timeout so one corrupt/huge file can never freeze the whole
+      // sort (the old symptom of it "getting stuck"). Skip and move on.
+      const analyze = isVid ? face.analyzeVideoFile(files[i]) : face.analyzeFile(files[i]);
+      result = await withTimeout(analyze, isVid ? 45000 : 20000);
     } catch {
       continue;
     }
@@ -2711,7 +2746,7 @@ async function processFiles(fileList) {
     // Cross-source de-dup: the same shot can arrive from the gallery, OneDrive
     // and WhatsApp with different names/dates/bytes. Collapse to one record and
     // keep the highest-quality copy as the master.
-    const dup = findDuplicate(result, [...state.photos, ...newPhotos]);
+    const dup = findDuplicate(result, state.photos);
     if (dup) {
       dupes++;
       const newArea = (result.width || 0) * (result.height || 0);
@@ -2730,13 +2765,15 @@ async function processFiles(fileList) {
       const match = face.matchPerson(f.descriptor, state.people);
       const personId = match ? match.id : null;
       if (personId && personId !== IGNORED) personIds.add(personId);
-      newFaces.push({
+      const faceRec = {
         id: db.uid(),
         photoId,
         descriptor: f.descriptor,
         thumb: f.thumb,
         personId,
-      });
+      };
+      state.faces.push(faceRec);
+      batchFaces.push(faceRec);
     }
     // Keep the original video so it can be played back later (images stay as
     // thumbnails only — videos need the real file to play).
@@ -2747,7 +2784,7 @@ async function processFiles(fileList) {
         /* storage full or blob not cloneable — fall back to preview frame only */
       }
     }
-    newPhotos.push({
+    const photoRec = {
       id: photoId,
       thumb: result.photoThumb,
       hash: result.hash,
@@ -2757,19 +2794,22 @@ async function processFiles(fileList) {
       isVideo: !!result.isVideo,
       duration: result.duration || 0,
       dims: { w: result.width || 0, h: result.height || 0 },
-    });
+    };
+    state.photos.push(photoRec);
+    batchPhotos.push(photoRec);
     added++;
     if (state.autoBackup && cloud.oneDriveConfigured()) {
       toBackup.push({ file: files[i], personIds: [...personIds], photoId });
     }
 
+    // Persist + repaint every dozen so progress is real and durable.
+    if (batchPhotos.length >= 12) await flush();
+
     // Yield to the UI so the progress bar paints on mobile.
     await new Promise((r) => setTimeout(r, 0));
   }
 
-  state.photos.push(...newPhotos);
-  state.faces.push(...newFaces);
-  await Promise.all([db.bulkPut("photos", newPhotos), db.bulkPut("faces", newFaces)]);
+  await flush(); // final partial batch
 
   if (!autoScanning) el("processing").hidden = true;
 
@@ -2787,6 +2827,14 @@ async function processFiles(fileList) {
     if (state.pendingClusters.length) navTo("people");
     else if (namedPeopleHere().length) navTo("albums");
   }
+}
+
+// Reject a promise after `ms` so a single stuck file can't hang the whole sort.
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+  ]);
 }
 
 // Decide if a freshly analysed item is a copy of one we already have, combining
