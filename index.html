@@ -600,8 +600,25 @@ p { margin: 0 0 .9rem; }
 
 </style>
 
-  <!-- On-device face recognition (bundled TF.js). Runs locally in the browser. -->
-  <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+  <!-- On-device face recognition (bundled TF.js). Runs locally in the browser.
+       Loaded with a CDN fallback: if the first source is blocked or stalls, the
+       next is tried, so boot never dead-ends on "Warming up…". FACE_MODEL_BASE
+       tells face.js which CDN to pull the model weights from. -->
+  <script>
+    window.FACE_CDNS = [
+      { lib: "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js", model: "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/" },
+      { lib: "https://unpkg.com/@vladmandic/face-api/dist/face-api.js", model: "https://unpkg.com/@vladmandic/face-api/model/" }
+    ];
+    (function loadFaceApi(i) {
+      if (i >= window.FACE_CDNS.length) return;
+      var cdn = window.FACE_CDNS[i];
+      var s = document.createElement("script");
+      s.src = cdn.lib;
+      s.onload = function () { window.FACE_MODEL_BASE = cdn.model; };
+      s.onerror = function () { loadFaceApi(i + 1); };
+      document.head.appendChild(s);
+    })(0);
+  </script>
 </head>
 <body>
   <!-- Boot / model-loading overlay -->
@@ -613,6 +630,7 @@ p { margin: 0 0 .9rem; }
       <p class="boot__status" id="bootStatus">Warming up the on-device AI…</p>
       <div class="bar"><div class="bar__fill" id="bootBar"></div></div>
       <p class="boot__fine">First load downloads a small AI model (~6&nbsp;MB) once. After that it works offline. Your photos never leave this device.</p>
+      <button class="btn btn--primary" id="bootRetry" hidden>Retry</button>
     </div>
   </div>
 
@@ -1115,7 +1133,11 @@ const face = (function () {
 // face.js — on-device face engine (wraps @vladmandic/face-api).
 // Everything here runs locally in the browser. No image data is ever uploaded.
 
-const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
+const MODEL_URL_DEFAULT = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
+// The index.html CDN loader sets window.FACE_MODEL_BASE to whichever source
+// actually loaded (jsDelivr → unpkg fallback). Read it at load time so model
+// weights come from the same CDN that served the library.
+const modelBase = () => (typeof window !== "undefined" && window.FACE_MODEL_BASE) || MODEL_URL_DEFAULT;
 
 // Distance below which two face descriptors are considered the same person.
 const MATCH_THRESHOLD = 0.5; // match to a NAMED person with several confirmed angles
@@ -1161,21 +1183,55 @@ function waitForFaceApi() {
   });
 }
 
+// Reject if a promise doesn't settle in time, so a stalled network fetch can't
+// freeze the boot screen forever.
+function withTimeout(promise, ms, label = "operation") {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(label + " timed out")), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
+// Load one model with a timeout AND one automatic retry. A single stalled CDN
+// fetch then fails fast and recovers instead of hanging "Warming up…" forever.
+async function loadNet(net, url, label, timeoutMs = 25000, tries = 2) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      await withTimeout(net.loadFromUri(url), timeoutMs, label);
+      return;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error(label + " failed to load");
+}
+
 async function loadModels(onProgress = () => {}) {
   if (ready) return;
   const faceapi = await waitForFaceApi();
+  const MODEL_URL = modelBase();
   onProgress(0.1, "Loading face detector…");
-  await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+  await loadNet(faceapi.nets.tinyFaceDetector, MODEL_URL, "face detector");
   onProgress(0.3, "Loading landmarks…");
-  await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+  await loadNet(faceapi.nets.faceLandmark68Net, MODEL_URL, "landmarks");
   onProgress(0.55, "Loading recogniser…");
-  await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+  await loadNet(faceapi.nets.faceRecognitionNet, MODEL_URL, "recogniser");
   // The SSD detector is bigger but far better at actually finding faces in real
-  // photos (angles, shade, partial faces). Best-effort: if it won't load we
-  // silently fall back to the tiny detector so the app still works offline-ish.
+  // photos (angles, shade, partial faces). Best-effort: if it won't load (or is
+  // slow) we silently fall back to the tiny detector so the app still works.
   onProgress(0.75, "Loading accurate detector…");
   try {
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+    await loadNet(faceapi.nets.ssdMobilenetv1, MODEL_URL, "accurate detector", 15000, 1);
     ssdReady = true;
   } catch {
     ssdReady = false;
@@ -2149,15 +2205,27 @@ const el = (id) => document.getElementById(id);
 
 /* ---------------------------------------------------------------- boot */
 async function boot() {
+  const retry = el("bootRetry");
+  if (retry) retry.onclick = () => location.reload();
+  // Watchdog: if the model download stalls (slow or blocked connection), stop
+  // showing an endless "Warming up…" and offer a Retry instead of a dead screen.
+  const slowTimer = setTimeout(() => {
+    el("bootStatus").textContent = "Still downloading the AI model — this can be slow on a weak connection. You can wait, or tap Retry.";
+    if (retry) retry.hidden = false;
+  }, 18000);
   try {
     await face.loadModels((p, msg) => {
       el("bootBar").style.width = Math.round(p * 100) + "%";
       if (msg) el("bootStatus").textContent = msg;
     });
   } catch (e) {
-    el("bootStatus").textContent = "Couldn't load the AI model. Check your connection and reload.";
+    clearTimeout(slowTimer);
+    el("bootStatus").textContent = "Couldn't load the AI model. Check your connection and tap Retry.";
+    if (retry) retry.hidden = false;
     return;
   }
+  clearTimeout(slowTimer);
+  if (retry) retry.hidden = true;
   [state.people, state.photos, state.faces] = await Promise.all([
     db.getAll("people"),
     db.getAll("photos"),
