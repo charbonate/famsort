@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#fbf7f0" />
-  <title>Kinalbum — Family Photo Sorter</title>
+  <title>Famsort — Family Photo Sorter</title>
   <meta name="description" content="On-device face sorting for family photos. Private by design — photos never leave your phone." />
   
   <link rel="apple-touch-icon" href="icon.svg" />
@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
-/* Kinalbum app — on-device family photo sorter */
+/* Famsort app — on-device family photo sorter */
 :root {
   --cream: #fbf7f0;
   --cream-2: #f4ece0;
@@ -292,6 +292,33 @@ p { margin: 0 0 .9rem; }
 .chip__x:hover { color: var(--danger, #c0392b); }
 .output-pill { display: inline-block; font-size: .85rem; font-weight: 600; padding: 5px 12px; border-radius: 10px;
   background: var(--cream-2); border: 1px solid var(--line); margin: 8px 0; }
+.output-pill--muted { color: var(--ink-soft); }
+
+/* Output choice (cloud vs device) */
+.output-opt { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; margin: 10px 0; background: #fff; }
+.output-opt:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,115,74,.15); }
+.output-opt__head { display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; }
+.output-opt__head input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+.output-opt__title { display: inline-flex; align-items: center; gap: 8px; }
+.output-opt__desc { margin: 6px 0 0 28px; font-size: .85rem; color: var(--ink-soft); }
+.output-opt__body { margin: 10px 0 0 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.badge { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--accent-2); background: rgba(63,127,116,.12); border-radius: 999px; padding: 2px 8px; }
+.warn-box { flex-basis: 100%; font-size: .85rem; color: #8a3b1a; background: #fdece4;
+  border: 1px solid #f3c4ad; border-radius: 10px; padding: 9px 12px; margin-top: 4px; }
+.warn-box strong { color: #b23b0e; }
+
+/* Activity log */
+.activity-list { display: flex; flex-direction: column; gap: 8px; }
+.activity-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); background: #fff; }
+.activity-row__thumb { width: 44px; height: 44px; flex: none; border-radius: 8px; object-fit: cover; background: var(--cream-2); }
+.activity-row__thumb--none { display: grid; place-items: center; font-size: 1.1rem; }
+.activity-row__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.activity-row__name { font-weight: 600; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-row__meta { font-size: .8rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-row__amend { flex: none; }
+.activity-row__amend:disabled { opacity: .45; cursor: default; }
 
 /* OneDrive folder browser modal */
 .folder-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 4px 0 10px; font-size: .85rem; }
@@ -443,7 +470,7 @@ p { margin: 0 0 .9rem; }
   <div id="boot" class="boot">
     <div class="boot__card">
       <div class="brand">
-        <span class="brand__mark"></span><span class="brand__name">Kinalbum</span>
+        <span class="brand__mark"></span><span class="brand__name">Famsort</span>
       </div>
       <p class="boot__status" id="bootStatus">Warming up the on-device AI…</p>
       <div class="bar"><div class="bar__fill" id="bootBar"></div></div>
@@ -452,7 +479,7 @@ p { margin: 0 0 .9rem; }
   </div>
 
   <header class="appbar">
-    <div class="brand"><span class="brand__mark"></span><span class="brand__name">Kinalbum</span></div>
+    <div class="brand"><span class="brand__mark"></span><span class="brand__name">Famsort</span></div>
     <span class="appbar__badge">Private · on-device</span>
   </header>
 
@@ -462,7 +489,7 @@ p { margin: 0 0 .9rem; }
     <section class="view" id="view-add" data-view="add">
       <div class="hero-mini">
         <h1>Sort your photos by <em>child</em> — automatically.</h1>
-        <p>Point Kinalbum at a folder (like your OneDrive camera roll). It finds the faces <strong>on this device</strong>, groups them, and keeps watching for new photos. Nothing is uploaded.</p>
+        <p>Point Famsort at a folder (like your OneDrive camera roll). It finds the faces <strong>on this device</strong>, groups them, and keeps watching for new photos. Nothing is uploaded.</p>
       </div>
 
       <div class="card-plain" id="sourceWizard">
@@ -472,7 +499,7 @@ p { margin: 0 0 .9rem; }
             <span class="wizard-step-badge">Step 1 of 2</span>
             <h3>Where are your photos?</h3>
           </div>
-          <p>Add as many places as you like — folders on <strong>this device</strong>, folders in your <strong>cloud</strong>, or pick photos straight from your gallery. Kinalbum pulls from all of them and sorts the faces <strong>on this device</strong>. Nothing is uploaded.</p>
+          <p>Add as many places as you like — folders on <strong>this device</strong>, folders in your <strong>cloud</strong>, or pick photos straight from your gallery. Famsort pulls from all of them and sorts the faces <strong>on this device</strong>. Nothing is uploaded.</p>
 
           <div class="source-list" id="sourceList"></div>
           <div class="empty empty--inline" id="sourceEmpty">
@@ -511,9 +538,34 @@ p { margin: 0 0 .9rem; }
             <span class="wizard-step-badge">Step 2 of 2</span>
             <h3>Where should the sorted albums go?</h3>
           </div>
-          <p>Pick one place for the organised per-person albums. A <strong>cloud folder is best</strong> so every device (yours and your partner's) sees the same albums.</p>
-          <div class="output-pill" id="cloudOutputLabel">Kinalbum (OneDrive)</div>
-          <button class="btn btn--ghost btn--sm" id="pickOutputBtn">Choose output folder…</button>
+          <p>Pick where the organised per-person albums are saved. A <strong>cloud backup is best</strong> — every device sees the same albums and nothing is lost if a phone breaks.</p>
+
+          <div class="output-opt" id="outputOptCloud">
+            <label class="output-opt__head">
+              <input type="radio" name="outputMode" id="outModeCloud" value="cloud" checked />
+              <span class="output-opt__title">☁️ Back up to the cloud <span class="badge">Recommended</span></span>
+            </label>
+            <p class="output-opt__desc">Organised copies are uploaded to OneDrive, so they're safe and shared across every device.</p>
+            <div class="output-opt__body" id="cloudOutputBody">
+              <div class="output-pill" id="cloudOutputLabel">Famsort (OneDrive)</div>
+              <button class="btn btn--ghost btn--sm" id="pickOutputBtn">Choose cloud folder…</button>
+            </div>
+          </div>
+
+          <div class="output-opt" id="outputOptDevice">
+            <label class="output-opt__head">
+              <input type="radio" name="outputMode" id="outModeDevice" value="device" />
+              <span class="output-opt__title">📁 Save to this device only</span>
+            </label>
+            <p class="output-opt__desc">Organised copies are written into a folder you choose on this device.</p>
+            <div class="output-opt__body" id="deviceOutputBody" hidden>
+              <div class="output-pill output-pill--muted" id="deviceOutputLabel">No folder chosen</div>
+              <button class="btn btn--ghost btn--sm" id="pickDeviceOutputBtn">Choose device folder…</button>
+              <div class="warn-box" id="deviceWarn">
+                <strong>⚠️ No backup.</strong> If this device is lost, wiped, or breaks, these albums are gone — they're not copied anywhere else. A cloud backup is strongly recommended.
+              </div>
+            </div>
+          </div>
 
           <div class="btn-row btn-row--split">
             <button class="btn btn--ghost" id="backToSourcesBtn">← Back</button>
@@ -569,6 +621,19 @@ p { margin: 0 0 .9rem; }
       </div>
     </section>
 
+    <!-- ACTIVITY SCREEN -->
+    <section class="view" id="view-activity" data-view="activity" hidden>
+      <div class="albums-head">
+        <h2 class="view__title">Activity</h2>
+        <button class="linkbtn" id="activityClear" hidden>Clear log</button>
+      </div>
+      <p class="view__sub">Every photo Famsort sorted automatically — check where each one went, and tap <strong>Amend</strong> to fix anything.</p>
+      <div class="activity-list" id="activityList"></div>
+      <div class="empty" id="activityEmpty">
+        <p>No activity yet. Once you sort photos, each one shows up here so you can verify it.</p>
+      </div>
+    </section>
+
     <!-- SETTINGS SCREEN -->
     <section class="view" id="view-settings" data-view="settings" hidden>
       <h2 class="view__title">Family & privacy</h2>
@@ -588,7 +653,7 @@ p { margin: 0 0 .9rem; }
 
       <div class="card-plain">
         <h3>Automatic backup &amp; sorting</h3>
-        <p><strong>On by default</strong> — set up once and forget. Like your phone's auto-upload, Kinalbum keeps watching your folders, sorts new photos <strong>on this device</strong>, and — when OneDrive is connected — backs up organised copies into <strong>Kinalbum/&lt;album&gt;</strong> folders. Duplicates are skipped automatically. Turn it off only if you'd rather sort and back up by hand.</p>
+        <p><strong>On by default</strong> — set up once and forget. Like your phone's auto-upload, Famsort keeps watching your folders, sorts new photos <strong>on this device</strong>, and saves organised copies to your chosen output — <strong>OneDrive</strong> (backed up) or a <strong>device folder</strong> (local only). Every sorted photo is listed on the <strong>Activity</strong> tab so you can verify it. Duplicates are skipped automatically. Turn it off only if you'd rather sort and back up by hand.</p>
         <label class="toggle"><input type="checkbox" id="autoBackup" checked /> Auto-backup &amp; sort new photos</label>
         <p class="card-plain__fine">True background upload while the app is fully closed needs the native app — browsers limit background work. Keep the tab open (or installed) for continuous sync.</p>
         <p class="msg" id="autoBackupMsg" hidden></p>
@@ -620,6 +685,7 @@ p { margin: 0 0 .9rem; }
     <button class="tabbar__btn is-active" data-nav="add"><span>➕</span>Add</button>
     <button class="tabbar__btn" data-nav="people"><span>🙂</span>People</button>
     <button class="tabbar__btn" data-nav="albums"><span>🖼️</span>Albums</button>
+    <button class="tabbar__btn" data-nav="activity"><span>📝</span>Activity</button>
     <button class="tabbar__btn" data-nav="settings"><span>⚙️</span>Family</button>
   </nav>
 
@@ -1286,8 +1352,8 @@ const cloud = (function () {
 //   5. Copy the "Application (client) ID" and either bake it into BAKED_CLIENT_ID
 //      below, OR just paste it into the app's "Connect a cloud" card at runtime
 //      (handy for a hosted build — no rebuild needed).
-const BAKED_CLIENT_ID = "d81ab416-a289-4d59-bfcb-15adde794cac"; // Kinalbum Entra app (personal account)
-const CLIENT_ID_KEY = "kinalbum_onedrive_client_id";
+const BAKED_CLIENT_ID = "d81ab416-a289-4d59-bfcb-15adde794cac"; // Famsort Entra app (personal account)
+const CLIENT_ID_KEY = "famsort_onedrive_client_id";
 
 // Effective client ID: a value saved in this browser wins over the baked default,
 // so a deployed copy can be configured on any device without rebuilding.
@@ -1384,12 +1450,12 @@ async function graphGet(url, token) {
 
 // Upload one file to OneDrive under /Apps or a given folder path, creating any
 // missing folders in the path. Used by auto-backup to mirror new photos into
-// organised, per-album folders (e.g. "Kinalbum/Ava/IMG_0001.jpg"). Simple upload
+// organised, per-album folders (e.g. "Famsort/Ava/IMG_0001.jpg"). Simple upload
 // handles files up to 250 MB, which covers phone photos and short videos.
 async function uploadFileToOneDrive(file, folderPath) {
   if (!oneDriveConfigured()) throw new Error("OneDrive not configured");
   const token = await getToken();
-  const segs = String(folderPath || "Kinalbum")
+  const segs = String(folderPath || "Famsort")
     .split("/")
     .filter(Boolean)
     .map((s) => encodeURIComponent(s.replace(/[\\/:*?"<>|]/g, "_")));
@@ -1405,12 +1471,12 @@ async function uploadFileToOneDrive(file, folderPath) {
   return res.json();
 }
 
-// Ensure a nested folder path (e.g. "Kinalbum/Ava") exists under the drive root,
+// Ensure a nested folder path (e.g. "Famsort/Ava") exists under the drive root,
 // creating any missing segments, and return the final folder's item id. Existing
 // folders are reused. Used by re-file-on-tag so an organised copy can be moved
 // into a child's album folder even before that folder exists.
 async function ensureFolderPath(folderPath, token) {
-  const segs = String(folderPath || "Kinalbum")
+  const segs = String(folderPath || "Famsort")
     .split("/")
     .filter(Boolean)
     .map((s) => s.replace(/[\\/:*?"<>|]/g, "_"));
@@ -1443,11 +1509,11 @@ async function ensureFolderPath(folderPath, token) {
   return parentId;
 }
 
-// Move an existing OneDrive item (one of OUR organised Kinalbum copies — never a
+// Move an existing OneDrive item (one of OUR organised Famsort copies — never a
 // camera-roll original) into folderPath, creating the destination folders if
 // needed. The item keeps its id across the move. Returns the updated item, or
 // null if not signed in / no id. This is how a photo is re-filed from
-// "Kinalbum/Unsorted" into "Kinalbum/<child>" the moment a face is named.
+// "Famsort/Unsorted" into "Famsort/<child>" the moment a face is named.
 async function moveCloudFile(cloudId, folderPath) {
   if (!cloudId || !oneDriveConfigured()) return null;
   const token = await getTokenSilent();
@@ -1480,7 +1546,7 @@ async function signIn(onStatus) {
     return false;
   }
   if (!window.isSecureContext) {
-    onStatus?.("Cloud connect needs https or localhost — run Kinalbum via the local server, not a file:// page.");
+    onStatus?.("Cloud connect needs https or localhost — run Famsort via the local server, not a file:// page.");
     return false;
   }
   try {
@@ -1682,10 +1748,10 @@ async function downloadCloudFile(cloudId) {
 
 /* ---------------------------------------------------- account continuity */
 // The "identity model" (people + what the app has learned) is stored as a small
-// JSON in this app's PRIVATE OneDrive app-folder (/Apps/Kinalbum). No photos go
+// JSON in this app's PRIVATE OneDrive app-folder (/Apps/Famsort). No photos go
 // here — just the brains that let a new phone re-sort your library the same way
 // after a sign-in. The app-folder is sandboxed to this app via Files.ReadWrite.
-const MODEL_PATH = "kinalbum-model.json";
+const MODEL_PATH = "famsort-model.json";
 
 // Upload the identity model. Silent + best-effort: returns false if not signed in.
 async function saveCloudModel(model) {
@@ -1715,7 +1781,7 @@ async function loadCloudModel() {
 // its album membership plus a small thumbnail and a pointer (cloudId) to the
 // original file. Stored alongside the model in the app-folder so any device can
 // rebuild the exact same albums instantly — no re-downloading or re-recognising.
-const LIBRARY_PATH = "kinalbum-library.json";
+const LIBRARY_PATH = "famsort-library.json";
 
 async function saveCloudLibrary(manifest) {
   const token = await getTokenSilent();
@@ -1742,7 +1808,7 @@ async function loadCloudLibrary() {
 return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, moveCloudFile, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
-// app.js — Kinalbum controller. Orchestrates UI, the on-device face engine, and local storage.
+// app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
 
 
 
@@ -1777,7 +1843,11 @@ const state = {
   backedUpKeys: new Set(), // files already uploaded, so we never back up twice
   keptDistinct: new Set(), // photo ids the user confirmed are NOT duplicates (stop flagging)
   cloudSources: [], // chosen OneDrive source folders [{id, name}] ([] = camera roll default)
-  outputRoot: "Kinalbum", // OneDrive folder path where sorted per-person albums are written
+  outputRoot: "Famsort", // OneDrive folder path where sorted per-person albums are written
+  outputMode: "cloud", // "cloud" = back up albums to OneDrive; "device" = write to a local folder only
+  outputHandle: null, // FileSystemDirectoryHandle when outputMode === "device"
+  outputHandleName: "", // display name of the chosen device output folder
+  activity: [], // recent auto-sort log (newest first), capped — powers the Activity tab
 };
 
 let autoScanning = false; // true during a background re-scan (suppresses nav + overlay)
@@ -1843,7 +1913,7 @@ async function pickFolder() {
   }
   let handle;
   try {
-    handle = await window.showDirectoryPicker({ id: "kinalbum-src", mode: "read" });
+    handle = await window.showDirectoryPicker({ id: "famsort-src", mode: "read" });
   } catch {
     return; // user cancelled the picker
   }
@@ -2025,12 +2095,14 @@ async function setAutoBackup(on) {
   await saveAutoBackup();
   if (on) {
     startAutoSync();
-    if (cloud.oneDriveConfigured()) {
+    if (state.outputMode === "device" && state.outputHandle) {
+      setAutoBackupMsg(`On — new photos are sorted and saved into “${state.outputHandleName}” on this device while the app is open.`);
+    } else if (cloud.oneDriveConfigured()) {
       setAutoBackupMsg("On — new photos will be sorted and backed up to OneDrive while the app is open.");
     } else {
-      setAutoBackupMsg("On — new photos are sorted automatically. Connect OneDrive (on the Add screen) to also back up copies.");
+      setAutoBackupMsg("On — new photos are sorted automatically. Choose a cloud or device output (Add screen) to also save copies.");
     }
-    autoRescanGranted(true); // sweep right away
+    autoSweep(true); // sweep right away
   } else {
     stopAutoSync();
     setAutoBackupMsg("Off.");
@@ -2051,7 +2123,7 @@ function startAutoSync() {
   stopAutoSync();
   if (!state.autoBackup) return;
   autoSyncTimer = setInterval(() => {
-    if (document.visibilityState === "visible") autoRescanGranted(true);
+    if (document.visibilityState === "visible") autoSweep(true);
   }, 90000);
   registerPeriodicSync();
 }
@@ -2063,6 +2135,46 @@ function stopAutoSync() {
   }
 }
 
+// The "watch for new photos" sweep covers EVERY source: device folders (every
+// pass) and, less often, the chosen OneDrive folders — so a photo arriving in
+// any source is picked up, analysed, sorted and logged automatically.
+let lastCloudSweep = 0;
+let cloudSweeping = false;
+async function autoSweep(silent = true) {
+  await autoRescanGranted(silent); // device folders
+  await cloudSweep(); // cloud folders (rate-limited)
+}
+
+async function cloudSweep() {
+  if (cloudSweeping || !state.autoBackup) return;
+  // Re-listing + downloading the cloud is heavy, so do it at most every 10 min
+  // (device folders still sweep every pass). Focus/visibility also trigger it.
+  if (Date.now() - lastCloudSweep < 10 * 60 * 1000) return;
+  if (
+    !(
+      window.isSecureContext &&
+      cloud.oneDriveConfigured() &&
+      (cloudSignedIn || (await cloud.hasCloudAccount()))
+    )
+  )
+    return;
+  cloudSweeping = true;
+  lastCloudSweep = Date.now();
+  try {
+    cloudSignedIn = true;
+    const ids = (state.cloudSources || []).map((s) => s.id);
+    // Hold the scan lock (silent) so the background pull doesn't fight a manual
+    // sort and the progress bar/nav stay calm.
+    await withScanLock(async () => {
+      await cloud.importFromFolders(ids, () => {}, handleFiles);
+    }, true);
+  } catch {
+    /* offline / transient — the next sweep retries */
+  } finally {
+    cloudSweeping = false;
+  }
+}
+
 // Best-effort background sync for installed PWAs on supporting browsers.
 async function registerPeriodicSync() {
   try {
@@ -2070,7 +2182,7 @@ async function registerPeriodicSync() {
     if (reg && "periodicSync" in reg) {
       const status = await navigator.permissions.query({ name: "periodic-background-sync" });
       if (status.state === "granted") {
-        await reg.periodicSync.register("kinalbum-backup", { minInterval: 6 * 60 * 60 * 1000 });
+        await reg.periodicSync.register("famsort-backup", { minInterval: 6 * 60 * 60 * 1000 });
       }
     }
   } catch {
@@ -2078,49 +2190,107 @@ async function registerPeriodicSync() {
   }
 }
 
-// Choose the OneDrive sub-folder for a new photo: the chosen OUTPUT root, then
-// the child it was sorted into (children first), else the first person, else
-// "Unsorted".
-function backupFolderFor(personIds) {
-  const root = (state.outputRoot || "Kinalbum").replace(/\/+$/, "");
+// The leaf album a photo belongs in: the child it was sorted into (children
+// first), else the first named person, else "Unsorted".
+function albumNameFor(personIds) {
   const named = personIds.map((id) => state.people.find((p) => p.id === id)).filter((p) => p && !p.ignored);
   const target = named.find((p) => p.isChild) || named[0];
-  return `${root}/${target ? target.name : "Unsorted"}`;
+  return target ? target.name : "Unsorted";
 }
 
-// Upload freshly-ingested originals to OneDrive, organised by album. Skips
-// anything already uploaded (auto-dedup) and records what succeeded.
+// Choose the OneDrive sub-folder for a new photo: the chosen OUTPUT root, then
+// the album leaf (child / first person / "Unsorted").
+function backupFolderFor(personIds) {
+  const root = (state.outputRoot || "Famsort").replace(/\/+$/, "");
+  return `${root}/${albumNameFor(personIds)}`;
+}
+
+// Permission gate for the chosen device OUTPUT folder (needs read/write).
+async function ensureHandleRW(handle) {
+  if (!handle) return false;
+  try {
+    const opts = { mode: "readwrite" };
+    if ((await handle.queryPermission(opts)) === "granted") return true;
+    return (await handle.requestPermission(opts)) === "granted";
+  } catch {
+    return false;
+  }
+}
+
+// Write one organised copy into <chosen device folder>/<album>/<filename>.
+async function writeToDeviceFolder(file, album) {
+  const root = state.outputHandle;
+  if (!root) return false;
+  if (!(await ensureHandleRW(root))) return false;
+  const safeAlbum = String(album || "Unsorted").replace(/[\\/:*?"<>|]/g, "_");
+  const safeName = String(file.name || "photo").replace(/[\\/:*?"<>|]/g, "_");
+  try {
+    const dir = await root.getDirectoryHandle(safeAlbum, { create: true });
+    const fh = await dir.getFileHandle(safeName, { create: true });
+    const w = await fh.createWritable();
+    await w.write(file);
+    await w.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Save organised copies of the new originals to the chosen output: OneDrive
+// (cloud backup) or a device folder (local only). Skips anything already saved
+// (auto-dedup) and records what succeeded.
 async function backupPhotos(list) {
-  if (!state.autoBackup || !cloud.oneDriveConfigured() || !list.length) return;
-  setAutoBackupMsg(`Backing up ${list.length} new item${list.length > 1 ? "s" : ""} to OneDrive…`);
+  if (!state.autoBackup || !list.length) return;
+  const device = state.outputMode === "device" && !!state.outputHandle;
+  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  if (!device && !cloudOK) return;
+  setAutoBackupMsg(`Saving ${list.length} new item${list.length > 1 ? "s" : ""}…`);
   let ok = 0;
   let fail = 0;
   for (const { file, personIds, photoId } of list) {
     const key = `${file.name}|${file.size}|${file.lastModified}`;
     if (state.backedUpKeys.has(key)) continue;
+    const album = albumNameFor(personIds);
     try {
-      const folder = backupFolderFor(personIds);
-      const item = await cloud.uploadFileToOneDrive(file, folder);
-      state.backedUpKeys.add(key);
-      // Remember where it landed so any device can fetch the original later.
-      const photo = state.photos.find((p) => p.id === photoId);
-      if (photo && item && item.id) {
-        photo.cloudId = item.id;
-        // Track the organised copy separately so re-file-on-tag can MOVE it later
-        // (never the camera-roll original) and know which folder it currently sits in.
-        photo.backupId = item.id;
-        photo.backupFolder = folder;
-        await db.put("photos", photo);
+      if (device) {
+        if (!(await writeToDeviceFolder(file, album))) {
+          fail++;
+          continue;
+        }
+        state.backedUpKeys.add(key);
+        const photo = state.photos.find((p) => p.id === photoId);
+        if (photo) {
+          photo.deviceAlbum = album;
+          await db.put("photos", photo);
+        }
+        ok++;
+      } else {
+        const folder = backupFolderFor(personIds);
+        const item = await cloud.uploadFileToOneDrive(file, folder);
+        state.backedUpKeys.add(key);
+        // Remember where it landed so any device can fetch the original later.
+        const photo = state.photos.find((p) => p.id === photoId);
+        if (photo && item && item.id) {
+          photo.cloudId = item.id;
+          // Track the organised copy separately so re-file-on-tag can MOVE it later
+          // (never the camera-roll original) and know which folder it currently sits in.
+          photo.backupId = item.id;
+          photo.backupFolder = folder;
+          await db.put("photos", photo);
+        }
+        ok++;
       }
-      ok++;
     } catch {
       fail++;
     }
   }
   await saveBackedUpKeys();
-  setAutoBackupMsg(fail ? `Backed up ${ok}; ${fail} will retry later.` : `Backed up ${ok} to OneDrive.`);
-  scheduleCloudSync(); // keep the cloud copy of backed-up keys current
-  scheduleLibrarySync(); // persist the new cloud file pointers into the manifest
+  const where = device ? "this device" : "OneDrive";
+  setAutoBackupMsg(fail ? `Saved ${ok} to ${where}; ${fail} will retry later.` : `Saved ${ok} to ${where}.`);
+  if (!device) {
+    scheduleCloudSync(); // keep the cloud copy of backed-up keys current
+    scheduleLibrarySync(); // persist the new cloud file pointers into the manifest
+  }
 }
 
 /* --------------------------------------------- re-file on tag (move) */
@@ -2132,11 +2302,18 @@ const refilePending = new Set();
 let refileTimer = null;
 
 function scheduleRefile(photos) {
-  if (!state.autoBackup || !cloud.oneDriveConfigured()) return;
+  const device = state.outputMode === "device" && !!state.outputHandle;
+  if (!state.autoBackup || (!device && !cloud.oneDriveConfigured())) return;
   let queued = false;
   for (const p of photos) {
-    if (!p || !p.backupId) continue; // no organised copy yet → next backup files it correctly
-    if (backupFolderFor(p.personIds) === p.backupFolder) continue; // already in the right folder
+    if (!p) continue;
+    if (device) {
+      if (!p.deviceAlbum) continue; // no local copy yet → next backup files it correctly
+      if (albumNameFor(p.personIds) === p.deviceAlbum) continue; // already in the right folder
+    } else {
+      if (!p.backupId) continue; // no organised copy yet → next backup files it correctly
+      if (backupFolderFor(p.personIds) === p.backupFolder) continue; // already in the right folder
+    }
     refilePending.add(p.id);
     queued = true;
   }
@@ -2144,14 +2321,47 @@ function scheduleRefile(photos) {
   refileTimer = setTimeout(runRefile, 2500);
 }
 
+// Move an organised DEVICE copy from its old album folder into the new one.
+async function moveDeviceCopy(photo, fromAlbum, toAlbum) {
+  const root = state.outputHandle;
+  if (!root || !(await ensureHandleRW(root))) return false;
+  const safe = (s) => String(s).replace(/[\\/:*?"<>|]/g, "_");
+  const name = safe(photo.name || "photo");
+  try {
+    const fromDir = await root.getDirectoryHandle(safe(fromAlbum), { create: false });
+    const srcFile = await (await fromDir.getFileHandle(name, { create: false })).getFile();
+    const toDir = await root.getDirectoryHandle(safe(toAlbum), { create: true });
+    const w = await (await toDir.getFileHandle(name, { create: true })).createWritable();
+    await w.write(srcFile);
+    await w.close();
+    await fromDir.removeEntry(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function runRefile() {
   refileTimer = null;
   const ids = [...refilePending];
   refilePending.clear();
+  const device = state.outputMode === "device" && !!state.outputHandle;
   let moved = 0;
   for (const id of ids) {
     const photo = state.photos.find((p) => p.id === id);
-    if (!photo || !photo.backupId) continue;
+    if (!photo) continue;
+    if (device) {
+      if (!photo.deviceAlbum) continue;
+      const target = albumNameFor(photo.personIds);
+      if (target === photo.deviceAlbum) continue;
+      if (await moveDeviceCopy(photo, photo.deviceAlbum, target)) {
+        photo.deviceAlbum = target;
+        await db.put("photos", photo);
+        moved++;
+      }
+      continue;
+    }
+    if (!photo.backupId) continue;
     const target = backupFolderFor(photo.personIds);
     if (target === photo.backupFolder) continue;
     try {
@@ -2166,7 +2376,7 @@ async function runRefile() {
       /* offline / transient — a later tag change re-queues it */
     }
   }
-  if (moved) scheduleLibrarySync();
+  if (moved && !device) scheduleLibrarySync();
 }
 
 /* ----------------------------------------- cloud account continuity */
@@ -2439,7 +2649,7 @@ async function addDeviceSource() {
   }
   let handle;
   try {
-    handle = await window.showDirectoryPicker({ id: "kinalbum-src", mode: "read" });
+    handle = await window.showDirectoryPicker({ id: "famsort-src", mode: "read" });
   } catch {
     return; // user cancelled the picker
   }
@@ -2515,6 +2725,15 @@ async function loadCloudPrefs() {
   state.cloudSources = Array.isArray(s?.list) ? s.list : [];
   const o = await db.get("meta", "outputRoot");
   if (o?.path) state.outputRoot = o.path;
+  const om = await db.get("meta", "outputMode");
+  if (om?.mode) state.outputMode = om.mode;
+  const oh = await db.get("meta", "outputHandle");
+  if (oh?.handle) {
+    state.outputHandle = oh.handle;
+    state.outputHandleName = oh.name || oh.handle.name || "";
+  }
+  const act = await db.get("meta", "activity");
+  state.activity = Array.isArray(act?.list) ? act.list : [];
   if (cloud.oneDriveConfigured()) {
     const signedIn = await cloud.hasCloudAccount();
     if (signedIn) {
@@ -2528,6 +2747,17 @@ async function loadCloudPrefs() {
 async function saveCloudPrefs() {
   await db.put("meta", { id: "cloudSources", list: state.cloudSources });
   await db.put("meta", { id: "outputRoot", path: state.outputRoot });
+  await db.put("meta", { id: "outputMode", mode: state.outputMode });
+}
+
+// The device output folder handle is structured-cloneable, so it persists across
+// reloads; permission is re-requested on first write.
+async function saveOutputHandle() {
+  if (state.outputHandle) {
+    await db.put("meta", { id: "outputHandle", handle: state.outputHandle, name: state.outputHandleName });
+  } else {
+    await db.remove("meta", "outputHandle");
+  }
 }
 
 // Show the current selections (back-compat entry point).
@@ -2543,7 +2773,56 @@ function renderCloudSources() {
 
 function renderOutputLabel() {
   const lab = el("cloudOutputLabel");
-  if (lab) lab.textContent = `${state.outputRoot || "Kinalbum"} (OneDrive)`;
+  if (lab) lab.textContent = `${state.outputRoot || "Famsort"} (OneDrive)`;
+  const dlab = el("deviceOutputLabel");
+  if (dlab) dlab.textContent = state.outputHandleName ? `${state.outputHandleName} (this device)` : "No folder chosen";
+  const isDevice = state.outputMode === "device";
+  const rc = el("outModeCloud");
+  const rd = el("outModeDevice");
+  if (rc) rc.checked = !isDevice;
+  if (rd) rd.checked = isDevice;
+  const cb = el("cloudOutputBody");
+  const db2 = el("deviceOutputBody");
+  if (cb) cb.hidden = isDevice;
+  if (db2) db2.hidden = !isDevice;
+}
+
+// Switch between cloud (OneDrive backup) and device (local folder) output.
+async function setOutputMode(mode) {
+  state.outputMode = mode === "device" ? "device" : "cloud";
+  await saveCloudPrefs();
+  renderOutputLabel();
+}
+
+// Pick an OneDrive folder for the sorted albums (and select cloud mode).
+async function chooseCloudOutput() {
+  await setOutputMode("cloud");
+  openFolderBrowser("output");
+}
+
+// Pick a folder ON THIS DEVICE to write the sorted albums into (device mode).
+async function chooseDeviceOutput() {
+  if (!supportsFolders) {
+    showCloudMsg("This browser can't write to device folders. Use Chrome or Edge on desktop, or choose a cloud output.");
+    return;
+  }
+  let handle;
+  try {
+    handle = await window.showDirectoryPicker({ id: "famsort-out", mode: "readwrite" });
+  } catch {
+    return; // user cancelled
+  }
+  if (!(await ensureHandleRW(handle))) {
+    showCloudMsg("Famsort needs permission to write into that folder. Choose it again and allow access.");
+    return;
+  }
+  state.outputHandle = handle;
+  state.outputHandleName = handle.name;
+  state.outputMode = "device";
+  await saveOutputHandle();
+  await saveCloudPrefs();
+  renderOutputLabel();
+  showCloudMsg(`Albums will be saved into “${handle.name}” on this device. This device holds the only copy — keep a backup.`);
 }
 
 // Pull from EVERY source — device folders and cloud folders — and sort on-device.
@@ -2668,7 +2947,7 @@ async function confirmFolderBrowser() {
       .slice(1)
       .map((c) => c.name)
       .join("/");
-    state.outputRoot = path || "Kinalbum";
+    state.outputRoot = path || "Famsort";
     await saveCloudPrefs();
     renderOutputLabel();
   }
@@ -2798,7 +3077,13 @@ async function processFiles(fileList) {
     state.photos.push(photoRec);
     batchPhotos.push(photoRec);
     added++;
-    if (state.autoBackup && cloud.oneDriveConfigured()) {
+    // Log what the sorter did with this photo so the user can verify / amend it
+    // from the Activity tab, even if no cloud/device output is configured.
+    logActivity({ photoId, name: photoRec.name, album: albumNameFor([...personIds]), dest: outputDest() });
+    const wantsBackup =
+      state.autoBackup &&
+      (cloud.oneDriveConfigured() || (state.outputMode === "device" && !!state.outputHandle));
+    if (wantsBackup) {
       toBackup.push({ file: files[i], personIds: [...personIds], photoId });
     }
 
@@ -2835,6 +3120,100 @@ function withTimeout(promise, ms) {
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
   ]);
+}
+
+/* ------------------------------------------------------- activity log */
+// Where organised copies of new photos are being written right now.
+function outputDest() {
+  if (state.outputMode === "device" && state.outputHandle) return "device";
+  if (state.outputMode === "cloud" && cloud.oneDriveConfigured()) return "cloud";
+  return "app";
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+// Record one auto-sort action (newest first, capped) and persist it (debounced).
+let activitySaveTimer = null;
+function logActivity(entry) {
+  state.activity.unshift({
+    id: db.uid(),
+    ts: Date.now(),
+    name: entry.name || "photo",
+    album: entry.album || "Unsorted",
+    dest: entry.dest || "app",
+    photoId: entry.photoId || null,
+  });
+  if (state.activity.length > 300) state.activity.length = 300;
+  clearTimeout(activitySaveTimer);
+  activitySaveTimer = setTimeout(saveActivity, 1200);
+  const view = document.querySelector('.view[data-view="activity"]');
+  if (view && !view.hidden) renderActivity();
+}
+
+async function saveActivity() {
+  await db.put("meta", { id: "activity", list: state.activity.slice(0, 300) });
+}
+
+async function clearActivity() {
+  state.activity = [];
+  await saveActivity();
+  renderActivity();
+}
+
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function destLabel(dest) {
+  if (dest === "cloud") return "☁️ OneDrive";
+  if (dest === "device") return "📁 This device";
+  return "🖼️ In app";
+}
+
+function renderActivity() {
+  const listEl = el("activityList");
+  if (!listEl) return;
+  const empty = el("activityEmpty");
+  const clearBtn = el("activityClear");
+  listEl.innerHTML = "";
+  if (clearBtn) clearBtn.hidden = state.activity.length === 0;
+  if (!state.activity.length) {
+    if (empty) empty.hidden = false;
+    return;
+  }
+  if (empty) empty.hidden = true;
+  for (const a of state.activity) {
+    const photo = a.photoId ? state.photos.find((p) => p.id === a.photoId) : null;
+    const row = document.createElement("div");
+    row.className = "activity-row";
+    const thumb = photo?.thumb
+      ? `<img class="activity-row__thumb" src="${photo.thumb}" alt="" />`
+      : `<span class="activity-row__thumb activity-row__thumb--none">🖼️</span>`;
+    row.innerHTML = `
+      ${thumb}
+      <div class="activity-row__main">
+        <span class="activity-row__name">${escapeHtml(a.name)}</span>
+        <span class="activity-row__meta">→ <strong>${escapeHtml(a.album)}</strong> · ${destLabel(a.dest)} · ${timeAgo(a.ts)}</span>
+      </div>
+      <button class="btn btn--ghost btn--sm activity-row__amend"${photo ? "" : " disabled"} data-photo="${a.photoId || ""}">Amend</button>`;
+    listEl.appendChild(row);
+  }
+  listEl.querySelectorAll(".activity-row__amend").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (b.dataset.photo) openLightbox(b.dataset.photo);
+    })
+  );
 }
 
 // Decide if a freshly analysed item is a copy of one we already have, combining
@@ -4108,7 +4487,7 @@ async function downloadPhoto(photo, btn) {
   }
   try {
     let blob = null;
-    let filename = photo.name || (photo.isVideo ? "kinalbum-video.mp4" : "kinalbum-photo.jpg");
+    let filename = photo.name || (photo.isVideo ? "famsort-video.mp4" : "famsort-photo.jpg");
 
     if (photo.isVideo) {
       const media = await db.get("media", photo.id);
@@ -4165,7 +4544,7 @@ function exportModel() {
   });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "kinalbum-family.json";
+  a.download = "famsort-family.json";
   a.click();
   URL.revokeObjectURL(a.href);
   showShareMsg("Exported! Send this file to your partner to import on their phone.");
@@ -4203,7 +4582,7 @@ async function importModel(file) {
     renderAll();
     showShareMsg(`Imported ${data.people.length} ${data.people.length === 1 ? "person" : "people"}. Your photos will now sort for them too.`);
   } catch {
-    showShareMsg("That file didn't look like a Kinalbum model.");
+    showShareMsg("That file didn't look like a Famsort model.");
   }
 }
 
@@ -4307,7 +4686,7 @@ async function rebuildFromWatched() {
 }
 
 async function resetAll() {
-  if (!confirm("Delete all Kinalbum data on this device? Your original photos are not affected.")) return;
+  if (!confirm("Delete all Famsort data on this device? Your original photos are not affected.")) return;
   await db.clearAll();
   state.people = [];
   state.photos = [];
@@ -4316,9 +4695,15 @@ async function resetAll() {
   state.activeAlbum = null;
   state.watched = [];
   state.processedKeys = new Set();
+  state.activity = [];
+  state.outputHandle = null;
+  state.outputHandleName = "";
+  state.outputMode = "cloud";
   el("statRow").hidden = true;
   renderAll();
   renderWatched();
+  renderOutputLabel();
+  renderActivity();
   navTo("add");
 }
 
@@ -4328,6 +4713,7 @@ function navTo(view) {
   document.querySelectorAll(".tabbar__btn").forEach((b) =>
     b.classList.toggle("is-active", b.dataset.nav === view)
   );
+  if (view === "activity") renderActivity();
   window.scrollTo(0, 0);
 }
 
@@ -4340,7 +4726,11 @@ function wire() {
   el("toOutputBtn").addEventListener("click", () => showWizardPane("output"));
   el("backToSourcesBtn").addEventListener("click", () => showWizardPane("sources"));
   el("sortNowBtn").addEventListener("click", sortNow);
-  el("pickOutputBtn").addEventListener("click", () => openFolderBrowser("output"));
+  el("pickOutputBtn").addEventListener("click", chooseCloudOutput);
+  el("pickDeviceOutputBtn").addEventListener("click", chooseDeviceOutput);
+  el("outModeCloud").addEventListener("change", () => setOutputMode("cloud"));
+  el("outModeDevice").addEventListener("change", () => setOutputMode("device"));
+  el("activityClear").addEventListener("click", clearActivity);
   el("folderCancel").addEventListener("click", () => (el("folderModal").hidden = true));
   el("folderConfirm").addEventListener("click", confirmFolderBrowser);
   if (!supportsFolders) el("addDeviceBtn").disabled = true;
@@ -4440,12 +4830,12 @@ function wire() {
   const autoToggle = el("autoBackup");
   if (autoToggle) autoToggle.addEventListener("change", (e) => setAutoBackup(e.target.checked));
 
-  // Catch up on new photos whenever the user returns to the app.
+  // Catch up on new photos (device AND cloud) whenever the user returns.
   window.addEventListener("focus", () => {
-    if (state.autoBackup) autoRescanGranted(true);
+    if (state.autoBackup) autoSweep(true);
   });
   document.addEventListener("visibilitychange", () => {
-    if (state.autoBackup && document.visibilityState === "visible") autoRescanGranted(true);
+    if (state.autoBackup && document.visibilityState === "visible") autoSweep(true);
   });
   el("lightboxClose").addEventListener("click", closeLightbox);
   el("lightboxPrev").addEventListener("click", () => lightboxStep(-1));
