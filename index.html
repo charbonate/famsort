@@ -3528,7 +3528,7 @@ function openNameModal(cluster, photo = null) {
   el("nameFaces").hidden = !hasFaces;
   el("nameFacesCount").hidden = !hasFaces;
   el("nameHint").textContent = hasFaces
-    ? "These faces look like the same person. Tap any that aren't them to leave them out."
+    ? "These faces look like the same person. Untap any that aren’t them — they’ll stay in ‘Awaiting tag’ so you can name them separately."
     : "Name your new album. This photo will be added to it.";
   renderModalFaces();
   el("nameInput").value = "";
@@ -3568,6 +3568,22 @@ function selectedCluster() {
   return { faces: modalCluster.faces.filter((f) => modalSelected.has(f.id)) };
 }
 
+// The faces the user UNticked in the grid — "these aren't this person". We mark
+// each as a negative for this person so the follow-up auto-sweep (and later
+// "Reupdate & reorganise") won't pull them straight back into the album. They
+// keep personId=null, so they stay in "Awaiting tag" until named separately.
+async function rejectFacesFromPerson(faces, personId) {
+  if (!faces || !faces.length) return;
+  const updated = [];
+  for (const f of faces) {
+    const live = state.faces.find((sf) => sf.id === f.id);
+    if (!live || live.personId) continue; // don't disturb a face already in an album
+    live.notIds = Array.from(new Set([...(live.notIds || []), personId]));
+    updated.push(live);
+  }
+  if (updated.length) await db.bulkPut("faces", updated);
+}
+
 // Show already-named people in the modal so a cluster can be added to an
 // existing person instead of creating a second "Charbel".
 function renderExistingPeopleChips() {
@@ -3589,6 +3605,8 @@ function renderExistingPeopleChips() {
 async function assignToExistingPerson(person) {
   if (!modalCluster) return;
   const picked = selectedCluster();
+  const rejected = modalCluster.faces.filter((f) => !modalSelected.has(f.id));
+  await rejectFacesFromPerson(rejected, person.id);
   if (picked.faces.length) await mergeClusterIntoPerson(picked, person);
   if (modalPhoto) await addPhotoMembership(modalPhoto, person.id);
   el("nameModal").hidden = true;
@@ -3613,6 +3631,7 @@ async function saveNamedPerson() {
     return;
   }
   const picked = selectedCluster();
+  const rejected = modalCluster.faces.filter((f) => !modalSelected.has(f.id));
   if (!picked.faces.length && !modalPhoto) {
     el("nameInput").focus();
     return; // nothing selected — don't create an empty person
@@ -3621,6 +3640,7 @@ async function saveNamedPerson() {
   const existing = namedPeople().find((p) => p.name.toLowerCase() === name.toLowerCase());
   if (existing) {
     existing.isChild = el("isChildInput").checked;
+    await rejectFacesFromPerson(rejected, existing.id);
     if (picked.faces.length) await mergeClusterIntoPerson(picked, existing);
     if (modalPhoto) await addPhotoMembership(modalPhoto, existing.id);
   } else {
@@ -3635,6 +3655,7 @@ async function saveNamedPerson() {
     };
     state.people.push(person);
     await db.put("people", person);
+    await rejectFacesFromPerson(rejected, person.id);
     if (picked.faces.length) {
       assignClusterToPerson(picked, person.id);
       await assignMatchingUnassigned(person);
