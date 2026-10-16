@@ -130,8 +130,23 @@ p { margin: 0 0 .9rem; }
   background: #fff; color: var(--ink-soft); cursor: pointer; font-size: 1rem;
 }
 .watched-row__x:hover { background: #fff3ea; color: var(--accent-dark); }
+/* Non-clickable row variant (sources list — removal is via the ✕ only) */
+.watched-row__main--static { cursor: default; }
+.watched-row__main--static:hover { background: #fff; }
 .empty--inline { padding: 8px 0; }
 .empty--inline p { color: var(--ink-soft); font-size: .9rem; margin: 0; }
+
+/* Unified source → output wizard */
+.wizard-head { display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
+.wizard-head h3 { margin: 0; }
+.wizard-step-badge { flex: 0 0 auto; font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--accent-dark); background: var(--cream-2);
+  border: 1px solid var(--line); padding: 3px 8px; border-radius: 999px; }
+.source-list { display: grid; gap: 8px; margin: 12px 0; }
+.source-note { color: var(--ink-soft); font-size: .88rem; margin: 2px 2px 0; }
+.linkbtn { font: inherit; font-weight: 600; color: var(--accent-dark); background: none; border: none;
+  padding: 0; cursor: pointer; text-decoration: underline; }
+.linkbtn:hover { color: var(--accent); }
 
 /* Stats */
 .stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin: 6px 0 18px; }
@@ -436,70 +451,60 @@ p { margin: 0 0 .9rem; }
         <p>Point Kinalbum at a folder (like your OneDrive camera roll). It finds the faces <strong>on this device</strong>, groups them, and keeps watching for new photos. Nothing is uploaded.</p>
       </div>
 
-      <div class="card-plain" id="watchCard">
-        <h3>Watched folders</h3>
-        <p>Grant access to a folder once — Kinalbum auto-sorts everything in it and re-scans new photos each time you open the app. Add both parents' camera-roll folders for a merged album.</p>
-        <div class="watched-list" id="watchedList"></div>
-        <div class="empty empty--inline" id="watchedEmpty">
-          <p>No folders watched yet.</p>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn--primary" id="watchBtn">Watch a folder</button>
-          <button class="btn btn--ghost" id="rescanBtn">Re-scan all</button>
-          <button class="btn btn--ghost" id="rebuildBtn">Update &amp; re-scan</button>
-        </div>
-        <p class="card-plain__fine">“Update &amp; re-scan” re-reads your watched folders with the latest AI — use it after an app update to apply improvements without re-choosing the folder.</p>
-        <p class="msg" id="scanMsg" hidden></p>
-      </div>
-
-      <div class="card-plain" id="cloudCard" hidden>
-        <h3>Connect a cloud</h3>
-        <p>Pull photos straight from your personal cloud. Faces are still matched <strong>on this device</strong> — only the photos you choose are downloaded, nothing is sent out.</p>
-        <div class="cloud-setup" id="cloudSetup" hidden>
-          <p class="card-plain__fine">One-time setup: paste your Azure <strong>Application (client) ID</strong> to enable OneDrive. It's not secret. (Entra ID → App registrations → your app → Overview.)</p>
-          <div class="field-row">
-            <input class="text-input" id="clientIdInput" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="00000000-0000-0000-0000-000000000000" />
-            <button class="btn btn--ghost" id="clientIdSave">Save</button>
+      <div class="card-plain" id="sourceWizard">
+        <!-- STEP 1 — SOURCES (device folders AND cloud folders together) -->
+        <div class="wizard-pane" id="wizPaneSources">
+          <div class="wizard-head">
+            <span class="wizard-step-badge">Step 1 of 2</span>
+            <h3>Where are your photos?</h3>
           </div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn--primary" id="oneDriveBtn">
-            <span class="cloud-ico">☁️</span> Connect OneDrive
-          </button>
-          <button class="btn btn--ghost" id="googlePhotosBtn" disabled>Google Photos — soon</button>
-        </div>
+          <p>Add as many places as you like — folders on <strong>this device</strong> and folders in your <strong>cloud</strong>. Kinalbum pulls from all of them and sorts the faces <strong>on this device</strong>. Nothing is uploaded.</p>
 
-        <!-- Shown once connected: pick multiple source folders, then one output. -->
-        <div class="wizard" id="cloudWizard" hidden>
-          <div class="wizard__step">
-            <div class="wizard__num">1</div>
-            <div class="wizard__body">
-              <h4>Choose photo sources</h4>
-              <p class="card-plain__fine">Pick one or more OneDrive folders to pull photos from. Defaults to your camera roll.</p>
-              <div class="chip-set" id="cloudSourcesList"></div>
-              <button class="btn btn--ghost btn--sm" id="pickSourcesBtn">Choose OneDrive folders…</button>
+          <div class="source-list" id="sourceList"></div>
+          <div class="empty empty--inline" id="sourceEmpty">
+            <p>No sources added yet. Add a folder below.</p>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn--ghost" id="addDeviceBtn"><span>📁</span> Add folder on this device</button>
+            <button class="btn btn--ghost" id="addCloudBtn"><span>☁️</span> Add from OneDrive</button>
+          </div>
+
+          <!-- One-time OneDrive client-ID setup (revealed when needed). -->
+          <div class="cloud-setup" id="cloudSetup" hidden>
+            <p class="card-plain__fine">One-time setup: paste your Azure <strong>Application (client) ID</strong> to enable OneDrive. It's not secret. (Entra ID → App registrations → your app → Overview.)</p>
+            <div class="field-row">
+              <input class="text-input" id="clientIdInput" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="00000000-0000-0000-0000-000000000000" />
+              <button class="btn btn--ghost" id="clientIdSave">Save</button>
             </div>
           </div>
-          <div class="wizard__step">
-            <div class="wizard__num">2</div>
-            <div class="wizard__body">
-              <h4>Choose output album location</h4>
-              <p class="card-plain__fine">One folder where sorted per-person albums are written. A cloud folder is best so every device sees the same albums.</p>
-              <div class="output-pill" id="cloudOutputLabel">Kinalbum (OneDrive)</div>
-              <button class="btn btn--ghost btn--sm" id="pickOutputBtn">Choose output folder…</button>
-            </div>
+
+          <p class="card-plain__fine" id="rescanLine" hidden>After an app update, <button class="linkbtn" id="rebuildBtn">re-scan everything with the latest AI</button> to apply improvements without re-choosing folders.</p>
+
+          <div class="btn-row btn-row--split">
+            <span class="btn-row__spacer"></span>
+            <button class="btn btn--primary" id="toOutputBtn">Next: choose output →</button>
           </div>
-          <div class="wizard__step">
-            <div class="wizard__num">3</div>
-            <div class="wizard__body">
-              <h4>Sort</h4>
-              <p class="card-plain__fine">Pull from your sources and sort them into the output albums on this device.</p>
-              <button class="btn btn--primary" id="sortNowBtn">Sort my photos</button>
-            </div>
-          </div>
+          <p class="msg" id="scanMsg" hidden></p>
         </div>
 
-        <p class="msg" id="cloudMsg" hidden></p>
+        <!-- STEP 2 — OUTPUT -->
+        <div class="wizard-pane" id="wizPaneOutput" hidden>
+          <div class="wizard-head">
+            <span class="wizard-step-badge">Step 2 of 2</span>
+            <h3>Where should the sorted albums go?</h3>
+          </div>
+          <p>Pick one place for the organised per-person albums. A <strong>cloud folder is best</strong> so every device (yours and your partner's) sees the same albums.</p>
+          <div class="output-pill" id="cloudOutputLabel">Kinalbum (OneDrive)</div>
+          <button class="btn btn--ghost btn--sm" id="pickOutputBtn">Choose output folder…</button>
+
+          <div class="btn-row btn-row--split">
+            <button class="btn btn--ghost" id="backToSourcesBtn">← Back</button>
+            <span class="btn-row__spacer"></span>
+            <button class="btn btn--primary" id="sortNowBtn">Sort my photos</button>
+          </div>
+          <p class="msg" id="cloudMsg" hidden></p>
+        </div>
       </div>
 
       <label class="dropzone" id="dropzone">
@@ -1764,6 +1769,7 @@ const state = {
 
 let autoScanning = false; // true during a background re-scan (suppresses nav + overlay)
 let autoSyncTimer = null;
+let cloudSignedIn = false; // true once OneDrive is connected this session
 
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -2319,33 +2325,123 @@ async function cloudStartup() {
   await rebuildFromManifest();
 }
 
-function renderWatched() {
-  const list = el("watchedList");
-  const empty = el("watchedEmpty");
+// One unified list of input sources: device folders AND cloud folders together.
+function renderSources() {
+  const list = el("sourceList");
+  const empty = el("sourceEmpty");
   if (!list) return;
+  const cloudSources = state.cloudSources || [];
   list.innerHTML = "";
-  empty.hidden = state.watched.length > 0;
+  const hasAny = state.watched.length > 0 || cloudSources.length > 0;
+  if (empty) empty.hidden = hasAny;
+
+  // Folders on this device.
   for (const w of state.watched) {
     const row = document.createElement("div");
     row.className = "watched-row";
     row.innerHTML = `
-      <button class="watched-row__main" data-scan="${w.id}">
+      <div class="watched-row__main watched-row__main--static">
         <span class="watched-row__icon">📁</span>
         <span class="watched-row__name">${w.name}</span>
-        <span class="watched-row__hint">Tap to re-scan</span>
-      </button>
-      <button class="watched-row__x" data-forget="${w.id}" aria-label="Stop watching">✕</button>`;
+        <span class="watched-row__hint">On this device</span>
+      </div>
+      <button class="watched-row__x" data-forget="${w.id}" aria-label="Remove ${w.name}">✕</button>`;
     list.appendChild(row);
   }
-  list.querySelectorAll("[data-scan]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const w = state.watched.find((x) => x.id === b.dataset.scan);
-      if (w) scanHandle(w.handle);
-    })
-  );
+
+  // Folders in the cloud.
+  for (const s of cloudSources) {
+    const row = document.createElement("div");
+    row.className = "watched-row";
+    row.innerHTML = `
+      <div class="watched-row__main watched-row__main--static">
+        <span class="watched-row__icon">☁️</span>
+        <span class="watched-row__name">${s.name}</span>
+        <span class="watched-row__hint">OneDrive</span>
+      </div>
+      <button class="watched-row__x" data-src="${s.id}" aria-label="Remove ${s.name}">✕</button>`;
+    list.appendChild(row);
+  }
+
+  // When cloud is connected but no explicit folders are chosen, note the default.
+  if (!cloudSources.length && cloudSignedIn) {
+    const note = document.createElement("p");
+    note.className = "source-note";
+    note.textContent = "☁️ Defaults to your OneDrive camera roll.";
+    list.appendChild(note);
+  }
+
   list.querySelectorAll("[data-forget]").forEach((b) =>
     b.addEventListener("click", () => forgetFolder(b.dataset.forget))
   );
+  list.querySelectorAll("[data-src]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      state.cloudSources = (state.cloudSources || []).filter((x) => x.id !== b.dataset.src);
+      await saveCloudPrefs();
+      renderSources();
+    })
+  );
+
+  // "Re-scan with latest AI" only makes sense when device folders exist.
+  const rl = el("rescanLine");
+  if (rl) rl.hidden = state.watched.length === 0;
+}
+
+// Back-compat alias — older call sites render the unified source list now.
+function renderWatched() {
+  renderSources();
+}
+
+// Toggle between the two wizard steps (sources ↔ output).
+function showWizardPane(name) {
+  const s = el("wizPaneSources");
+  const o = el("wizPaneOutput");
+  if (s) s.hidden = name !== "sources";
+  if (o) o.hidden = name !== "output";
+  window.scrollTo(0, 0);
+}
+
+// Add a folder from THIS DEVICE to the sources list (no scan until "Sort").
+async function addDeviceSource() {
+  if (!supportsFolders) {
+    showScanMsg("This browser can't open device folders yet. Use Chrome or Edge on desktop, or use ‘Add photos’ below.");
+    return;
+  }
+  let handle;
+  try {
+    handle = await window.showDirectoryPicker({ id: "kinalbum-src", mode: "read" });
+  } catch {
+    return; // user cancelled the picker
+  }
+  if (!state.watched.some((w) => w.name === handle.name)) {
+    state.watched.push({ id: db.uid(), name: handle.name, handle });
+    await saveWatched();
+  }
+  renderSources();
+}
+
+// Make sure OneDrive is ready (configured + signed in), prompting as needed.
+async function ensureSignedIn() {
+  if (!window.isSecureContext) {
+    showScanMsg("Cloud needs the hosted app (https). Open the installed/website version to connect OneDrive.");
+    return false;
+  }
+  if (!cloud.oneDriveConfigured()) {
+    el("cloudSetup").hidden = false;
+    showCloudMsg("Paste your Azure client ID above to enable OneDrive, then press “Add from OneDrive” again.");
+    return false;
+  }
+  if (cloudSignedIn || (await cloud.hasCloudAccount())) {
+    cloudSignedIn = true;
+    return true;
+  }
+  return await connectCloud();
+}
+
+// Add a folder from ONEDRIVE to the sources list.
+async function addCloudSource() {
+  if (!(await ensureSignedIn())) return;
+  openFolderBrowser("sources");
 }
 
 function showScanMsg(text) {
@@ -2357,26 +2453,29 @@ function showScanMsg(text) {
 
 /* ---------------------------------------------------------- cloud sources */
 async function connectCloud() {
-  el("oneDriveBtn").disabled = true;
+  const btn = el("addCloudBtn");
+  if (btn) btn.disabled = true;
   try {
     const ok = await cloud.signIn(showCloudMsg);
-    if (!ok) return;
+    if (!ok) return false;
+    cloudSignedIn = true;
     // Signed in — bring back people + learning first.
     await restoreCloudModel();
     // If an organised library already exists in OneDrive, rebuild straight from
     // it (no re-downloading or re-recognising). This is instant and device-safe.
     const restored = await rebuildFromManifest();
-    // Reveal the sources → output → sort wizard (default source = camera roll).
-    revealCloudWizard();
+    renderSources();
+    renderOutputLabel();
     if (restored > 0) {
-      showCloudMsg(`Connected. Restored ${restored} sorted photo${restored === 1 ? "" : "s"}. Choose sources & an output below, then Sort to pull in new photos.`);
+      showCloudMsg(`Connected. Restored ${restored} sorted photo${restored === 1 ? "" : "s"}.`);
     } else {
-      showCloudMsg("Connected. Choose which OneDrive folders to pull from and where to save the sorted albums, then press Sort.");
+      showCloudMsg("Connected to OneDrive. Add the folders to pull from, then choose an output and Sort.");
     }
     scheduleCloudSync();
     scheduleLibrarySync();
+    return true;
   } finally {
-    el("oneDriveBtn").disabled = false;
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -2388,7 +2487,11 @@ async function loadCloudPrefs() {
   if (o?.path) state.outputRoot = o.path;
   if (cloud.oneDriveConfigured()) {
     const signedIn = await cloud.hasCloudAccount();
-    if (signedIn) revealCloudWizard();
+    if (signedIn) {
+      cloudSignedIn = true;
+      renderSources();
+      renderOutputLabel();
+    }
   }
 }
 
@@ -2397,38 +2500,15 @@ async function saveCloudPrefs() {
   await db.put("meta", { id: "outputRoot", path: state.outputRoot });
 }
 
-// Show the 3-step wizard (once connected) and paint the current selections.
+// Show the current selections (back-compat entry point).
 function revealCloudWizard() {
-  const w = el("cloudWizard");
-  if (w) w.hidden = false;
-  renderCloudSources();
+  renderSources();
   renderOutputLabel();
 }
 
+// Back-compat alias — the cloud folder list is part of the unified source list.
 function renderCloudSources() {
-  const box = el("cloudSourcesList");
-  if (!box) return;
-  box.innerHTML = "";
-  if (!state.cloudSources.length) {
-    const chip = document.createElement("span");
-    chip.className = "chip chip--muted";
-    chip.textContent = "📷 Camera roll (default)";
-    box.appendChild(chip);
-    return;
-  }
-  for (const s of state.cloudSources) {
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chip.innerHTML = `📁 ${s.name} <button class="chip__x" data-src="${s.id}" aria-label="Remove ${s.name}">✕</button>`;
-    box.appendChild(chip);
-  }
-  box.querySelectorAll("[data-src]").forEach((b) =>
-    b.addEventListener("click", async () => {
-      state.cloudSources = state.cloudSources.filter((x) => x.id !== b.dataset.src);
-      await saveCloudPrefs();
-      renderCloudSources();
-    })
-  );
+  renderSources();
 }
 
 function renderOutputLabel() {
@@ -2436,13 +2516,25 @@ function renderOutputLabel() {
   if (lab) lab.textContent = `${state.outputRoot || "Kinalbum"} (OneDrive)`;
 }
 
-// Pull from the chosen source folders (or camera roll) and sort on-device.
+// Pull from EVERY source — device folders and cloud folders — and sort on-device.
 async function sortNow() {
   const btn = el("sortNowBtn");
   if (btn) btn.disabled = true;
   try {
-    const ids = state.cloudSources.map((s) => s.id);
-    await cloud.importFromFolders(ids, showCloudMsg, handleFiles);
+    // 1) Device folders — scan each watched handle (duplicates skipped).
+    for (const w of state.watched) {
+      if (w.handle) await scanHandle(w.handle);
+    }
+    // 2) Cloud folders — pull from chosen OneDrive folders (or camera roll).
+    if (
+      window.isSecureContext &&
+      cloud.oneDriveConfigured() &&
+      (cloudSignedIn || (await cloud.hasCloudAccount()))
+    ) {
+      cloudSignedIn = true;
+      const ids = (state.cloudSources || []).map((s) => s.id);
+      await cloud.importFromFolders(ids, showCloudMsg, handleFiles);
+    }
     scheduleCloudSync();
     scheduleLibrarySync();
   } finally {
@@ -4166,41 +4258,35 @@ function navTo(view) {
 
 /* ------------------------------------------------------------- wiring */
 function wire() {
-  if (supportsFolders) {
-    el("watchBtn").addEventListener("click", pickFolder);
-    el("rescanBtn").addEventListener("click", rescanAll);
-    el("rebuildBtn").addEventListener("click", rebuildFromWatched);
-  } else {
-    el("watchCard").hidden = true;
-  }
+  // Unified source → output wizard (device folders + cloud folders together).
+  el("addDeviceBtn").addEventListener("click", addDeviceSource);
+  el("addCloudBtn").addEventListener("click", addCloudSource);
+  el("rebuildBtn").addEventListener("click", rebuildFromWatched);
+  el("toOutputBtn").addEventListener("click", () => showWizardPane("output"));
+  el("backToSourcesBtn").addEventListener("click", () => showWizardPane("sources"));
+  el("sortNowBtn").addEventListener("click", sortNow);
+  el("pickOutputBtn").addEventListener("click", () => openFolderBrowser("output"));
+  el("folderCancel").addEventListener("click", () => (el("folderModal").hidden = true));
+  el("folderConfirm").addEventListener("click", confirmFolderBrowser);
+  if (!supportsFolders) el("addDeviceBtn").disabled = true;
+  if (!window.isSecureContext) el("addCloudBtn").disabled = true;
 
   el("fileInput").addEventListener("change", (e) => {
     handleFiles(e.target.files);
     e.target.value = "";
   });
 
-  // Cloud sources (OneDrive). Shown on https/localhost; hidden on file:// pages.
+  // Runtime OneDrive client-ID setup: configure a deployed build on-device
+  // without a rebuild. Revealed from "Add from OneDrive" when no ID is set.
   if (window.isSecureContext) {
-    el("cloudCard").hidden = false;
-    el("oneDriveBtn").addEventListener("click", connectCloud);
-    el("pickSourcesBtn").addEventListener("click", () => openFolderBrowser("sources"));
-    el("pickOutputBtn").addEventListener("click", () => openFolderBrowser("output"));
-    el("sortNowBtn").addEventListener("click", sortNow);
-    el("folderCancel").addEventListener("click", () => (el("folderModal").hidden = true));
-    el("folderConfirm").addEventListener("click", confirmFolderBrowser);
-    // Runtime client-ID setup: show the paste field until an ID is saved, so a
-    // deployed build can be configured on-device without a rebuild.
-    const refreshCloudSetup = () => {
-      el("cloudSetup").hidden = !!cloud.getClientId();
-      el("clientIdInput").value = cloud.getClientId() || "";
-    };
-    refreshCloudSetup();
+    el("clientIdInput").value = cloud.getClientId() || "";
+    if (cloud.getClientId()) el("cloudSetup").hidden = true;
     el("clientIdSave").addEventListener("click", () => {
       cloud.setClientId(el("clientIdInput").value);
-      refreshCloudSetup();
+      el("cloudSetup").hidden = !!cloud.getClientId();
       showCloudMsg(
         cloud.getClientId()
-          ? "Saved. Make sure this page's URL is a Single-page redirect URI in your Azure app, then press Connect OneDrive."
+          ? "Saved. Make sure this page's URL is a Single-page redirect URI in your Azure app, then press “Add from OneDrive”."
           : "Client ID cleared."
       );
     });
