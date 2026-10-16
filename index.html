@@ -279,7 +279,7 @@ p { margin: 0 0 .9rem; }
 
 /* Lightbox (full photo viewer) */
 .lightbox { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 12px; padding: 24px; overflow-y: auto;
+  align-items: center; justify-content: flex-start; gap: 12px; padding: 24px; overflow-y: auto;
   background: rgba(20,16,14,.92); }
 .lightbox__stage { position: relative; display: flex; align-items: center; justify-content: center;
   width: 100%; max-width: 820px; }
@@ -300,14 +300,15 @@ p { margin: 0 0 .9rem; }
 .lightbox__strip-thumb.is-active { border-color: #fff; }
 .lightbox__strip-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: #fff; font-size: .8rem; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
-.lightbox__close { position: absolute; top: 14px; right: 16px; width: 44px; height: 44px;
+.lightbox__close { position: fixed; top: 14px; right: 16px; width: 44px; height: 44px;
   border-radius: 50%; border: none; background: rgba(255,255,255,.14); color: #fff;
   font-size: 1.2rem; cursor: pointer; z-index: 2; }
 .lightbox__close:hover { background: rgba(255,255,255,.26); }
 .lightbox__actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 
-/* Manual tagging panel inside the lightbox */
-.lightbox__tag { width: 100%; max-width: 440px; max-height: 28vh; overflow-y: auto;
+/* Manual tagging panel inside the lightbox — flows in the lightbox's own
+   scroll so a long list of names is never clipped off-screen. */
+.lightbox__tag { width: 100%; max-width: 440px;
   background: #fff; border-radius: var(--radius); padding: 12px 14px; }
 .tag-title { font-size: .82rem; font-weight: 700; color: var(--ink-soft); margin: 0 0 8px; text-transform: uppercase; letter-spacing: .03em; }
 .tag-face { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
@@ -706,11 +707,11 @@ p { margin: 0 0 .9rem; }
     <!-- PEOPLE SCREEN -->
     <section class="view" id="view-people" data-view="people" hidden>
       <h2 class="view__title">Who's who?</h2>
-      <p class="view__sub">We grouped the faces we found. Name your children — tap <strong>Ignore</strong> for anyone who isn't one of your kids.</p>
+      <p class="view__sub">We grouped the faces we found. Tag your children — tap <strong>Ignore</strong> for anyone who isn't one of your kids.</p>
 
       <section class="to-name" id="toNamePanel" hidden>
-        <h3 class="people-subhead people-subhead--hot" id="toNameHead">Faces to name</h3>
-        <p class="to-name__sub">New faces we found — name them first so their photos sort into albums.</p>
+        <h3 class="people-subhead people-subhead--hot" id="toNameHead">Faces to tag</h3>
+        <p class="to-name__sub">New faces we found — tag them first so their photos sort into albums.</p>
         <div class="people-grid" id="peopleGrid"></div>
       </section>
 
@@ -764,7 +765,7 @@ p { margin: 0 0 .9rem; }
             </select>
           </label>
         </div>
-        <p class="view__sub" id="awaitingSub" hidden>New faces we found. Name them so their photos sort into albums, or tap Ignore.</p>
+        <p class="view__sub" id="awaitingSub" hidden>New faces we found. Tag them so their photos sort into albums, or tap Ignore.</p>
         <div class="people-grid" id="awaitingGrid" hidden></div>
         <div class="album-grid" id="albumGrid"></div>
       </div>
@@ -864,7 +865,7 @@ p { margin: 0 0 .9rem; }
   <!-- Lightweight modal for naming a person -->
   <div class="modal" id="nameModal" hidden>
     <div class="modal__card">
-      <h3>Name this person</h3>
+      <h3>Tag this person</h3>
       <p class="modal__hint" id="nameHint">These faces look like the same person. Tap any that <strong>aren't</strong> them to leave them out.</p>
       <div class="name-faces" id="nameFaces"></div>
       <p class="name-faces__count" id="nameFacesCount"></p>
@@ -4191,7 +4192,11 @@ async function redetectFaces(photoIds) {
         faces = [];
       }
       for (const f of faces) {
-        const match = face.matchPerson(f.descriptor, state.people);
+        // Match ONLY against real named people — never the hidden "Ignored"
+        // bucket. A re-scan is a fresh look, so a face that was ignored before
+        // must still be allowed to surface for tagging instead of being
+        // silently auto-hidden again.
+        const match = face.matchPerson(f.descriptor, namedPeople());
         const personId = match ? match.id : null;
         const rec = { id: db.uid(), photoId: photo.id, descriptor: f.descriptor, thumb: f.thumb, personId };
         state.faces.push(rec);
@@ -4217,7 +4222,7 @@ async function redetectFaces(photoIds) {
     const lowNote = lowRes ? ` ${lowRes} could only use the small preview (turn on OneDrive backup in Family ⚙️ so the originals are available next time).` : "";
     setAutoBackupMsg(
       found
-        ? `Re-scan found ${found} face${found === 1 ? "" : "s"}.${hiNote}${lowNote} Check the People tab to name them.`
+        ? `Re-scan found ${found} face${found === 1 ? "" : "s"}.${hiNote}${lowNote} Check the People tab to tag them.`
         : `Re-scan found no faces.${hiNote}${lowNote}${ssdNote}`.trim()
     );
     if (state.pendingClusters.length) navTo("people");
@@ -4556,7 +4561,7 @@ function renderClusterCards(grid) {
       <div class="person-card__body">
         <div class="person-card__count">${cluster.faces.length} photo${cluster.faces.length > 1 ? "s" : ""}</div>
         <div class="person-card__actions">
-          <button class="btn btn--primary btn--small" data-name="${idx}">Name</button>
+          <button class="btn btn--primary btn--small" data-name="${idx}">Tag</button>
           <button class="btn btn--ghost btn--small" data-ignore="${idx}">Ignore</button>
         </div>
       </div>`;
