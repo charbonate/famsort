@@ -262,10 +262,21 @@ p { margin: 0 0 .9rem; }
 
 /* Open album header */
 .albumdet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.albumdet-head__actions { display: flex; align-items: center; gap: 8px; }
 .iconbtn { border: 1px solid var(--line); background: #fff; width: 40px; height: 40px; border-radius: 50%;
   font-size: 1.15rem; line-height: 1; cursor: pointer; color: var(--ink-soft); }
 .iconbtn.is-on { color: #f0b400; border-color: #f0d79a; }
 .albumdet-meta { margin-top: 2px; }
+
+/* "X still to back up" strip + Back up now */
+.album-backup { margin: 2px 0 12px; padding: 9px 11px; background: var(--cream-2);
+  border: 1px solid var(--line); border-radius: 12px; }
+.album-backup__row { display: flex; align-items: center; gap: 10px; }
+.album-backup__text { font-size: .82rem; font-weight: 600; color: var(--ink-soft); flex: 1; }
+.btn--sm { padding: 6px 12px; font-size: .82rem; }
+.album-backup__track { margin-top: 8px; height: 6px; border-radius: 999px; background: #fff;
+  border: 1px solid var(--line); overflow: hidden; }
+.album-backup__fill { height: 100%; width: 0; background: var(--accent); transition: width .2s ease; }
 
 .album-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 @media (min-width: 520px) { .album-grid { grid-template-columns: repeat(4, 1fr); } }
@@ -276,6 +287,16 @@ p { margin: 0 0 .9rem; }
   font-size: .72rem; font-weight: 700; padding: 2px 6px; border-radius: 6px; pointer-events: none; }
 .thumb__saved { position: absolute; right: 6px; top: 6px; background: rgba(20,16,14,.55); color: #fff;
   font-size: .72rem; line-height: 1; padding: 3px 5px; border-radius: 6px; pointer-events: none; }
+/* Per-photo backup state badge */
+.thumb__status { position: absolute; right: 6px; top: 6px; min-width: 20px; height: 20px; display: flex;
+  align-items: center; justify-content: center; font-size: .72rem; line-height: 1; padding: 0 4px;
+  border-radius: 7px; pointer-events: none; color: #fff; }
+.thumb__status.is-saved { background: rgba(46,125,74,.9); }
+.thumb__status.is-pending { background: rgba(176,106,0,.85); }
+.thumb__status.is-uploading { background: rgba(20,16,14,.6); }
+.spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+  border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Lightbox (full photo viewer) */
 .lightbox { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
@@ -556,6 +577,7 @@ p { margin: 0 0 .9rem; }
 /* Relationship "data layer" picker (person edit modal) */
 .rel-field { margin: 12px 0 4px; }
 .rel-field__label { display: block; font-size: .82rem; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.rel-field__opt { font-weight: 500; color: var(--ink-soft); }
 .rel-chips { display: flex; flex-wrap: wrap; gap: 7px; }
 .rel-chip { border: 1px solid var(--line); background: #fff; color: var(--ink-soft); font: inherit;
   font-size: .82rem; font-weight: 600; padding: .4em .8em; border-radius: 999px; cursor: pointer;
@@ -752,11 +774,23 @@ p { margin: 0 0 .9rem; }
       <div id="albumDetail" hidden>
         <div class="albumdet-head">
           <button class="linkbtn" id="albumBack">‹ All albums</button>
-          <button class="iconbtn" id="albumFavBtn" aria-label="Favourite this album">☆</button>
+          <div class="albumdet-head__actions">
+            <button class="iconbtn" id="albumEditBtn" aria-label="Edit this person" hidden>✎</button>
+            <button class="iconbtn" id="albumFavBtn" aria-label="Favourite this album">☆</button>
+          </div>
         </div>
         <h2 class="view__title" id="albumDetailTitle">Album</h2>
         <p class="view__sub albumdet-meta" id="albumDetailMeta"></p>
         <nav class="album-path" id="albumPath" hidden aria-label="Where this album is saved"></nav>
+        <div class="album-backup" id="albumBackupBar" hidden>
+          <div class="album-backup__row">
+            <span class="album-backup__text" id="albumBackupText"></span>
+            <button class="btn btn--primary btn--sm" id="albumBackupNow">⤒ Back up now</button>
+          </div>
+          <div class="album-backup__track" id="albumBackupTrack" hidden>
+            <div class="album-backup__fill" id="albumBackupFill"></div>
+          </div>
+        </div>
         <div class="albums-toolbar" id="albumPhotoSortWrap">
           <label class="sortsel">Sort
             <select id="albumPhotoSort">
@@ -877,7 +911,11 @@ p { margin: 0 0 .9rem; }
       </div>
 
       <input type="text" id="nameInput" placeholder="e.g. Ava" maxlength="30" />
-      <label class="check"><input type="checkbox" id="isChildInput" checked /> This is one of my children</label>
+      <div class="rel-field">
+        <span class="rel-field__label">How are they related to you? <span class="rel-field__opt">(optional)</span></span>
+        <div class="rel-chips" id="tagRelChips"></div>
+        <input type="text" id="tagRelCustom" class="rel-custom" placeholder="Type a relationship" maxlength="24" hidden />
+      </div>
       <div class="btn-row">
         <button class="btn btn--ghost" id="nameCancel">Cancel</button>
         <button class="btn btn--primary" id="nameSave">Save</button>
@@ -925,7 +963,6 @@ p { margin: 0 0 .9rem; }
         <img class="person-edit__face" id="personEditFace" alt="" />
         <input type="text" id="personEditName" placeholder="Name" maxlength="30" />
       </div>
-      <label class="check"><input type="checkbox" id="personEditChild" /> This is one of my children</label>
       <div class="rel-field">
         <span class="rel-field__label">How are they related to you?</span>
         <div class="rel-chips" id="relChips"></div>
@@ -2053,12 +2090,17 @@ const DUP_LOOSE_FRAC = 0.09; // and below this = duplicate only if aspect ratios
 const IGNORED = "__ignored__";
 // Relationship "data layer" — Samsung-style quick picks for how a person relates
 // to the user. Stored on person.relationship (a label string); "Other" opens a
-// free-text box so any relationship can be typed. Purely descriptive metadata.
+// free-text box so any relationship can be typed. The "child" relationships also
+// drive the "My Children" album filter (person.isChild), so there's no separate
+// child toggle — it's one of these options.
 const RELATIONSHIPS = [
-  "Me", "Daughter", "Son", "Mother", "Father", "Sister", "Brother",
+  "Me", "Child", "Daughter", "Son", "Mother", "Father", "Sister", "Brother",
   "Wife", "Husband", "Partner", "Grandmother", "Grandfather",
   "Aunt", "Uncle", "Niece", "Nephew", "Cousin", "Friend", "Other",
 ];
+// Picking one of these marks the person as one of "my children".
+const CHILD_RELATIONSHIPS = new Set(["Child", "Daughter", "Son"]);
+const isChildRelationship = (rel) => CHILD_RELATIONSHIPS.has(rel);
 const IMAGE_RE = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i;
 const VIDEO_RE = /\.(mp4|mov|m4v|webm|3gp|3gpp|avi|mkv)$/i;
 const isImageName = (n) => IMAGE_RE.test(n);
@@ -2078,6 +2120,8 @@ const state = {
   photos: [], // {id, thumb, hash, name, personIds:[]}
   faces: [], // {id, photoId, descriptor:[..], thumb, personId|null}
   activeAlbum: null,
+  albumFrom: "albums", // where an open album was entered from: "albums" | "people" (not persisted)
+  uploadingPhotoId: null, // photo currently being force-backed-up, for the thumb spinner (not persisted)
   pendingClusters: [], // computed clusters of unassigned faces for the People screen
   watched: [], // {id, name, handle} folders to auto-scan
   processedKeys: new Set(), // "name|size|lastModified" of files already ingested
@@ -2537,6 +2581,237 @@ async function backupPhotos(list) {
   if (!device) {
     scheduleCloudSync(); // keep the cloud copy of backed-up keys current
     scheduleLibrarySync(); // persist the new cloud file pointers into the manifest
+  }
+}
+
+/* ------------------------------------------ force backup (user-driven) */
+// Has this photo got a saved copy in the user's output (OneDrive or device)?
+function isPhotoSaved(p) {
+  return !!(p && (p.cloudId || p.backupId || p.deviceAlbum));
+}
+
+const asFile = (blob, name) =>
+  blob instanceof File ? blob : new File([blob], name, { type: blob.type || "application/octet-stream" });
+const ensureImageName = (name) => (/\.(jpe?g|png|webp|gif)$/i.test(name) ? name : name + ".jpg");
+
+// Find the best file we can upload for a photo, in quality order: a local
+// original (video/media store), the original re-read from a connected watched
+// folder, an existing OneDrive source copy, or — last resort — the stored
+// thumbnail (lower-res, flagged lowRes so we can tell the user). Returns
+// { file, lowRes } or null if nothing is reachable on this device.
+async function getUploadableFile(photo) {
+  const name = photo.name || (photo.isVideo ? "famsort-video.mp4" : "famsort-photo.jpg");
+  try {
+    const m = await db.get("media", photo.id);
+    if (m && m.blob) return { file: asFile(m.blob, name), lowRes: false };
+  } catch {}
+  try {
+    const orig = await findOriginalFile(photo);
+    if (orig) return { file: orig, lowRes: false };
+  } catch {}
+  if (cloud.oneDriveConfigured() && photo.cloudId) {
+    try {
+      const cb = await withTimeout(cloud.downloadCloudFile(photo.cloudId), 30000);
+      if (cb) return { file: asFile(cb, name), lowRes: false };
+    } catch {}
+  }
+  if (photo.thumb) {
+    try {
+      const b = await (await fetch(photo.thumb)).blob();
+      return { file: asFile(b, ensureImageName(name)), lowRes: true };
+    } catch {}
+  }
+  return null;
+}
+
+let forceBackupBusy = false;
+
+// Back up a whole album's un-saved photos on demand, so the user doesn't have to
+// wait for (or trust) the background sweep.
+function forceBackupAlbum(id) {
+  const photos = albumPhotos(id).filter((p) => !isPhotoSaved(p));
+  forceBackupPhotos(photos.map((p) => p.id), albumDisplayName(id));
+}
+
+// Upload a specific set of photos right now, with live per-photo progress so the
+// user can SEE what's saved and what's still going. Prioritises whatever list it
+// is given (e.g. one album), independent of the normal auto-sweep order.
+async function forceBackupPhotos(ids, label) {
+  if (forceBackupBusy) return;
+  const device = state.outputMode === "device" && !!state.outputHandle;
+  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  if (!device && !cloudOK) {
+    setAutoBackupMsg("Choose where to back up first — open Family ⚙️ and pick OneDrive or a device folder.");
+    return;
+  }
+  const photos = ids
+    .map((id) => state.photos.find((p) => p.id === id))
+    .filter(Boolean)
+    .filter((p) => !isPhotoSaved(p));
+  if (!photos.length) {
+    setAutoBackupMsg("Everything here is already backed up. ✓");
+    renderAlbums();
+    return;
+  }
+  forceBackupBusy = true;
+  renderAlbumBackupBar(state.activeAlbum, false);
+  const where = device ? "this device" : "OneDrive";
+  let ok = 0;
+  let fail = 0;
+  let unreachable = 0;
+  let lowRes = 0;
+  for (let i = 0; i < photos.length; i++) {
+    const photo = photos[i];
+    state.uploadingPhotoId = photo.id;
+    setThumbStatus(photo.id, "uploading");
+    setAlbumBackupProgress(i, photos.length);
+    setAutoBackupMsg(`Backing up ${i + 1} of ${photos.length} to ${where}…`);
+    const got = await getUploadableFile(photo);
+    if (!got) {
+      unreachable++;
+      setThumbStatus(photo.id, "pending");
+      continue;
+    }
+    if (got.lowRes) lowRes++;
+    try {
+      const album = albumNameFor(photo.personIds);
+      if (device) {
+        if (await writeToDeviceFolder(got.file, album)) {
+          photo.deviceAlbum = album;
+          await db.put("photos", photo);
+          ok++;
+        } else {
+          fail++;
+        }
+      } else {
+        const folder = backupFolderFor(photo.personIds);
+        const item = await cloud.uploadFileToOneDrive(got.file, folder);
+        if (item && item.id) {
+          photo.cloudId = item.id;
+          photo.backupId = item.id;
+          photo.backupFolder = folder;
+          await db.put("photos", photo);
+          state.backedUpKeys.add(`${got.file.name}|${got.file.size}|${got.file.lastModified || 0}`);
+          ok++;
+        } else {
+          fail++;
+        }
+      }
+    } catch {
+      fail++;
+    }
+    setThumbStatus(photo.id, isPhotoSaved(photo) ? "saved" : "pending");
+  }
+  state.uploadingPhotoId = null;
+  setAlbumBackupProgress(photos.length, photos.length);
+  forceBackupBusy = false;
+  await saveBackedUpKeys();
+  if (!device) {
+    scheduleCloudSync();
+    scheduleLibrarySync();
+  }
+  renderAll();
+  let msg = `Backed up ${ok} to ${where}.`;
+  if (lowRes) msg += ` ${lowRes} used a smaller preview (the full-size original isn't on this device).`;
+  if (unreachable) msg += ` ${unreachable} couldn't be found — reconnect the source folder, then try again.`;
+  if (fail) msg += ` ${fail} failed — they'll retry automatically.`;
+  setAutoBackupMsg(msg);
+}
+
+// The backup state to show on a photo's thumbnail: saved, uploading, waiting, or
+// none (no destination configured — don't clutter the grid).
+function photoBackupStatus(p) {
+  if (p.id === state.uploadingPhotoId) return "uploading";
+  if (isPhotoSaved(p)) return "saved";
+  const device = state.outputMode === "device" && !!state.outputHandle;
+  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  if (state.autoBackup && (device || cloudOK)) return "pending";
+  return "none";
+}
+
+function applyThumbStatus(badge, status) {
+  badge.classList.remove("is-saved", "is-pending", "is-uploading");
+  if (status === "saved") {
+    badge.classList.add("is-saved");
+    badge.innerHTML = "☁";
+    badge.title = "Backed up to your output";
+  } else if (status === "uploading") {
+    badge.classList.add("is-uploading");
+    badge.innerHTML = '<span class="spin"></span>';
+    badge.title = "Backing up now…";
+  } else if (status === "pending") {
+    badge.classList.add("is-pending");
+    badge.innerHTML = "⏳";
+    badge.title = "Waiting to back up";
+  } else {
+    badge.innerHTML = "";
+    badge.title = "";
+  }
+}
+
+// Targeted update of ONE thumbnail's status badge, without re-rendering the grid
+// (so the per-photo spinner updates smoothly during a force backup).
+function setThumbStatus(pid, status) {
+  const grid = el("albumGrid");
+  if (!grid) return;
+  const cell = grid.querySelector('.thumb[data-pid="' + pid + '"]');
+  if (!cell) return;
+  let badge = cell.querySelector(".thumb__status");
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "thumb__status";
+    cell.appendChild(badge);
+  }
+  applyThumbStatus(badge, status);
+}
+
+function setAlbumBackupProgress(done, total) {
+  const track = el("albumBackupTrack");
+  const fill = el("albumBackupFill");
+  if (!track || !fill) return;
+  track.hidden = false;
+  fill.style.width = (total ? Math.round((done / total) * 100) : 0) + "%";
+}
+
+// The "X of Y still to back up" strip + "Back up now" button above an album.
+function renderAlbumBackupBar(id, special) {
+  const bar = el("albumBackupBar");
+  if (!bar) return;
+  if (el("albumBackupTrack")) el("albumBackupTrack").hidden = true;
+  if (id === AWAITING) {
+    bar.hidden = true;
+    return;
+  }
+  const photos = albumPhotos(id);
+  if (!photos.length) {
+    bar.hidden = true;
+    return;
+  }
+  const device = state.outputMode === "device" && !!state.outputHandle;
+  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  const unsaved = photos.filter((p) => !isPhotoSaved(p)).length;
+  const text = el("albumBackupText");
+  const btn = el("albumBackupNow");
+  if (!device && !cloudOK) {
+    if (unsaved === 0) {
+      bar.hidden = true;
+      return;
+    }
+    bar.hidden = false;
+    text.textContent = `${unsaved} not backed up — pick a destination in Family ⚙️`;
+    btn.hidden = true;
+    return;
+  }
+  const where = device ? "this device" : "OneDrive";
+  bar.hidden = false;
+  if (unsaved === 0) {
+    text.textContent = `✓ All ${photos.length} backed up to ${where}`;
+    btn.hidden = true;
+  } else {
+    text.textContent = `${unsaved} of ${photos.length} still to back up to ${where}`;
+    btn.hidden = false;
+    btn.disabled = forceBackupBusy;
+    btn.textContent = forceBackupBusy ? "Backing up…" : "⤒ Back up now";
   }
 }
 
@@ -3722,6 +3997,7 @@ function namedPeopleHere() {
 let modalCluster = null;
 let modalPhoto = null; // when set, the saved person's album also gets this photo
 let modalSelected = new Set(); // face ids currently marked as "this person"
+let tagRelationship = ""; // relationship chosen in the tag modal, applied on Save
 
 function openNameModal(cluster, photo = null) {
   modalCluster = cluster;
@@ -3735,7 +4011,10 @@ function openNameModal(cluster, photo = null) {
     : "Name your new album. This photo will be added to it.";
   renderModalFaces();
   el("nameInput").value = "";
-  el("isChildInput").checked = true;
+  tagRelationship = "";
+  const tagCustom = el("tagRelCustom");
+  if (tagCustom) tagCustom.value = "";
+  renderTagRelChips();
   renderExistingPeopleChips();
   el("nameModal").hidden = false;
   setTimeout(() => el("nameInput").focus(), 50);
@@ -3865,7 +4144,11 @@ async function saveNamedPerson() {
 // Add the picked faces (and any rejected negatives) to an EXISTING person.
 async function commitToExistingPerson(existing, picked) {
   const rejected = modalCluster.faces.filter((f) => !modalSelected.has(f.id));
-  existing.isChild = el("isChildInput").checked;
+  const rel = resolveTagRelationship();
+  if (rel) {
+    existing.relationship = rel;
+    existing.isChild = isChildRelationship(rel);
+  }
   await rejectFacesFromPerson(rejected, existing.id);
   if (picked.faces.length) await mergeClusterIntoPerson(picked, existing);
   if (modalPhoto) await addPhotoMembership(modalPhoto, existing.id);
@@ -3874,11 +4157,13 @@ async function commitToExistingPerson(existing, picked) {
 // Create a brand-new person from the picked faces.
 async function commitNewPerson(name, picked) {
   const rejected = modalCluster.faces.filter((f) => !modalSelected.has(f.id));
+  const rel = resolveTagRelationship();
   const descriptors = sample(picked.faces.map((f) => f.descriptor), 8);
   const person = {
     id: db.uid(),
     name,
-    isChild: el("isChildInput").checked,
+    relationship: rel,
+    isChild: isChildRelationship(rel),
     ignored: false,
     descriptors,
     thumb: picked.faces[0] ? picked.faces[0].thumb : modalPhoto ? modalPhoto.thumb : "",
@@ -3891,6 +4176,13 @@ async function commitNewPerson(name, picked) {
     await assignMatchingUnassigned(person);
   }
   if (modalPhoto) await addPhotoMembership(modalPhoto, person.id);
+}
+
+// The relationship chosen in the tag modal — a custom-typed label wins.
+function resolveTagRelationship() {
+  const custom = el("tagRelCustom");
+  if (custom && !custom.hidden && custom.value.trim()) tagRelationship = custom.value.trim();
+  return tagRelationship ? tagRelationship.trim() : "";
 }
 
 // Ask "is this the same person?" when the typed name already exists. Resolves
@@ -4246,46 +4538,55 @@ function relationshipLabel(p) {
   return p && p.relationship ? p.relationship : "";
 }
 
-// Build the relationship quick-pick chips inside the edit modal. One chip is
-// selectable at a time; "Other" reveals a free-text box so any label can be typed.
-function renderRelChips() {
-  const box = el("relChips");
-  const custom = el("relCustom");
-  if (!box) return;
-  const known = RELATIONSHIPS.includes(editingRelationship);
-  const isCustom = !!editingRelationship && !known;
-  box.innerHTML = "";
+// Build a relationship quick-pick into `chipsEl`/`customEl`. One chip is active
+// at a time; "Other" reveals a free-text box. `current` is the selected label,
+// `onChange(newLabel)` updates the caller's backing variable and re-renders.
+// Shared by the edit modal and the tag modal so both offer the same options.
+function renderRelChips(current, chipsEl, customEl, onChange) {
+  if (!chipsEl) return;
+  const known = RELATIONSHIPS.includes(current);
+  const isCustom = !!current && !known;
+  chipsEl.innerHTML = "";
   for (const label of RELATIONSHIPS) {
-    const on = label === "Other" ? isCustom : editingRelationship === label;
+    const on = label === "Other" ? isCustom : current === label;
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "rel-chip" + (on ? " is-on" : "");
     chip.textContent = label;
     chip.addEventListener("click", () => {
       if (label === "Other") {
-        editingRelationship = isCustomNow() ? "" : (custom.value.trim() || " ");
-        custom.hidden = false;
-        renderRelChips();
-        custom.focus();
+        onChange(isCustom ? "" : custom_value(customEl) || " ");
+        customEl.hidden = false;
+        setTimeout(() => customEl.focus(), 0);
         return;
       }
-      // Toggle off if tapping the active chip, else select it.
-      editingRelationship = editingRelationship === label ? "" : label;
-      custom.hidden = true;
-      custom.value = "";
-      renderRelChips();
+      onChange(current === label ? "" : label); // toggle off if re-tapped
+      customEl.hidden = true;
+      customEl.value = "";
     });
-    box.appendChild(chip);
+    chipsEl.appendChild(chip);
   }
   if (isCustom) {
-    custom.hidden = false;
-    if (custom.value.trim() !== editingRelationship.trim()) custom.value = editingRelationship.trim();
-  } else if (!isCustom && document.activeElement !== custom) {
-    custom.hidden = true;
+    customEl.hidden = false;
+    if (custom_value(customEl) !== current.trim()) customEl.value = current.trim();
+  } else if (document.activeElement !== customEl) {
+    customEl.hidden = true;
   }
-  function isCustomNow() {
-    return !!editingRelationship && !RELATIONSHIPS.includes(editingRelationship);
-  }
+}
+const custom_value = (inp) => (inp && inp.value ? inp.value.trim() : "");
+
+// Convenience wrappers that bind the shared picker to each modal's state.
+function renderEditRelChips() {
+  renderRelChips(editingRelationship, el("relChips"), el("relCustom"), (v) => {
+    editingRelationship = v;
+    renderEditRelChips();
+  });
+}
+function renderTagRelChips() {
+  renderRelChips(tagRelationship, el("tagRelChips"), el("tagRelCustom"), (v) => {
+    tagRelationship = v;
+    renderTagRelChips();
+  });
 }
 
 function openPersonEdit(personId) {
@@ -4296,10 +4597,9 @@ function openPersonEdit(personId) {
   editingRelationship = p.relationship || "";
   el("personEditFace").src = p.thumb || "";
   el("personEditName").value = p.name;
-  el("personEditChild").checked = !!p.isChild;
   const custom = el("relCustom");
   if (custom) custom.value = RELATIONSHIPS.includes(editingRelationship) ? "" : editingRelationship;
-  renderRelChips();
+  renderEditRelChips();
   const linkBtn = el("personLinkContact");
   if (linkBtn) linkBtn.hidden = !contactsSupported;
   const msg = el("personContactMsg");
@@ -4327,11 +4627,12 @@ async function savePersonEdit() {
     return;
   }
   p.name = name;
-  p.isChild = el("personEditChild").checked;
   // Resolve the relationship: a custom-typed label wins over the chosen chip.
   const custom = el("relCustom");
   if (custom && !custom.hidden && custom.value.trim()) editingRelationship = custom.value.trim();
   p.relationship = editingRelationship ? editingRelationship.trim() : "";
+  // "My child" status now comes from the relationship (no separate toggle).
+  p.isChild = isChildRelationship(p.relationship);
   if (editingContactIcon) p.thumb = editingContactIcon;
   await db.put("people", p);
   closePersonEdit();
@@ -4535,6 +4836,7 @@ function renderPeople() {
   namedGrid.querySelectorAll("[data-nav]").forEach((b) =>
     b.addEventListener("click", () => {
       state.activeAlbum = b.dataset.nav;
+      state.albumFrom = "people"; // so "Back" returns to the People tab
       renderAlbums();
       navTo("albums");
     })
@@ -4651,6 +4953,7 @@ function albumDisplayName(id) {
 
 function openAlbum(id) {
   state.activeAlbum = id;
+  state.albumFrom = "albums"; // opened from the Albums index
   renderAlbums();
   const v = el("view-albums");
   if (v) v.scrollTop = 0;
@@ -4659,7 +4962,22 @@ function openAlbum(id) {
 
 function closeAlbum() {
   state.activeAlbum = null;
+  state.albumFrom = "albums";
   renderAlbums();
+}
+
+// Back out of an open album. If we arrived here by tapping a person on the
+// People tab, go back there; otherwise return to the Albums index.
+function albumBack() {
+  const from = state.albumFrom;
+  state.activeAlbum = null;
+  state.albumFrom = "albums";
+  if (from === "people") {
+    renderAlbums();
+    navTo("people");
+  } else {
+    renderAlbums();
+  }
 }
 
 // Albums screen = a two-level view: an index of album cards, or one open album.
@@ -4800,11 +5118,21 @@ function renderAlbumDetail() {
   const id = state.activeAlbum;
   el("albumDetailTitle").textContent = albumDisplayName(id);
   const special = id === ALL_ALBUM || id === UNTAGGED || id === AWAITING;
+  const person = state.people.find((p) => p.id === id);
+  // Dynamic Back: return to People if we came from there, else the album index.
+  el("albumBack").textContent = state.albumFrom === "people" ? "‹ People" : "‹ All albums";
+  // Edit button only makes sense for a real person's album.
+  const editBtn = el("albumEditBtn");
+  if (editBtn) {
+    editBtn.hidden = special || !person;
+    editBtn.dataset.pid = person ? person.id : "";
+  }
   const favBtn = el("albumFavBtn");
   favBtn.hidden = special;
   favBtn.textContent = isFavAlbum(id) ? "★" : "☆";
   favBtn.classList.toggle("is-on", isFavAlbum(id));
   renderAlbumPath(id, special);
+  renderAlbumBackupBar(id, special);
 
   const grid = el("albumGrid");
 
@@ -4840,6 +5168,7 @@ function renderAlbumDetail() {
   for (const ph of photos) {
     const cell = document.createElement("div");
     cell.className = "thumb";
+    cell.dataset.pid = ph.id;
     const img = document.createElement("img");
     img.src = ph.thumb;
     img.alt = ph.name;
@@ -4852,12 +5181,12 @@ function renderAlbumDetail() {
       play.textContent = ph.duration ? `▶ ${fmtDur(ph.duration)}` : "▶";
       cell.appendChild(play);
     }
-    if (ph.cloudId || ph.backupId || ph.deviceAlbum) {
-      const saved = document.createElement("span");
-      saved.className = "thumb__saved";
-      saved.textContent = "☁";
-      saved.title = "Saved to your output folder";
-      cell.appendChild(saved);
+    const status = photoBackupStatus(ph);
+    if (status !== "none") {
+      const badge = document.createElement("span");
+      badge.className = "thumb__status";
+      applyThumbStatus(badge, status);
+      cell.appendChild(badge);
     }
     grid.appendChild(cell);
   }
@@ -5010,6 +5339,25 @@ async function showLightboxPhoto() {
       rm.textContent = `Remove from ${person.name}'s album`;
       rm.addEventListener("click", () => removePhotoFromPerson(photoId, person.id));
       actions.appendChild(rm);
+    }
+  }
+
+  // Back up THIS photo to OneDrive/device right now, so you don't have to wait
+  // for the automatic sweep (and can confirm it actually lands in your output).
+  if (!isPhotoSaved(photo)) {
+    const device = state.outputMode === "device" && !!state.outputHandle;
+    const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+    if (device || cloudOK) {
+      const up = document.createElement("button");
+      up.className = "btn btn--primary";
+      up.textContent = device ? "⤒ Save to this device now" : "⤒ Upload to OneDrive now";
+      up.addEventListener("click", async () => {
+        up.disabled = true;
+        up.textContent = "Backing up…";
+        await forceBackupPhotos([photo.id], "this photo");
+        if (el("lightbox") && !el("lightbox").hidden) showLightboxPhoto();
+      });
+      actions.appendChild(up);
     }
   }
 
@@ -5711,6 +6059,9 @@ function wire() {
   el("relCustom").addEventListener("input", (e) => {
     editingRelationship = e.target.value.trim();
   });
+  el("tagRelCustom").addEventListener("input", (e) => {
+    tagRelationship = e.target.value.trim();
+  });
 
   el("exportBtn").addEventListener("click", exportModel);
   el("importInput").addEventListener("change", (e) => {
@@ -5739,9 +6090,16 @@ function wire() {
     saveAlbumPrefs();
     renderAlbums();
   });
-  el("albumBack").addEventListener("click", closeAlbum);
+  el("albumBack").addEventListener("click", albumBack);
   el("albumFavBtn").addEventListener("click", () => {
     if (state.activeAlbum) toggleFavAlbum(state.activeAlbum);
+  });
+  el("albumEditBtn").addEventListener("click", (e) => {
+    const pid = e.currentTarget.dataset.pid;
+    if (pid) openPersonEdit(pid);
+  });
+  el("albumBackupNow").addEventListener("click", () => {
+    if (state.activeAlbum) forceBackupAlbum(state.activeAlbum);
   });
 
   const autoToggle = el("autoBackup");
