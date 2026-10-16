@@ -1310,6 +1310,68 @@ async function uploadFileToOneDrive(file, folderPath) {
   return res.json();
 }
 
+// Ensure a nested folder path (e.g. "Kinalbum/Ava") exists under the drive root,
+// creating any missing segments, and return the final folder's item id. Existing
+// folders are reused. Used by re-file-on-tag so an organised copy can be moved
+// into a child's album folder even before that folder exists.
+async function ensureFolderPath(folderPath, token) {
+  const segs = String(folderPath || "Kinalbum")
+    .split("/")
+    .filter(Boolean)
+    .map((s) => s.replace(/[\\/:*?"<>|]/g, "_"));
+  let parentId = "root";
+  let accum = "";
+  for (const name of segs) {
+    accum = accum ? `${accum}/${name}` : name;
+    const getUrl = `${GRAPH}/me/drive/root:/${accum.split("/").map(encodeURIComponent).join("/")}`;
+    const g = await fetch(getUrl, { headers: { Authorization: `Bearer ${token}` } });
+    if (g.ok) {
+      parentId = (await g.json()).id;
+      continue;
+    }
+    const res = await fetch(`${GRAPH}/me/drive/items/${parentId}/children`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, folder: {}, "@microsoft.graph.conflictBehavior": "fail" }),
+    });
+    if (res.ok) {
+      parentId = (await res.json()).id;
+    } else if (res.status === 409) {
+      // Created by a concurrent request between our GET and POST — re-fetch it.
+      const g2 = await fetch(getUrl, { headers: { Authorization: `Bearer ${token}` } });
+      if (!g2.ok) throw new Error("Folder resolve failed");
+      parentId = (await g2.json()).id;
+    } else {
+      throw new Error(`Folder create ${res.status}`);
+    }
+  }
+  return parentId;
+}
+
+// Move an existing OneDrive item (one of OUR organised Kinalbum copies — never a
+// camera-roll original) into folderPath, creating the destination folders if
+// needed. The item keeps its id across the move. Returns the updated item, or
+// null if not signed in / no id. This is how a photo is re-filed from
+// "Kinalbum/Unsorted" into "Kinalbum/<child>" the moment a face is named.
+async function moveCloudFile(cloudId, folderPath) {
+  if (!cloudId || !oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  let destId;
+  try {
+    destId = await ensureFolderPath(folderPath, token);
+  } catch {
+    return null;
+  }
+  const res = await fetch(`${GRAPH}/me/drive/items/${cloudId}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ parentReference: { id: destId } }),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 // Sign in only (or confirm an existing session). Returns true on success. Kept
 // separate from the camera-roll import so a returning device can rebuild its
 // library from the saved manifest BEFORE deciding whether to re-scan anything.
@@ -1521,7 +1583,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, signIn, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, moveCloudFile, signIn, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Kinalbum controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -1865,6 +1927,10 @@ async function backupPhotos(list) {
       const photo = state.photos.find((p) => p.id === photoId);
       if (photo && item && item.id) {
         photo.cloudId = item.id;
+        // Track the organised copy separately so re-file-on-tag can MOVE it later
+        // (never the camera-roll original) and know which folder it currently sits in.
+        photo.backupId = item.id;
+        photo.backupFolder = folder;
         await db.put("photos", photo);
       }
       ok++;
@@ -1876,6 +1942,52 @@ async function backupPhotos(list) {
   setAutoBackupMsg(fail ? `Backed up ${ok}; ${fail} will retry later.` : `Backed up ${ok} to OneDrive.`);
   scheduleCloudSync(); // keep the cloud copy of backed-up keys current
   scheduleLibrarySync(); // persist the new cloud file pointers into the manifest
+}
+
+/* --------------------------------------------- re-file on tag (move) */
+// When a face is named, the photo's album changes (e.g. Unsorted → Ava). If an
+// organised copy already lives in OneDrive, physically MOVE it into the new
+// child's album folder so the cloud layout matches the in-app albums. Only ever
+// moves OUR copies (photo.backupId), never the user's camera-roll originals.
+const refilePending = new Set();
+let refileTimer = null;
+
+function scheduleRefile(photos) {
+  if (!state.autoBackup || !cloud.oneDriveConfigured()) return;
+  let queued = false;
+  for (const p of photos) {
+    if (!p || !p.backupId) continue; // no organised copy yet → next backup files it correctly
+    if (backupFolderFor(p.personIds) === p.backupFolder) continue; // already in the right folder
+    refilePending.add(p.id);
+    queued = true;
+  }
+  if (!queued || refileTimer) return;
+  refileTimer = setTimeout(runRefile, 2500);
+}
+
+async function runRefile() {
+  refileTimer = null;
+  const ids = [...refilePending];
+  refilePending.clear();
+  let moved = 0;
+  for (const id of ids) {
+    const photo = state.photos.find((p) => p.id === id);
+    if (!photo || !photo.backupId) continue;
+    const target = backupFolderFor(photo.personIds);
+    if (target === photo.backupFolder) continue;
+    try {
+      const item = await cloud.moveCloudFile(photo.backupId, target);
+      if (item) {
+        photo.backupFolder = target;
+        if (item.id) photo.backupId = item.id;
+        await db.put("photos", photo);
+        moved++;
+      }
+    } catch {
+      /* offline / transient — a later tag change re-queues it */
+    }
+  }
+  if (moved) scheduleLibrarySync();
 }
 
 /* ----------------------------------------- cloud account continuity */
@@ -1990,6 +2102,8 @@ function buildLibraryManifest() {
       hash: p.hash,
       thumb: p.thumb,
       cloudId: p.cloudId || null,
+      backupId: p.backupId || null,
+      backupFolder: p.backupFolder || null,
     })),
   };
 }
@@ -2041,6 +2155,8 @@ async function rebuildFromManifest() {
       duration: e.duration || 0,
       dims: e.dims || { w: 0, h: 0 },
       cloudId: e.cloudId || null,
+      backupId: e.backupId || null,
+      backupFolder: e.backupFolder || null,
       fromCloud: true, // original lives in OneDrive, not on this device
     });
   }
@@ -2804,6 +2920,7 @@ function updatePhotoLabels(photoIds) {
     updated.push(p);
   }
   if (updated.length) db.bulkPut("photos", updated);
+  scheduleRefile(updated); // album changed → move the organised cloud copy into the new folder
   scheduleLibrarySync(); // album membership changed — keep the sorted-output manifest current
 }
 
