@@ -199,6 +199,48 @@ p { margin: 0 0 .9rem; }
   background: #fff; font-weight: 600; font-size: .9rem; cursor: pointer; color: var(--ink-soft);
 }
 .tab.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* Albums toolbar (sort + status) */
+.albums-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; margin: 4px 0 14px; }
+.sortsel { display: inline-flex; align-items: center; gap: .5em; font-size: .82rem; font-weight: 600;
+  color: var(--ink-soft); }
+.sortsel select { font: inherit; font-weight: 600; color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 10px; padding: .45em .7em; cursor: pointer; }
+.albums-cloud { font-size: .78rem; color: var(--ink-soft); display: inline-flex; align-items: center; gap: .35em; }
+.albums-cloud::before { content: "☁"; }
+
+/* Album cards (the box grid) */
+.album-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+@media (min-width: 520px) { .album-cards { grid-template-columns: repeat(3, 1fr); } }
+.album-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+  cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; display: flex; flex-direction: column; }
+.album-card:hover, .album-card:focus-visible { transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(20,16,14,.12); outline: none; }
+.album-card--special { border-color: var(--accent-soft, #f3cfcc); }
+.album-card__cover { position: relative; aspect-ratio: 1; background: var(--cream-2); }
+.album-card__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.album-card__ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 2rem; opacity: .5; }
+.album-card__count { position: absolute; right: 8px; bottom: 8px; background: rgba(20,16,14,.72);
+  color: #fff; font-size: .74rem; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+  min-width: 22px; text-align: center; }
+.album-card__fav { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border: none;
+  border-radius: 50%; background: rgba(20,16,14,.4); color: #fff; font-size: 1rem; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .12s; }
+.album-card__fav:hover { background: rgba(20,16,14,.65); }
+.album-card__fav.is-on { color: #ffd34d; }
+.album-card__foot { display: flex; align-items: center; gap: 6px; padding: 9px 11px; }
+.album-card__name { font-weight: 700; font-size: .92rem; color: var(--ink); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+/* Open album header */
+.albumdet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.iconbtn { border: 1px solid var(--line); background: #fff; width: 40px; height: 40px; border-radius: 50%;
+  font-size: 1.15rem; line-height: 1; cursor: pointer; color: var(--ink-soft); }
+.iconbtn.is-on { color: #f0b400; border-color: #f0d79a; }
+.albumdet-meta { margin-top: 2px; }
+
 .album-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 @media (min-width: 520px) { .album-grid { grid-template-columns: repeat(4, 1fr); } }
 .album-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--cream-2); cursor: pointer; transition: transform .1s ease; }
@@ -206,6 +248,8 @@ p { margin: 0 0 .9rem; }
 .thumb { position: relative; }
 .thumb__play { position: absolute; left: 6px; bottom: 6px; background: rgba(0,0,0,.62); color: #fff;
   font-size: .72rem; font-weight: 700; padding: 2px 6px; border-radius: 6px; pointer-events: none; }
+.thumb__saved { position: absolute; right: 6px; top: 6px; background: rgba(20,16,14,.55); color: #fff;
+  font-size: .72rem; line-height: 1; padding: 3px 5px; border-radius: 6px; pointer-events: none; }
 
 /* Lightbox (full photo viewer) */
 .lightbox { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
@@ -631,19 +675,49 @@ p { margin: 0 0 .9rem; }
 
     <!-- ALBUMS SCREEN -->
     <section class="view" id="view-albums" data-view="albums" hidden>
-      <div class="albums-head">
-        <h2 class="view__title">Albums</h2>
-        <label class="toggle" id="kidsOnlyWrap" hidden>
-          <input type="checkbox" id="kidsOnly" /> Kids only
-        </label>
+      <!-- Index: a grid of album cards -->
+      <div id="albumIndex">
+        <div class="albums-head">
+          <h2 class="view__title">Albums</h2>
+          <label class="toggle" id="kidsOnlyWrap" hidden>
+            <input type="checkbox" id="kidsOnly" /> Kids only
+          </label>
+        </div>
+        <div class="albums-toolbar" id="albumsToolbar" hidden>
+          <label class="sortsel">Sort
+            <select id="albumSort">
+              <option value="smart">Kids &amp; most photos</option>
+              <option value="count">Most photos</option>
+              <option value="name">Name A–Z</option>
+            </select>
+          </label>
+          <span class="albums-cloud" id="albumsCloudInfo"></span>
+        </div>
+        <div class="album-cards" id="albumCards"></div>
+        <div class="empty" id="albumsEmpty">
+          <p>No albums yet. Add photos and name your kids to see their albums here.</p>
+        </div>
       </div>
 
-      <div class="tabs" id="albumTabs"></div>
-      <p class="view__sub" id="awaitingSub" hidden>New faces we found. Name them so their photos sort into albums, or tap Ignore.</p>
-      <div class="people-grid" id="awaitingGrid" hidden></div>
-      <div class="album-grid" id="albumGrid"></div>
-      <div class="empty" id="albumsEmpty">
-        <p>No albums yet. Add photos and name your kids to see their albums here.</p>
+      <!-- Detail: one album's photos -->
+      <div id="albumDetail" hidden>
+        <div class="albumdet-head">
+          <button class="linkbtn" id="albumBack">‹ All albums</button>
+          <button class="iconbtn" id="albumFavBtn" aria-label="Favourite this album">☆</button>
+        </div>
+        <h2 class="view__title" id="albumDetailTitle">Album</h2>
+        <p class="view__sub albumdet-meta" id="albumDetailMeta"></p>
+        <div class="albums-toolbar" id="albumPhotoSortWrap">
+          <label class="sortsel">Sort
+            <select id="albumPhotoSort">
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+          </label>
+        </div>
+        <p class="view__sub" id="awaitingSub" hidden>New faces we found. Name them so their photos sort into albums, or tap Ignore.</p>
+        <div class="people-grid" id="awaitingGrid" hidden></div>
+        <div class="album-grid" id="albumGrid"></div>
       </div>
     </section>
 
@@ -1929,6 +2003,9 @@ const state = {
   watched: [], // {id, name, handle} folders to auto-scan
   processedKeys: new Set(), // "name|size|lastModified" of files already ingested
   kidsOnly: false, // Albums screen filter driven by the "this is my child" flag
+  albumSort: "smart", // album index order: "smart" | "count" | "name"
+  albumPhotoSort: "newest", // photo order inside an open album: "newest" | "oldest"
+  favAlbums: [], // album ids pinned to the top of the Albums screen
   autoBackup: true, // continuously sort new photos and back organised copies to OneDrive
   backedUpKeys: new Set(), // files already uploaded, so we never back up twice
   keptDistinct: new Set(), // photo ids the user confirmed are NOT duplicates (stop flagging)
@@ -1966,6 +2043,7 @@ async function boot() {
   await loadWatched();
   await loadAutoBackup();
   await loadCloudPrefs();
+  await loadAlbumPrefs();
   el("boot").hidden = true;
   recomputePending();
   renderAll();
@@ -2838,6 +2916,27 @@ async function saveCloudPrefs() {
   await db.put("meta", { id: "cloudSources", list: state.cloudSources });
   await db.put("meta", { id: "outputRoot", path: state.outputRoot });
   await db.put("meta", { id: "outputMode", mode: state.outputMode });
+}
+
+// Albums screen preferences: chosen sort orders, favourites, and the kids-only
+// filter — all remembered between visits.
+async function loadAlbumPrefs() {
+  const p = await db.get("meta", "albumPrefs");
+  if (!p) return;
+  if (p.sort) state.albumSort = p.sort;
+  if (p.photoSort) state.albumPhotoSort = p.photoSort;
+  if (Array.isArray(p.fav)) state.favAlbums = p.fav;
+  if (typeof p.kidsOnly === "boolean") state.kidsOnly = p.kidsOnly;
+}
+
+async function saveAlbumPrefs() {
+  await db.put("meta", {
+    id: "albumPrefs",
+    sort: state.albumSort,
+    photoSort: state.albumPhotoSort,
+    fav: state.favAlbums,
+    kidsOnly: state.kidsOnly,
+  });
 }
 
 // The device output folder handle is structured-cloneable, so it persists across
@@ -4047,7 +4146,7 @@ async function deletePerson() {
   if (freedFaces.length) await db.bulkPut("faces", freedFaces);
   updatePhotoLabels(touchedPhotos);
   await db.remove("people", id);
-  if (state.activeAlbum === id) state.activeAlbum = ALL_ALBUM;
+  if (state.activeAlbum === id) state.activeAlbum = null;
   closePersonEdit();
   recomputePending();
   renderAll();
@@ -4263,84 +4362,236 @@ const ALL_ALBUM = "__all__";
 const UNTAGGED = "__untagged__";
 const AWAITING = "__awaiting__";
 
+/* ---- album helpers (counts, covers, favourites, cloud status) ---- */
+
+// The photos in an album id, in library (import) order.
+function albumPhotos(id) {
+  if (id === ALL_ALBUM) return state.photos;
+  if (id === UNTAGGED) return state.photos.filter((ph) => !ph.personIds.length);
+  return state.photos.filter((ph) => ph.personIds.includes(id));
+}
+
+function albumPhotoCount(id) {
+  if (id === AWAITING) return state.pendingClusters.length;
+  return albumPhotos(id).length;
+}
+
+// Cover image for an album card: the most-recent photo, or the person's face /
+// first pending face as a fallback.
+function albumCover(id, person) {
+  if (id === AWAITING) return state.pendingClusters[0]?.faces[0]?.thumb || "";
+  const photos = albumPhotos(id);
+  if (photos.length) return photos[photos.length - 1].thumb;
+  return person ? person.thumb || "" : "";
+}
+
+function isFavAlbum(id) {
+  return state.favAlbums.includes(id);
+}
+
+async function toggleFavAlbum(id) {
+  state.favAlbums = isFavAlbum(id)
+    ? state.favAlbums.filter((x) => x !== id)
+    : [...state.favAlbums, id];
+  await saveAlbumPrefs();
+  renderAlbums();
+}
+
+// How many of an album's photos have an organised copy saved to the output.
+function albumCloudStatus(id) {
+  const photos = albumPhotos(id);
+  const saved = photos.filter((p) => p.cloudId || p.backupId || p.deviceAlbum).length;
+  return { saved, total: photos.length };
+}
+
+function cloudInfoText({ saved, total }) {
+  if (!total) return "";
+  const where = state.outputMode === "device" ? "this device" : "OneDrive";
+  if (!state.autoBackup) return `Saving to ${where} is off`;
+  if (saved >= total) return `Saved to ${where}`;
+  if (saved === 0) return `Not saved to ${where} yet`;
+  return `${saved}/${total} saved to ${where}`;
+}
+
+function albumDisplayName(id) {
+  if (id === ALL_ALBUM) return "Everyone";
+  if (id === UNTAGGED) return "Untagged";
+  if (id === AWAITING) return "Awaiting tag";
+  const p = state.people.find((x) => x.id === id);
+  return p ? p.name : "Album";
+}
+
+function openAlbum(id) {
+  state.activeAlbum = id;
+  renderAlbums();
+  const v = el("view-albums");
+  if (v) v.scrollTop = 0;
+  window.scrollTo(0, 0);
+}
+
+function closeAlbum() {
+  state.activeAlbum = null;
+  renderAlbums();
+}
+
+// Albums screen = a two-level view: an index of album cards, or one open album.
 function renderAlbums() {
+  const index = el("albumIndex");
+  const detail = el("albumDetail");
+  if (state.activeAlbum) {
+    index.hidden = true;
+    detail.hidden = false;
+    renderAlbumDetail();
+  } else {
+    detail.hidden = true;
+    index.hidden = false;
+    renderAlbumIndex();
+  }
+}
+
+function renderAlbumIndex() {
   const people = namedPeopleHere();
-  const tabs = el("albumTabs");
-  const grid = el("albumGrid");
-  tabs.innerHTML = "";
-  grid.innerHTML = "";
+  const cards = el("albumCards");
+  cards.innerHTML = "";
 
   if (!people.length && !state.photos.length) {
     el("albumsEmpty").hidden = false;
+    el("albumsToolbar").hidden = true;
     return;
   }
   el("albumsEmpty").hidden = true;
+  el("albumsToolbar").hidden = false;
+  el("albumSort").value = state.albumSort;
 
-  // Roster for album tabs: children first, then adults. The "Kids only" toggle
-  // (uses the "this is my child" flag) hides non-child albums entirely.
-  let roster = people.slice().sort((a, b) => Number(b.isChild) - Number(a.isChild));
+  // Kids-only toggle only matters when there are adult albums to hide.
+  let roster = people.slice();
   const hasAdults = roster.some((p) => !p.isChild);
   el("kidsOnlyWrap").hidden = !hasAdults;
   if (state.kidsOnly) roster = roster.filter((p) => p.isChild);
 
-  // Build the tab list: a merged "Everyone" album first, then Untagged, then a
-  // dedicated "Awaiting tag" album for faces still waiting to be named, then one
-  // album per named person.
-  const albums = [{ id: ALL_ALBUM, name: "Everyone", count: state.photos.length }];
-  const untaggedCount = state.photos.filter((ph) => !ph.personIds.length).length;
-  if (untaggedCount) albums.push({ id: UNTAGGED, name: "Untagged", count: untaggedCount });
-  if (state.pendingClusters.length) albums.push({ id: AWAITING, name: "Awaiting tag", count: state.pendingClusters.length });
-  for (const p of roster) {
-    albums.push({ id: p.id, name: p.name, count: state.photos.filter((ph) => ph.personIds.includes(p.id)).length });
-  }
+  // Sort the people albums by the chosen order.
+  const byCount = (a, b) => albumPhotoCount(b.id) - albumPhotoCount(a.id);
+  if (state.albumSort === "name") roster.sort((a, b) => a.name.localeCompare(b.name));
+  else if (state.albumSort === "count") roster.sort(byCount);
+  else roster.sort((a, b) => Number(b.isChild) - Number(a.isChild) || byCount(a, b)); // smart
+  // Favourites float to the top, keeping their order otherwise.
+  roster.sort((a, b) => Number(isFavAlbum(b.id)) - Number(isFavAlbum(a.id)));
 
-  if (!state.activeAlbum || !albums.some((a) => a.id === state.activeAlbum)) {
-    state.activeAlbum = albums[0].id;
-  }
+  // Special albums always lead: Everyone, Untagged, Awaiting tag.
+  const specials = [{ id: ALL_ALBUM, name: "Everyone", special: true }];
+  if (albumPhotoCount(UNTAGGED)) specials.push({ id: UNTAGGED, name: "Untagged", special: true });
+  if (state.pendingClusters.length) specials.push({ id: AWAITING, name: "Awaiting tag", special: true });
 
-  albums.forEach((a) => {
-    const tab = document.createElement("button");
-    tab.className = "tab" + (a.id === state.activeAlbum ? " is-active" : "");
-    tab.textContent = `${a.name} (${a.count})`;
-    tab.addEventListener("click", () => {
-      state.activeAlbum = a.id;
-      renderAlbums();
-    });
-    tabs.appendChild(tab);
+  const list = [
+    ...specials,
+    ...roster.map((p) => ({ id: p.id, name: p.name, isChild: p.isChild, person: p })),
+  ];
+  for (const a of list) cards.appendChild(albumCard(a));
+
+  el("albumsCloudInfo").textContent = cloudInfoText(albumCloudStatus(ALL_ALBUM));
+}
+
+// One album "box": cover, count badge, name, kid badge, and a favourite star.
+function albumCard(a) {
+  const id = a.id;
+  const count = albumPhotoCount(id);
+  const cover = albumCover(id, a.person);
+  const card = document.createElement("div");
+  card.className = "album-card" + (a.special ? " album-card--special" : "");
+  card.setAttribute("role", "button");
+  card.setAttribute("tabindex", "0");
+  card.setAttribute("aria-label", `Open ${a.name}`);
+  const ph = a.id === AWAITING ? "🔍" : "📷";
+  card.innerHTML = `
+    <div class="album-card__cover">
+      ${cover ? `<img src="${cover}" alt="" loading="lazy" />` : `<span class="album-card__ph">${ph}</span>`}
+      <span class="album-card__count">${count}</span>
+    </div>
+    <div class="album-card__foot">
+      <span class="album-card__name">${a.name}</span>
+      ${a.isChild ? '<span class="badge-kid">child</span>' : ""}
+    </div>`;
+  card.addEventListener("click", () => openAlbum(id));
+  card.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openAlbum(id);
+    }
   });
+  if (!a.special) {
+    const star = document.createElement("button");
+    star.className = "album-card__fav" + (isFavAlbum(id) ? " is-on" : "");
+    star.type = "button";
+    star.textContent = isFavAlbum(id) ? "★" : "☆";
+    star.setAttribute("aria-label", isFavAlbum(id) ? "Remove favourite" : "Add to favourites");
+    star.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleFavAlbum(id);
+    });
+    card.querySelector(".album-card__cover").appendChild(star);
+  }
+  return card;
+}
 
-  // The "Awaiting tag" album shows the unnamed-face cards instead of photos.
-  if (state.activeAlbum === AWAITING) {
+function renderAlbumDetail() {
+  const id = state.activeAlbum;
+  el("albumDetailTitle").textContent = albumDisplayName(id);
+  const special = id === ALL_ALBUM || id === UNTAGGED || id === AWAITING;
+  const favBtn = el("albumFavBtn");
+  favBtn.hidden = special;
+  favBtn.textContent = isFavAlbum(id) ? "★" : "☆";
+  favBtn.classList.toggle("is-on", isFavAlbum(id));
+
+  const grid = el("albumGrid");
+
+  // The "Awaiting tag" album shows unnamed-face cards, not a photo grid.
+  if (id === AWAITING) {
     el("awaitingSub").hidden = false;
     el("awaitingGrid").hidden = false;
+    el("albumPhotoSortWrap").hidden = true;
     grid.hidden = true;
+    el("albumDetailMeta").textContent = `${state.pendingClusters.length} face group${state.pendingClusters.length === 1 ? "" : "s"} to name`;
     renderClusterCards(el("awaitingGrid"));
     return;
   }
   el("awaitingSub").hidden = true;
   el("awaitingGrid").hidden = true;
   el("awaitingGrid").innerHTML = "";
+  el("albumPhotoSortWrap").hidden = false;
+  el("albumPhotoSort").value = state.albumPhotoSort;
   grid.hidden = false;
 
-  const album = state.activeAlbum === ALL_ALBUM
-    ? state.photos
-    : state.activeAlbum === UNTAGGED
-      ? state.photos.filter((ph) => !ph.personIds.length)
-      : state.photos.filter((ph) => ph.personIds.includes(state.activeAlbum));
-  for (const ph of album) {
+  let photos = albumPhotos(id).slice();
+  if (state.albumPhotoSort === "newest") photos.reverse();
+
+  const cs = albumCloudStatus(id);
+  const info = cloudInfoText(cs);
+  el("albumDetailMeta").textContent =
+    `${photos.length} photo${photos.length === 1 ? "" : "s"}` + (info ? ` · ${info}` : "");
+
+  grid.innerHTML = "";
+  const orderedIds = photos.map((p) => p.id);
+  for (const ph of photos) {
     const cell = document.createElement("div");
     cell.className = "thumb";
     const img = document.createElement("img");
     img.src = ph.thumb;
     img.alt = ph.name;
     img.loading = "lazy";
-    img.addEventListener("click", () => openLightbox(ph.id, false, album.map((p) => p.id)));
+    img.addEventListener("click", () => openLightbox(ph.id, false, orderedIds));
     cell.appendChild(img);
     if (ph.isVideo) {
       const play = document.createElement("span");
       play.className = "thumb__play";
       play.textContent = ph.duration ? `▶ ${fmtDur(ph.duration)}` : "▶";
       cell.appendChild(play);
+    }
+    if (ph.cloudId || ph.backupId || ph.deviceAlbum) {
+      const saved = document.createElement("span");
+      saved.className = "thumb__saved";
+      saved.textContent = "☁";
+      saved.title = "Saved to your output folder";
+      cell.appendChild(saved);
     }
     grid.appendChild(cell);
   }
@@ -5196,7 +5447,23 @@ function wire() {
 
   el("kidsOnly").addEventListener("change", (e) => {
     state.kidsOnly = e.target.checked;
+    saveAlbumPrefs();
     renderAlbums();
+  });
+
+  el("albumSort").addEventListener("change", (e) => {
+    state.albumSort = e.target.value;
+    saveAlbumPrefs();
+    renderAlbums();
+  });
+  el("albumPhotoSort").addEventListener("change", (e) => {
+    state.albumPhotoSort = e.target.value;
+    saveAlbumPrefs();
+    renderAlbums();
+  });
+  el("albumBack").addEventListener("click", closeAlbum);
+  el("albumFavBtn").addEventListener("click", () => {
+    if (state.activeAlbum) toggleFavAlbum(state.activeAlbum);
   });
 
   const autoToggle = el("autoBackup");
