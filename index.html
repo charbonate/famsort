@@ -683,10 +683,12 @@ p { margin: 0 0 .9rem; }
         <p>Everything lives only in this browser (thumbnails + face fingerprints). Originals stay in your gallery. You can wipe it all anytime.</p>
         <div class="btn-row">
           <button class="btn btn--ghost" id="reapplyBtn">Reupdate &amp; reorganise albums</button>
+          <button class="btn btn--ghost" id="redetectBtn">Re-scan faces on my photos</button>
           <button class="btn btn--ghost" id="resetIgnoredBtn">Restore skipped faces</button>
           <button class="btn btn--danger" id="resetBtn">Delete everything on this device</button>
         </div>
         <p class="card-plain__fine">“Reupdate &amp; reorganise” rebuilds each person from the faces you’ve <strong>confirmed</strong> (tap a name in a photo to confirm it ✓), then re-checks every auto-tagged face — so a wrong face in an album gets cleaned out. No re-import needed.</p>
+        <p class="card-plain__fine">“Re-scan faces” looks again for faces in the photos you’ve already added — use this if photos imported but <strong>no faces were found</strong> (for example if the accurate detector hadn’t loaded yet).</p>
         <p class="card-plain__fine">“Restore skipped faces” brings back everyone that was auto-hidden as <strong>ignored</strong> — use this if people have stopped being found after you pressed Ignore a lot.</p>
         <div class="btn-row">
           <button class="btn btn--ghost" id="diagBtn">Show diagnostics</button>
@@ -1160,6 +1162,33 @@ async function analyzeFile(file) {
   };
 }
 
+// Re-detect faces on an ALREADY-STORED photo thumbnail (a dataURL). Used by the
+// "Re-scan faces" recovery when the original files aren't available to re-import
+// (e.g. picked photos, or cloud/device sources already imported). Lower
+// resolution than a fresh import, but recovers faces that were missed before.
+async function analyzeImage(dataUrl) {
+  const img = await dataUrlToImage(dataUrl);
+  const canvas = toScaledCanvas(img, DETECT_MAX);
+  const results = await detectFaces(canvas);
+  const minPx = Math.max(MIN_FACE_PX, Math.max(canvas.width, canvas.height) * MIN_FACE_FRAC);
+  return results
+    .filter((r) => isPlausibleFace(r, minPx))
+    .map((r) => ({
+      descriptor: Array.from(r.descriptor),
+      thumb: cropFace(canvas, r.detection.box),
+      score: r.detection.score,
+    }));
+}
+
+function dataUrlToImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Could not read image"));
+    img.src = src;
+  });
+}
+
 /* --------------------------------------------------------------- video */
 const VIDEO_MAX_FRAMES = 10; // keyframes sampled per video (speed vs coverage)
 
@@ -1373,7 +1402,7 @@ function matchPerson(descriptor, people, threshold = MATCH_THRESHOLD) {
   return bestId ? { id: bestId, dist: bestDist } : null;
 }
 
-return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, detectorInfo, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, analyzeVideoFile, clusterFaces, matchPerson };
+return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, detectorInfo, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, analyzeImage, analyzeVideoFile, clusterFaces, matchPerson };
 })();
 
 const cloud = (function () {
@@ -3028,7 +3057,7 @@ function startProgressUI() {
 }
 
 // Swap the spinner for a green tick, show a summary, then auto-dismiss.
-function showProgressDone(added, dupes) {
+function showProgressDone(summary) {
   clearTimeout(progressDoneTimer);
   const p = el("processing");
   p.classList.add("processing--done");
@@ -3036,9 +3065,7 @@ function showProgressDone(added, dupes) {
   el("procCheck").hidden = false;
   el("procBar").style.width = "100%";
   el("processingText").textContent = "All done";
-  const parts = [`Sorted ${added} photo${added === 1 ? "" : "s"}`];
-  if (dupes) parts.push(`${dupes} duplicate${dupes === 1 ? "" : "s"} skipped`);
-  el("procCount").textContent = parts.join(" · ");
+  el("procCount").textContent = summary;
   progressDoneTimer = setTimeout(() => {
     p.hidden = true;
     p.classList.remove("processing--done");
@@ -3168,7 +3195,11 @@ async function processFiles(fileList) {
 
   await flush(); // final partial batch
 
-  if (!autoScanning) showProgressDone(added, dupes);
+  if (!autoScanning) {
+    const parts = [`Sorted ${added} photo${added === 1 ? "" : "s"}`];
+    if (dupes) parts.push(`${dupes} duplicate${dupes === 1 ? "" : "s"} skipped`);
+    showProgressDone(parts.join(" · "));
+  }
 
   // Stats on the Add screen (recomputed live — see renderStats).
   recomputePending();
@@ -3729,6 +3760,80 @@ function showDiagnostics() {
   diag.textContent = lines.join("\n");
   diag.hidden = false;
   console.log("[Famsort diagnostics]\n" + lines.join("\n"));
+}
+
+// Re-detect faces on photos ALREADY in the library, without re-importing. The
+// usual re-scan skips duplicates, so photos imported before (e.g. when the
+// accurate detector hadn't loaded, or whose faces were missed) never get
+// another look. This rebuilds every face from the stored photo thumbnail (and
+// stored video blobs), then re-matches to named people. Confirmed people are
+// kept; only the face detections are rebuilt.
+async function redetectFaces() {
+  const photos = state.photos.slice();
+  if (!photos.length) {
+    setAutoBackupMsg("No photos to re-scan yet — add some first.");
+    return;
+  }
+  const ownLock = !scanBusy;
+  if (ownLock) scanBusy = true;
+  startProgressUI();
+  el("processingText").textContent = "Re-scanning for faces…";
+  try {
+    // Rebuild faces from scratch (the user has the originals in their gallery;
+    // we only re-detect on our stored thumbnails/blobs).
+    await db.clearStore("faces");
+    state.faces = [];
+    let found = 0;
+    let batch = [];
+    for (let i = 0; i < photos.length; i++) {
+      const photo = photos[i];
+      el("processingText").textContent = "Re-scanning for faces…";
+      el("procCount").textContent = `${i + 1} of ${photos.length}`;
+      el("procBar").style.width = Math.round(((i + 1) / photos.length) * 100) + "%";
+      let faces = [];
+      try {
+        if (photo.isVideo) {
+          const m = await db.get("media", photo.id);
+          if (m && m.blob) {
+            const res = await withTimeout(face.analyzeVideoFile(m.blob), 45000);
+            faces = res.faces || [];
+          }
+        } else if (photo.thumb) {
+          faces = await withTimeout(face.analyzeImage(photo.thumb), 20000);
+        }
+      } catch {
+        faces = [];
+      }
+      for (const f of faces) {
+        const match = face.matchPerson(f.descriptor, state.people);
+        const personId = match ? match.id : null;
+        const rec = { id: db.uid(), photoId: photo.id, descriptor: f.descriptor, thumb: f.thumb, personId };
+        state.faces.push(rec);
+        batch.push(rec);
+      }
+      found += faces.length;
+      if (batch.length >= 24) {
+        await db.bulkPut("faces", batch);
+        batch = [];
+        recomputePending();
+        renderAll();
+      }
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    if (batch.length) await db.bulkPut("faces", batch);
+    updatePhotoLabels(new Set(state.photos.map((p) => p.id)));
+    recomputePending();
+    renderAll();
+    showProgressDone(`Found ${found} face${found === 1 ? "" : "s"} in ${photos.length} photos`);
+    setAutoBackupMsg(
+      found
+        ? `Re-scan found ${found} face${found === 1 ? "" : "s"}. Check the People tab to name them.`
+        : "Re-scan finished but found no faces — the stored thumbnails may be too small. Delete everything and re-import the originals for best results."
+    );
+    if (state.pendingClusters.length) navTo("people");
+  } finally {
+    if (ownLock) scanBusy = false;
+  }
 }
 
 /* ------------------------------------------------- edit a named person */
@@ -4949,6 +5054,7 @@ function wire() {
     e.target.value = "";
   });
   el("reapplyBtn").addEventListener("click", reapplyMatching);
+  el("redetectBtn").addEventListener("click", redetectFaces);
   el("resetIgnoredBtn").addEventListener("click", resetIgnored);
   el("diagBtn").addEventListener("click", showDiagnostics);
   el("resetBtn").addEventListener("click", resetAll);
