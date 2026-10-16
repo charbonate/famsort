@@ -890,7 +890,7 @@ p { margin: 0 0 .9rem; }
   <div class="modal" id="rescanModal" hidden>
     <div class="modal__card">
       <h3>Re-scan for faces</h3>
-      <p class="modal__hint">Pick which photos to re-check for faces. Re-scanning an album re-detects its faces — your names are kept and re-applied. Tick as many as you like.</p>
+      <p class="modal__hint">Pick which photos to re-check for faces. Where the original is saved in OneDrive, we re-check it in <strong>full detail</strong> with the accurate detector; otherwise we use the stored preview. Your names are kept and re-applied. Tick as many as you like.</p>
       <div class="rescan-opts" id="rescanOptions"></div>
       <p class="name-faces__count" id="rescanCount"></p>
       <div class="btn-row btn-row--split">
@@ -3992,8 +3992,35 @@ async function startRescan() {
   if (ids.size) await redetectFaces(ids);
 }
 
+// Try to locate the ORIGINAL full-resolution file for a photo so re-scan can run
+// the accurate detector on real detail — not the small stored thumbnail (which
+// is why re-scanning from the thumb misses faces). We look, in order, in: the
+// local media store (where video originals live), then the OneDrive source copy
+// (photo.cloudId), then the OneDrive organised backup (photo.backupId). Both
+// cloud ids point at the untouched original bytes we uploaded/imported. Returns
+// a Blob, or null if the original simply can't be reached on this device.
+async function getOriginalBlob(photo) {
+  try {
+    const m = await db.get("media", photo.id);
+    if (m && m.blob) return m.blob;
+  } catch {}
+  if (cloud.oneDriveConfigured()) {
+    for (const id of [photo.cloudId, photo.backupId]) {
+      if (!id) continue;
+      try {
+        const blob = await withTimeout(cloud.downloadCloudFile(id), 30000);
+        if (blob) return blob;
+      } catch {}
+    }
+  }
+  return null;
+}
+
 // Re-detect faces for a specific set of photo ids. Only those photos' face
-// records are rebuilt; every other photo (and its tags) is left alone.
+// records are rebuilt; every other photo (and its tags) is left alone. Where the
+// original file can be fetched (local blob or OneDrive copy) we run the SAME
+// high-accuracy detector used at import; otherwise we fall back to the stored
+// thumbnail so the feature still does something offline.
 async function redetectFaces(photoIds) {
   const photos = state.photos.filter((p) => photoIds.has(p.id));
   if (!photos.length) {
@@ -4006,28 +4033,37 @@ async function redetectFaces(photoIds) {
   el("processingText").textContent = "Re-scanning for faces…";
   try {
     // Drop ONLY the face records belonging to the photos we're re-scanning, so
-    // other albums are untouched. Then rebuild from the stored thumbnail/blob.
+    // other albums are untouched. Then rebuild from the original (or thumbnail).
     const targetIds = new Set(photos.map((p) => p.id));
     const removed = state.faces.filter((f) => targetIds.has(f.photoId));
     state.faces = state.faces.filter((f) => !targetIds.has(f.photoId));
     for (const f of removed) await db.remove("faces", f.id);
     let found = 0;
+    let hiRes = 0; // photos we re-checked from the full-resolution original
+    let lowRes = 0; // photos we could only re-check from the small thumbnail
     let batch = [];
     for (let i = 0; i < photos.length; i++) {
       const photo = photos[i];
-      el("processingText").textContent = "Re-scanning for faces…";
       el("procCount").textContent = `${i + 1} of ${photos.length}`;
       el("procBar").style.width = Math.round(((i + 1) / photos.length) * 100) + "%";
       let faces = [];
       try {
+        const original = await getOriginalBlob(photo);
         if (photo.isVideo) {
-          const m = await db.get("media", photo.id);
-          if (m && m.blob) {
-            const res = await withTimeout(face.analyzeVideoFile(m.blob), 45000);
+          if (original) {
+            const res = await withTimeout(face.analyzeVideoFile(original), 60000);
             faces = res.faces || [];
+            hiRes++;
           }
+        } else if (original) {
+          // High-precision path: accurate detector on the original full-res file.
+          const res = await withTimeout(face.analyzeFile(original), 30000);
+          faces = res.faces || [];
+          hiRes++;
         } else if (photo.thumb) {
+          // Fallback: the only copy we have on this device is the small preview.
           faces = await withTimeout(face.analyzeImage(photo.thumb), 20000);
+          lowRes++;
         }
       } catch {
         faces = [];
@@ -4053,10 +4089,14 @@ async function redetectFaces(photoIds) {
     recomputePending();
     renderAll();
     showProgressDone(`Found ${found} face${found === 1 ? "" : "s"} in ${photos.length} photo${photos.length === 1 ? "" : "s"}`);
+    const detector = face.detectorInfo();
+    const ssdNote = detector.ssd ? "" : " The accurate detector didn't load on this device, so results are limited — reload on a good connection and try again.";
+    const hiNote = hiRes ? ` ${hiRes} re-checked in full detail from the original file.` : "";
+    const lowNote = lowRes ? ` ${lowRes} could only use the small preview (turn on OneDrive backup in Family ⚙️ so the originals are available next time).` : "";
     setAutoBackupMsg(
       found
-        ? `Re-scan found ${found} face${found === 1 ? "" : "s"}. Check the People tab to name them.`
-        : "Re-scan finished but found no faces — the stored thumbnails may be too small. Delete everything and re-import the originals for best results."
+        ? `Re-scan found ${found} face${found === 1 ? "" : "s"}.${hiNote}${lowNote} Check the People tab to name them.`
+        : `Re-scan found no faces.${hiNote}${lowNote}${ssdNote}`.trim()
     );
     if (state.pendingClusters.length) navTo("people");
   } finally {
