@@ -261,6 +261,36 @@ p { margin: 0 0 .9rem; }
 }
 .text-input:focus { outline: none; border-color: var(--accent); }
 
+/* Cloud sources → output → sort wizard */
+.wizard { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.wizard__step { display: flex; gap: 12px; align-items: flex-start; }
+.wizard__num { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff;
+  font-weight: 700; font-size: .85rem; display: grid; place-items: center; margin-top: 2px; }
+.wizard__body { flex: 1; min-width: 0; }
+.wizard__body h4 { margin: 0 0 2px; font-size: .98rem; }
+.btn--sm { padding: 6px 12px; font-size: .85rem; }
+.chip-set { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; font-weight: 600;
+  padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--ink); }
+.chip--muted { color: var(--ink-soft); }
+.chip__x { font-weight: 800; border: none; background: none; cursor: pointer; color: var(--ink-soft); padding: 0; }
+.chip__x:hover { color: var(--danger, #c0392b); }
+.output-pill { display: inline-block; font-size: .85rem; font-weight: 600; padding: 5px 12px; border-radius: 10px;
+  background: var(--cream-2); border: 1px solid var(--line); margin: 8px 0; }
+
+/* OneDrive folder browser modal */
+.folder-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 4px 0 10px; font-size: .85rem; }
+.folder-crumb { font: inherit; font-size: .85rem; font-weight: 600; color: var(--accent); background: none; border: none; cursor: pointer; padding: 2px 4px; }
+.folder-crumb__sep { color: var(--ink-soft); }
+.folder-list { max-height: 48vh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.folder-row { display: flex; align-items: center; gap: 8px; }
+.folder-row__cb { width: 18px; height: 18px; flex: none; }
+.folder-row__open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font: inherit;
+  padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; cursor: pointer; text-align: left; }
+.folder-row__open:hover { border-color: var(--accent); background: var(--cream-2); }
+.folder-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-row__go { color: var(--ink-soft); font-weight: 700; }
+
 /* Album membership block inside the lightbox */
 .photo-albums { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 .photo-albums .tag-title { margin-top: 10px; }
@@ -438,6 +468,37 @@ p { margin: 0 0 .9rem; }
           </button>
           <button class="btn btn--ghost" id="googlePhotosBtn" disabled>Google Photos — soon</button>
         </div>
+
+        <!-- Shown once connected: pick multiple source folders, then one output. -->
+        <div class="wizard" id="cloudWizard" hidden>
+          <div class="wizard__step">
+            <div class="wizard__num">1</div>
+            <div class="wizard__body">
+              <h4>Choose photo sources</h4>
+              <p class="card-plain__fine">Pick one or more OneDrive folders to pull photos from. Defaults to your camera roll.</p>
+              <div class="chip-set" id="cloudSourcesList"></div>
+              <button class="btn btn--ghost btn--sm" id="pickSourcesBtn">Choose OneDrive folders…</button>
+            </div>
+          </div>
+          <div class="wizard__step">
+            <div class="wizard__num">2</div>
+            <div class="wizard__body">
+              <h4>Choose output album location</h4>
+              <p class="card-plain__fine">One folder where sorted per-person albums are written. A cloud folder is best so every device sees the same albums.</p>
+              <div class="output-pill" id="cloudOutputLabel">Kinalbum (OneDrive)</div>
+              <button class="btn btn--ghost btn--sm" id="pickOutputBtn">Choose output folder…</button>
+            </div>
+          </div>
+          <div class="wizard__step">
+            <div class="wizard__num">3</div>
+            <div class="wizard__body">
+              <h4>Sort</h4>
+              <p class="card-plain__fine">Pull from your sources and sort them into the output albums on this device.</p>
+              <button class="btn btn--primary" id="sortNowBtn">Sort my photos</button>
+            </div>
+          </div>
+        </div>
+
         <p class="msg" id="cloudMsg" hidden></p>
       </div>
 
@@ -612,6 +673,21 @@ p { margin: 0 0 .9rem; }
         <span class="btn-row__spacer"></span>
         <button class="btn btn--ghost" id="personCancel">Cancel</button>
         <button class="btn btn--primary" id="personSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- OneDrive folder browser (for choosing source folders or the output folder) -->
+  <div class="modal" id="folderModal" hidden>
+    <div class="modal__card">
+      <h3 id="folderModalTitle">Choose folders</h3>
+      <div class="folder-crumbs" id="folderCrumbs"></div>
+      <div class="folder-list" id="folderList"></div>
+      <p class="modal__hint" id="folderModalHint"></p>
+      <div class="btn-row btn-row--split">
+        <span class="btn-row__spacer"></span>
+        <button class="btn btn--ghost" id="folderCancel">Cancel</button>
+        <button class="btn btn--primary" id="folderConfirm">Done</button>
       </div>
     </div>
   </div>
@@ -1399,40 +1475,69 @@ async function signIn(onStatus) {
   }
 }
 
-// Assuming we're signed in, list camera-roll images/videos, download them, and
-// pass File objects to onFiles for on-device sorting.
-async function importCameraRoll(onStatus, onFiles) {
+// List the immediate child FOLDERS of a drive item (default = the drive root),
+// for the folder-picker UI. Returns [{id, name, childCount}].
+async function listChildFolders(parentId) {
   const token = await getTokenSilent();
-  if (!token) {
-    onStatus?.("Please connect OneDrive first.");
-    return;
-  }
-
-  onStatus?.("Finding photos & videos in your camera roll…");
-  const items = [];
-  // NOTE: do NOT use $select here — on personal OneDrive, selecting fields drops
-  // the transient @microsoft.graph.downloadUrl annotation. We also $expand the
-  // thumbnails so we can scan small pre-generated previews instead of pulling
-  // multi-MB originals (critical for large libraries).
-  let next = `${GRAPH}/me/drive/special/cameraroll/children?$top=200&$expand=thumbnails`;
+  if (!token) return [];
+  const base = parentId ? `${GRAPH}/me/drive/items/${parentId}/children` : `${GRAPH}/me/drive/root/children`;
+  let next = `${base}?$select=id,name,folder&$top=200`;
+  const folders = [];
   try {
-    while (next && items.length < MAX_FILES) {
+    while (next) {
       const page = await graphGet(next, token);
       for (const it of page.value || []) {
-        const mt = String(it.file?.mimeType || "");
-        if (it.file && (mt.startsWith("image/") || mt.startsWith("video/"))) items.push(it);
+        if (it.folder) folders.push({ id: it.id, name: it.name, childCount: it.folder.childCount || 0 });
       }
       next = page["@odata.nextLink"];
     }
   } catch {
-    onStatus?.("Couldn't read your OneDrive camera roll.");
-    return;
+    /* return what we have */
   }
-  if (!items.length) {
-    onStatus?.("No photos found in your OneDrive camera roll.");
-    return;
-  }
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+  return folders;
+}
 
+// Resolve the camera-roll special folder (id + name) so it can be offered as a
+// default, pre-selected source.
+async function cameraRollFolder() {
+  const token = await getTokenSilent();
+  if (!token) return null;
+  try {
+    const r = await graphGet(`${GRAPH}/me/drive/special/cameraroll?$select=id,name`, token);
+    return { id: r.id, name: r.name || "Camera roll" };
+  } catch {
+    return null;
+  }
+}
+
+// Recursively gather image/video driveItems under a folder, bounded by MAX_FILES
+// total across the whole import so a huge tree can't run away.
+async function collectMediaItems(folderId, token, items) {
+  if (items.length >= MAX_FILES) return;
+  const subfolders = [];
+  // $expand thumbnails so we scan small previews, not multi-MB originals.
+  let next = `${GRAPH}/me/drive/items/${folderId}/children?$top=200&$expand=thumbnails`;
+  while (next && items.length < MAX_FILES) {
+    const page = await graphGet(next, token);
+    for (const it of page.value || []) {
+      if (items.length >= MAX_FILES) break;
+      const mt = String(it.file?.mimeType || "");
+      if (it.file && (mt.startsWith("image/") || mt.startsWith("video/"))) items.push(it);
+      else if (it.folder && (it.folder.childCount || 0) > 0) subfolders.push(it.id);
+    }
+    next = page["@odata.nextLink"];
+  }
+  for (const sf of subfolders) {
+    if (items.length >= MAX_FILES) break;
+    await collectMediaItems(sf, token, items);
+  }
+}
+
+// Download a batch of driveItems' pixels (preferring the pre-generated LARGE
+// thumbnail over the full original) and hand File objects to onFiles for
+// on-device sorting. Shared by camera-roll and multi-folder import.
+async function downloadAndFeed(items, token, onStatus, onFiles) {
   const slice = items.slice(0, MAX_FILES);
   const total = slice.length;
   onStatus?.(`Scanning 0 of ${total}…`);
@@ -1440,11 +1545,6 @@ async function importCameraRoll(onStatus, onFiles) {
   let failed = 0;
   let done = 0;
 
-  // Fetch one item's pixels for on-device face detection. We prefer OneDrive's
-  // pre-generated LARGE thumbnail (~800px, tens of KB) over the full original
-  // (often several MB) — detection downscales to ~1280px anyway, so a large thumb
-  // is plenty and lets a library of thousands be scanned without hauling down
-  // every original. The original is only fetched on demand later, by cloud id.
   async function fetchOne(it) {
     let blob = null;
     const thumbUrl = it.thumbnails?.[0]?.large?.url;
@@ -1455,7 +1555,6 @@ async function importCameraRoll(onStatus, onFiles) {
         /* fall through to original */
       }
     }
-    // Fallbacks (no thumbnail available): pre-auth download URL, then Graph content.
     if (!blob) {
       const url = it["@microsoft.graph.downloadUrl"];
       if (url) {
@@ -1483,7 +1582,6 @@ async function importCameraRoll(onStatus, onFiles) {
       return null;
     }
     const f = new File([blob], it.name, { type: blob.type || "image/jpeg" });
-    // Remember the OneDrive id so the original can be fetched on demand later.
     try {
       f.cloudId = it.id;
     } catch {
@@ -1492,7 +1590,6 @@ async function importCameraRoll(onStatus, onFiles) {
     return f;
   }
 
-  // Scan several at a time so a big camera roll doesn't crawl one-by-one.
   const CONCURRENCY = 5;
   for (let i = 0; i < slice.length; i += CONCURRENCY) {
     const batch = slice.slice(i, i + CONCURRENCY);
@@ -1505,6 +1602,46 @@ async function importCameraRoll(onStatus, onFiles) {
   }
   onStatus?.(`Scanned ${files.length} photos${failed ? ` (${failed} skipped)` : ""} — sorting them on this device…`);
   await onFiles(files);
+}
+
+// Import photos/videos from one or more chosen OneDrive folders (recursively).
+// An empty list defaults to the camera roll, preserving the original behaviour.
+async function importFromFolders(folderIds, onStatus, onFiles) {
+  const token = await getTokenSilent();
+  if (!token) {
+    onStatus?.("Please connect OneDrive first.");
+    return;
+  }
+  let ids = (folderIds || []).filter(Boolean);
+  if (!ids.length) {
+    const cr = await cameraRollFolder();
+    if (cr) ids = [cr.id];
+  }
+  if (!ids.length) {
+    onStatus?.("No source folders selected.");
+    return;
+  }
+  onStatus?.("Finding photos & videos in your selected folders…");
+  const items = [];
+  try {
+    for (const fid of ids) {
+      if (items.length >= MAX_FILES) break;
+      await collectMediaItems(fid, token, items);
+    }
+  } catch {
+    onStatus?.("Couldn't read your selected OneDrive folders.");
+    return;
+  }
+  if (!items.length) {
+    onStatus?.("No photos found in the selected folders.");
+    return;
+  }
+  await downloadAndFeed(items, token, onStatus, onFiles);
+}
+
+// Assuming we're signed in, import the camera roll (the default source).
+async function importCameraRoll(onStatus, onFiles) {
+  return importFromFolders([], onStatus, onFiles);
 }
 
 // Sign in, then import the camera roll (the original one-shot flow).
@@ -1584,7 +1721,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, moveCloudFile, signIn, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, moveCloudFile, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Kinalbum controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -1621,6 +1758,8 @@ const state = {
   autoBackup: true, // continuously sort new photos and back organised copies to OneDrive
   backedUpKeys: new Set(), // files already uploaded, so we never back up twice
   keptDistinct: new Set(), // photo ids the user confirmed are NOT duplicates (stop flagging)
+  cloudSources: [], // chosen OneDrive source folders [{id, name}] ([] = camera roll default)
+  outputRoot: "Kinalbum", // OneDrive folder path where sorted per-person albums are written
 };
 
 let autoScanning = false; // true during a background re-scan (suppresses nav + overlay)
@@ -1647,6 +1786,7 @@ async function boot() {
   ]);
   await loadWatched();
   await loadAutoBackup();
+  await loadCloudPrefs();
   el("boot").hidden = true;
   recomputePending();
   renderAll();
@@ -1902,12 +2042,14 @@ async function registerPeriodicSync() {
   }
 }
 
-// Choose the OneDrive sub-folder for a new photo: the child it was sorted into
-// (children first), else the first person, else "Unsorted".
+// Choose the OneDrive sub-folder for a new photo: the chosen OUTPUT root, then
+// the child it was sorted into (children first), else the first person, else
+// "Unsorted".
 function backupFolderFor(personIds) {
+  const root = (state.outputRoot || "Kinalbum").replace(/\/+$/, "");
   const named = personIds.map((id) => state.people.find((p) => p.id === id)).filter((p) => p && !p.ignored);
   const target = named.find((p) => p.isChild) || named[0];
-  return `Kinalbum/${target ? target.name : "Unsorted"}`;
+  return `${root}/${target ? target.name : "Unsorted"}`;
 }
 
 // Upload freshly-ingested originals to OneDrive, organised by album. Skips
@@ -2222,19 +2364,190 @@ async function connectCloud() {
     // Signed in — bring back people + learning first.
     await restoreCloudModel();
     // If an organised library already exists in OneDrive, rebuild straight from
-    // it (no re-downloading or re-recognising the whole camera roll). Only fall
-    // back to a full camera-roll sort when there's nothing organised yet.
+    // it (no re-downloading or re-recognising). This is instant and device-safe.
     const restored = await rebuildFromManifest();
+    // Reveal the sources → output → sort wizard (default source = camera roll).
+    revealCloudWizard();
     if (restored > 0) {
-      showCloudMsg(`Restored ${restored} sorted photo${restored === 1 ? "" : "s"} from OneDrive. Press the button again any time to pull in new photos.`);
+      showCloudMsg(`Connected. Restored ${restored} sorted photo${restored === 1 ? "" : "s"}. Choose sources & an output below, then Sort to pull in new photos.`);
     } else {
-      await cloud.importCameraRoll(showCloudMsg, handleFiles);
+      showCloudMsg("Connected. Choose which OneDrive folders to pull from and where to save the sorted albums, then press Sort.");
     }
     scheduleCloudSync();
     scheduleLibrarySync();
   } finally {
     el("oneDriveBtn").disabled = false;
   }
+}
+
+// Load/persist the chosen cloud source folders + output folder path.
+async function loadCloudPrefs() {
+  const s = await db.get("meta", "cloudSources");
+  state.cloudSources = Array.isArray(s?.list) ? s.list : [];
+  const o = await db.get("meta", "outputRoot");
+  if (o?.path) state.outputRoot = o.path;
+  if (cloud.oneDriveConfigured()) {
+    const signedIn = await cloud.hasCloudAccount();
+    if (signedIn) revealCloudWizard();
+  }
+}
+
+async function saveCloudPrefs() {
+  await db.put("meta", { id: "cloudSources", list: state.cloudSources });
+  await db.put("meta", { id: "outputRoot", path: state.outputRoot });
+}
+
+// Show the 3-step wizard (once connected) and paint the current selections.
+function revealCloudWizard() {
+  const w = el("cloudWizard");
+  if (w) w.hidden = false;
+  renderCloudSources();
+  renderOutputLabel();
+}
+
+function renderCloudSources() {
+  const box = el("cloudSourcesList");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!state.cloudSources.length) {
+    const chip = document.createElement("span");
+    chip.className = "chip chip--muted";
+    chip.textContent = "📷 Camera roll (default)";
+    box.appendChild(chip);
+    return;
+  }
+  for (const s of state.cloudSources) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = `📁 ${s.name} <button class="chip__x" data-src="${s.id}" aria-label="Remove ${s.name}">✕</button>`;
+    box.appendChild(chip);
+  }
+  box.querySelectorAll("[data-src]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      state.cloudSources = state.cloudSources.filter((x) => x.id !== b.dataset.src);
+      await saveCloudPrefs();
+      renderCloudSources();
+    })
+  );
+}
+
+function renderOutputLabel() {
+  const lab = el("cloudOutputLabel");
+  if (lab) lab.textContent = `${state.outputRoot || "Kinalbum"} (OneDrive)`;
+}
+
+// Pull from the chosen source folders (or camera roll) and sort on-device.
+async function sortNow() {
+  const btn = el("sortNowBtn");
+  if (btn) btn.disabled = true;
+  try {
+    const ids = state.cloudSources.map((s) => s.id);
+    await cloud.importFromFolders(ids, showCloudMsg, handleFiles);
+    scheduleCloudSync();
+    scheduleLibrarySync();
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ------------------------------------------------- OneDrive folder browser */
+// A small navigable folder picker over the user's OneDrive. Two modes:
+//  - "sources": multi-select (checkboxes) → state.cloudSources
+//  - "output" : single-select (the folder you're IN) → state.outputRoot
+let folderMode = "sources";
+let folderStack = []; // breadcrumb: [{id|null, name}] from root to current
+let folderPicked = new Map(); // id → {id, name} chosen in sources mode
+
+async function openFolderBrowser(mode) {
+  folderMode = mode;
+  folderStack = [{ id: null, name: "OneDrive" }];
+  folderPicked = new Map(state.cloudSources.map((s) => [s.id, s]));
+  el("folderModalTitle").textContent = mode === "output" ? "Choose output folder" : "Choose source folders";
+  el("folderModalHint").textContent =
+    mode === "output"
+      ? "Open a folder, then press “Use this folder”. Sorted albums are written inside it."
+      : "Tick the folders to pull photos from. Open a folder to see its sub-folders.";
+  el("folderConfirm").textContent = mode === "output" ? "Use this folder" : "Done";
+  el("folderModal").hidden = false;
+  await renderFolderBrowser();
+}
+
+async function renderFolderBrowser() {
+  const listEl = el("folderList");
+  const crumbs = el("folderCrumbs");
+  listEl.innerHTML = '<p class="muted">Loading…</p>';
+  // Breadcrumb
+  crumbs.innerHTML = "";
+  folderStack.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.className = "folder-crumb";
+    b.textContent = c.name;
+    b.addEventListener("click", async () => {
+      folderStack = folderStack.slice(0, i + 1);
+      await renderFolderBrowser();
+    });
+    crumbs.appendChild(b);
+    if (i < folderStack.length - 1) {
+      const sep = document.createElement("span");
+      sep.className = "folder-crumb__sep";
+      sep.textContent = "›";
+      crumbs.appendChild(sep);
+    }
+  });
+
+  const current = folderStack[folderStack.length - 1];
+  let folders = [];
+  try {
+    folders = await cloud.listChildFolders(current.id);
+  } catch {
+    /* ignore */
+  }
+  listEl.innerHTML = "";
+  if (!folders.length) {
+    listEl.innerHTML = '<p class="muted">No sub-folders here.</p>';
+  }
+  for (const f of folders) {
+    const row = document.createElement("div");
+    row.className = "folder-row";
+    if (folderMode === "sources") {
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "folder-row__cb";
+      cb.checked = folderPicked.has(f.id);
+      cb.addEventListener("change", () => {
+        if (cb.checked) folderPicked.set(f.id, { id: f.id, name: f.name });
+        else folderPicked.delete(f.id);
+      });
+      row.appendChild(cb);
+    }
+    const open = document.createElement("button");
+    open.className = "folder-row__open";
+    open.innerHTML = `<span class="folder-row__icon">📁</span><span class="folder-row__name">${f.name}</span><span class="folder-row__go">›</span>`;
+    open.addEventListener("click", async () => {
+      folderStack.push({ id: f.id, name: f.name });
+      await renderFolderBrowser();
+    });
+    row.appendChild(open);
+    listEl.appendChild(row);
+  }
+}
+
+async function confirmFolderBrowser() {
+  if (folderMode === "sources") {
+    state.cloudSources = [...folderPicked.values()];
+    await saveCloudPrefs();
+    renderCloudSources();
+  } else {
+    // Output = the folder we're currently inside (path = breadcrumb minus "OneDrive").
+    const path = folderStack
+      .slice(1)
+      .map((c) => c.name)
+      .join("/");
+    state.outputRoot = path || "Kinalbum";
+    await saveCloudPrefs();
+    renderOutputLabel();
+  }
+  el("folderModal").hidden = true;
 }
 
 function showCloudMsg(text) {
@@ -3870,6 +4183,11 @@ function wire() {
   if (window.isSecureContext) {
     el("cloudCard").hidden = false;
     el("oneDriveBtn").addEventListener("click", connectCloud);
+    el("pickSourcesBtn").addEventListener("click", () => openFolderBrowser("sources"));
+    el("pickOutputBtn").addEventListener("click", () => openFolderBrowser("output"));
+    el("sortNowBtn").addEventListener("click", sortNow);
+    el("folderCancel").addEventListener("click", () => (el("folderModal").hidden = true));
+    el("folderConfirm").addEventListener("click", confirmFolderBrowser);
     // Runtime client-ID setup: show the paste field until an ID is saved, so a
     // deployed build can be configured on-device without a rebuild.
     const refreshCloudSetup = () => {
