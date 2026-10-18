@@ -5587,11 +5587,16 @@ async function showLightboxPhoto() {
       rm.addEventListener("click", () => removePhotoFromPerson(photoId, person.id));
       actions.appendChild(rm);
 
-      // Choose this photo as the album's cover (shown on the People grid).
+      // Choose this person's FACE from the photo as their album cover (shown on
+      // the People grid). Using their face crop — not the whole frame — keeps it
+      // unambiguous even when several people share the photo.
+      const theirFace = state.faces.find((f) => f.photoId === photo.id && f.personId === person.id);
+      const coverCandidate = (theirFace && theirFace.thumb) || photo.thumb;
+      const isCover = person.coverThumb === coverCandidate;
       const cover = document.createElement("button");
       cover.className = "btn btn--ghost";
-      cover.textContent = person.coverThumb === photo.thumb ? "★ Album cover" : "☆ Set as album cover";
-      cover.disabled = person.coverThumb === photo.thumb;
+      cover.textContent = isCover ? `★ ${person.name}'s cover` : `☆ Set as ${person.name}'s cover`;
+      cover.disabled = isCover;
       cover.addEventListener("click", () => setAlbumCover(person.id, photo));
       actions.appendChild(cover);
     }
@@ -5763,21 +5768,20 @@ async function renderFaceOverlay(photo) {
   window.addEventListener("resize", faceOverlayResize);
 }
 
-// Clicking a face box: reveal the tagging panel and flash that face's row so the
-// user can pick a name straight away.
+// Clicking a face box: open the tagging modal for just that face so the user can
+// name it (or pick an existing person / ignore) straight away — the literal
+// "click a face to tag" flow. If the tagging panel happens to show that face's
+// row, we also flash it on the way out for a visual cue.
 function onFaceBoxClick(f) {
   const box = el("lightboxTag");
-  if (!box) return;
-  // If this face is already resolved but hidden (only untagged are shown while
-  // some remain), nothing to flash — just bring the panel into view.
-  const row = box.querySelector(`[data-face-id="${f.id}"]`);
+  const row = box ? box.querySelector(`[data-face-id="${f.id}"]`) : null;
   if (row) {
-    row.scrollIntoView({ behavior: "smooth", block: "center" });
     row.classList.add("tag-face--flash");
-    setTimeout(() => row.classList.remove("tag-face--flash"), 1500);
-  } else {
-    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setTimeout(() => row.classList.remove("tag-face--flash"), 1400);
   }
+  const photo = state.photos.find((p) => p.id === lightboxPhotoId) || null;
+  closeLightbox();
+  openNameModal({ faces: [f] }, photo);
 }
 
 // Manual tagging panel: for each detected face, show who it's tagged as and let
@@ -6113,14 +6117,16 @@ async function findFacesInPhoto(photo, btn) {
 }
 
 // Set this photo as the person's album cover (the thumbnail shown on the
-// People grid). Falls back to the auto-picked face thumb if never set.
+// People grid). Uses THIS person's face crop from the photo so group shots give
+// an unambiguous cover; falls back to the whole frame if no face is stored.
 async function setAlbumCover(personId, photo) {
   const person = state.people.find((p) => p.id === personId);
   if (!person || !photo) return;
-  person.coverThumb = photo.thumb;
+  const theirFace = state.faces.find((f) => f.photoId === photo.id && f.personId === personId);
+  person.coverThumb = (theirFace && theirFace.thumb) || photo.thumb;
   await db.put("people", person);
   renderAll();
-  // Re-open the photo so the button flips to the "★ Album cover" state.
+  // Re-open the photo so the button flips to the "★ …'s cover" state.
   showLightboxPhoto(photo.id);
 }
 
