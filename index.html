@@ -4257,17 +4257,30 @@ async function rejectFacesFromPerson(faces, personId) {
 function renderExistingPeopleChips() {
   const wrap = el("existingPeopleWrap");
   const box = el("existingPeople");
-  const people = namedPeople();
+  const people = peopleByUsage();
   box.innerHTML = "";
   wrap.hidden = people.length === 0;
   for (const p of people) {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "chip chip--person";
-    chip.innerHTML = `<img src="${p.thumb}" alt="" /><span>${p.name}</span>`;
+    chip.innerHTML = `<img src="${p.coverThumb || p.thumb}" alt="" /><span>${p.name}</span>`;
     chip.addEventListener("click", () => assignToExistingPerson(p));
     box.appendChild(chip);
   }
+}
+
+// People for the tag picker, ordered so the ones you tag most appear first
+// (then alphabetically) — so with a long list you rarely need to scroll.
+function peopleByUsage() {
+  const count = new Map();
+  for (const ph of state.photos) {
+    for (const id of ph.personIds || []) count.set(id, (count.get(id) || 0) + 1);
+  }
+  return namedPeople().slice().sort((a, b) => {
+    const d = (count.get(b.id) || 0) - (count.get(a.id) || 0);
+    return d !== 0 ? d : a.name.localeCompare(b.name);
+  });
 }
 
 async function assignToExistingPerson(person) {
