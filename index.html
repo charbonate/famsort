@@ -259,6 +259,11 @@ p { margin: 0 0 .9rem; }
   background: #fff; border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px; }
 .album-path__tag--ok { color: #2e7d4a; border-color: #bfe2cc; background: #eefaf1; }
 .album-path__tag--off { color: #b06a00; border-color: #f0d79a; background: #fff7e8; }
+.album-path__open { flex: 0 0 auto; margin-left: 8px; font: inherit; font-size: .72rem; font-weight: 700;
+  color: var(--accent); background: #fff; border: 1px solid var(--line); border-radius: 999px;
+  padding: 3px 10px; cursor: pointer; }
+.album-path__open:hover:not(:disabled) { border-color: var(--accent); background: var(--cream-2); }
+.album-path__open:disabled { opacity: .6; cursor: default; }
 
 /* Open album header */
 .albumdet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
@@ -326,6 +331,24 @@ p { margin: 0 0 .9rem; }
   font-size: 1.2rem; cursor: pointer; z-index: 2; }
 .lightbox__close:hover { background: rgba(255,255,255,.26); }
 .lightbox__actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+
+/* Facebook-style clickable face boxes drawn over the open photo. */
+.face-overlay { position: absolute; z-index: 3; pointer-events: none; }
+.face-box { position: absolute; margin: 0; padding: 0; background: transparent; cursor: pointer;
+  pointer-events: auto; border: 2px solid rgba(255,255,255,.85); border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.35); transition: border-color .12s, background .12s; }
+.face-box:hover { border-color: var(--accent); background: rgba(232,115,74,.14); }
+.face-box.is-tagged { border-color: rgba(120,220,150,.95); }
+.face-box.is-ignored { border-color: rgba(255,255,255,.45); border-style: dashed; }
+.face-box__label { position: absolute; left: 50%; bottom: calc(100% + 5px); transform: translateX(-50%);
+  max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: .72rem; font-weight: 700; color: #fff; background: rgba(20,16,14,.92);
+  padding: 2px 8px; border-radius: 6px; opacity: 0; transition: opacity .12s; pointer-events: none; }
+.face-box:hover .face-box__label, .face-box:focus-visible .face-box__label,
+.face-box.is-tagged .face-box__label { opacity: 1; }
+@keyframes tagFaceFlash { 0%, 100% { background: transparent; } 30% { background: rgba(232,115,74,.18); } }
+.tag-face--flash { animation: tagFaceFlash 1.4s ease; border-radius: 10px; }
+
 
 /* Manual tagging panel inside the lightbox — flows in the lightbox's own
    scroll so a long list of names is never clipped off-screen. */
@@ -519,6 +542,11 @@ p { margin: 0 0 .9rem; }
 .modal { position: fixed; inset: 0; z-index: 95; display: grid; place-items: center; background: rgba(36,31,27,.55); padding: 24px; }
 .modal__card { background: #fff; border-radius: var(--radius); padding: 22px; width: 100%; max-width: 340px; text-align: center; box-shadow: var(--shadow); }
 .modal__card--wide { max-width: 560px; max-height: 86vh; overflow-y: auto; }
+/* Tag modal: keep the people list from pushing Save off-screen, and pin the
+   Save/Cancel row to the bottom so it (and the custom-relationship input) stay
+   reachable no matter how many people exist. */
+#existingPeople { max-height: 34vh; overflow-y: auto; padding: 2px; }
+#nameModal .btn-row { position: sticky; bottom: -2px; z-index: 4; background: #fff; margin-top: 6px; padding: 10px 0 2px; }
 /* "Remove all extras" pinned to the top of the duplicate list so it's reachable
    without scrolling the whole list first. */
 .btn-row--top { position: sticky; top: -2px; z-index: 3; justify-content: flex-end; margin: 0 0 10px; padding: 6px 0; background: #fff; }
@@ -937,7 +965,7 @@ p { margin: 0 0 .9rem; }
 
   <!-- Lightweight modal for naming a person -->
   <div class="modal" id="nameModal" hidden>
-    <div class="modal__card">
+    <div class="modal__card modal__card--wide">
       <h3>Tag this person</h3>
       <p class="modal__hint" id="nameHint">These faces look like the same person. Tap any that <strong>aren't</strong> them to leave them out.</p>
       <div class="name-faces" id="nameFaces"></div>
@@ -957,6 +985,7 @@ p { margin: 0 0 .9rem; }
       </div>
       <div class="btn-row">
         <button class="btn btn--ghost" id="nameCancel">Cancel</button>
+        <button class="btn btn--ghost" id="nameIgnore" hidden>Ignore these</button>
         <button class="btn btn--primary" id="nameSave">Save</button>
       </div>
     </div>
@@ -1335,6 +1364,18 @@ function canvasToDataURL(canvas, maxEdge, quality = 0.82) {
   return out.toDataURL("image/jpeg", quality);
 }
 
+// Express a detector box as fractions of the canvas (0..1), so it maps onto the
+// photo at ANY display size — used to draw clickable/hover face boxes over the
+// photo in the viewer (Facebook-style tagging).
+function normBox(box, canvas) {
+  return {
+    x: box.x / canvas.width,
+    y: box.y / canvas.height,
+    w: box.width / canvas.width,
+    h: box.height / canvas.height,
+  };
+}
+
 // Crop a face box (with padding) from a canvas into a square thumbnail dataURL.
 function cropFace(canvas, box, size = FACE_THUMB) {
   const pad = box.width * 0.35;
@@ -1429,6 +1470,7 @@ async function analyzeFile(file) {
     .map((r) => ({
       descriptor: Array.from(r.descriptor),
       thumb: cropFace(canvas, r.detection.box),
+      box: normBox(r.detection.box, canvas),
       score: r.detection.score,
     }));
 
@@ -1457,8 +1499,23 @@ async function analyzeImage(dataUrl) {
     .map((r) => ({
       descriptor: Array.from(r.descriptor),
       thumb: cropFace(canvas, r.detection.box),
+      box: normBox(r.detection.box, canvas),
       score: r.detection.score,
     }));
+}
+
+// Detect faces on an already-stored photo thumbnail and return ONLY their
+// normalized boxes + descriptors (no cropping). Used by the photo viewer to draw
+// clickable/hover face boxes over any photo, including ones imported before box
+// data was stored — the boxes are matched back to saved faces by descriptor.
+async function detectBoxes(dataUrl) {
+  const img = await dataUrlToImage(dataUrl);
+  const canvas = toScaledCanvas(img, DETECT_MAX);
+  const results = await detectFaces(canvas);
+  const minPx = Math.max(MIN_FACE_PX, Math.max(canvas.width, canvas.height) * MIN_FACE_FRAC);
+  return results
+    .filter((r) => isPlausibleFace(r, minPx))
+    .map((r) => ({ box: normBox(r.detection.box, canvas), descriptor: Array.from(r.descriptor) }));
 }
 
 function dataUrlToImage(src) {
@@ -1544,6 +1601,7 @@ async function analyzeVideoFile(file, onFrame = () => {}) {
         allFaces.push({
           descriptor: Array.from(r.descriptor),
           thumb: cropFace(canvas, r.detection.box),
+          box: normBox(r.detection.box, canvas),
           score: r.detection.score,
         });
         if (r.detection.score > bestScore) {
@@ -1556,7 +1614,7 @@ async function analyzeVideoFile(file, onFrame = () => {}) {
     // The same person appears in many frames — cluster and keep one face each.
     const faces = clusterFaces(allFaces).map((c) => {
       const rep = c.faces.reduce((a, b) => (b.score > a.score ? b : a));
-      return { descriptor: meanDescriptor(c.faces.map((f) => f.descriptor)), thumb: rep.thumb, score: rep.score };
+      return { descriptor: meanDescriptor(c.faces.map((f) => f.descriptor)), thumb: rep.thumb, box: rep.box, score: rep.score };
     });
 
     const photoThumb = bestThumb || midThumb || canvasToDataURL(videoFrameCanvas(video, PHOTO_THUMB), PHOTO_THUMB);
@@ -1683,7 +1741,7 @@ function matchPerson(descriptor, people, threshold = MATCH_THRESHOLD) {
   return bestId ? { id: bestId, dist: bestDist } : null;
 }
 
-return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, detectorInfo, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, analyzeImage, analyzeVideoFile, clusterFaces, matchPerson };
+return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, detectorInfo, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, analyzeImage, detectBoxes, analyzeVideoFile, clusterFaces, matchPerson };
 })();
 
 const cloud = (function () {
@@ -1880,6 +1938,31 @@ async function moveCloudFile(cloudId, folderPath) {
   });
   if (!res.ok) return null;
   return res.json();
+}
+
+// Resolve the OneDrive web URL for one of our organised folders (e.g.
+// "Famsort/Mary"), so the app can open it straight in the OneDrive website.
+// Returns the folder's webUrl, or null if not signed in / not found. Does not
+// create anything.
+async function getFolderWebUrl(folderPath) {
+  if (!oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  const path = String(folderPath || "Famsort")
+    .split("/")
+    .filter(Boolean)
+    .map((s) => encodeURIComponent(s.replace(/[\\/:*?"<>|]/g, "_")))
+    .join("/");
+  try {
+    const res = await fetch(`${GRAPH}/me/drive/root:/${path}?$select=webUrl,id`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const item = await res.json();
+    return item.webUrl || null;
+  } catch {
+    return null;
+  }
 }
 
 // Sign in only (or confirm an existing session). Returns true on success. Kept
@@ -2154,7 +2237,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, moveCloudFile, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, moveCloudFile, getFolderWebUrl, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -3484,6 +3567,10 @@ async function sortNow() {
     // Now that the user has sorted once, keep watching for new photos while the
     // app stays open (auto-backup). Never starts on its own before this.
     startAutoSync();
+    // The cloud import's last status ("Scanned … sorting them…") has now finished;
+    // clear it so it doesn't look stuck. Live progress was shown by the floating
+    // bar, which dismisses itself.
+    hideCloudMsg();
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -3594,6 +3681,13 @@ function showCloudMsg(text) {
   if (!m) return;
   m.textContent = text;
   m.hidden = false;
+}
+
+// Hide the cloud status line (used once a sort finishes so the transient
+// "sorting them on this device…" message doesn't linger as if stuck).
+function hideCloudMsg() {
+  const m = el("cloudMsg");
+  if (m) m.hidden = true;
 }
 
 /* ------------------------------------------------------------ add flow */
@@ -3715,6 +3809,7 @@ async function processFiles(fileList) {
         photoId,
         descriptor: f.descriptor,
         thumb: f.thumb,
+        box: f.box || null,
         personId,
       };
       state.faces.push(faceRec);
@@ -4095,6 +4190,8 @@ function openNameModal(cluster, photo = null) {
   const hasFaces = cluster.faces.length > 0;
   el("nameFaces").hidden = !hasFaces;
   el("nameFacesCount").hidden = !hasFaces;
+  const ignoreBtn = el("nameIgnore");
+  if (ignoreBtn) ignoreBtn.hidden = !hasFaces; // only makes sense when there are faces to drop
   el("nameHint").textContent = hasFaces
     ? "These faces look like the same person. Untap any that aren’t them — they’ll stay in ‘Awaiting tag’ so you can name them separately."
     : "Name your new album. This photo will be added to it.";
@@ -4328,6 +4425,22 @@ async function ignoreCluster(cluster) {
   await sweepIgnoredLookalikes();
   recomputePending();
   renderAll();
+}
+
+// "Ignore these" from the tag modal — drop the currently-selected faces into the
+// hidden Ignored bucket instead of naming them, to clean out strangers/junk.
+async function ignoreSelectedInModal() {
+  if (!modalCluster) return;
+  const picked = selectedCluster();
+  el("nameModal").hidden = true;
+  modalCluster = null;
+  modalPhoto = null;
+  if (picked.faces.length) {
+    await ignoreCluster(picked);
+  } else {
+    recomputePending();
+    renderAll();
+  }
 }
 
 // Ignore a single face (from the lightbox) — add it to the hidden "ignored"
@@ -4909,7 +5022,7 @@ function renderPeople() {
     card.className = "person-card";
     card.innerHTML = `
       <button class="person-card__face person-card__face--btn" data-nav="${p.id}" aria-label="Open ${p.name}'s album">
-        <img src="${p.thumb}" alt="${p.name}" />
+        <img src="${p.coverThumb || p.thumb}" alt="${p.name}" />
       </button>
       <div class="person-card__body">
         <div class="person-card__name">${p.name}${p.isChild ? ' <span class="badge-kid">child</span>' : ""}</div>
@@ -5201,6 +5314,38 @@ function renderAlbumPath(id, special) {
     .join('<span class="album-path__sep">›</span>');
   nav.hidden = false;
   nav.innerHTML = `<span class="album-path__icon">${icon}</span>${crumbs}${tag}`;
+
+  // Jump straight to the real folder in OneDrive, so "where is it saved" is one
+  // tap away (and it's easy to confirm the files actually landed there).
+  if (state.outputMode === "cloud" && cloud.oneDriveConfigured()) {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "album-path__open";
+    open.textContent = "Open in OneDrive ↗";
+    open.addEventListener("click", async () => {
+      open.disabled = true;
+      const was = open.textContent;
+      open.textContent = "Opening…";
+      try {
+        const url = await cloud.getFolderWebUrl(folder);
+        if (url) {
+          window.open(url, "_blank", "noopener");
+        } else {
+          open.textContent = "Folder not in OneDrive yet";
+          setTimeout(() => (open.textContent = was), 2600);
+          return;
+        }
+      } catch {
+        open.textContent = "Couldn't open OneDrive";
+        setTimeout(() => (open.textContent = was), 2600);
+        return;
+      } finally {
+        open.disabled = false;
+      }
+      open.textContent = was;
+    });
+    nav.appendChild(open);
+  }
 }
 
 function renderAlbumDetail() {
@@ -5397,6 +5542,7 @@ async function showLightboxPhoto() {
 
   renderLightboxTagging(photo);
   renderLightboxStrip();
+  renderFaceOverlay(photo);
 
   const actions = el("lightboxActions");
   actions.innerHTML = "";
@@ -5427,6 +5573,14 @@ async function showLightboxPhoto() {
       rm.textContent = `Remove from ${person.name}'s album`;
       rm.addEventListener("click", () => removePhotoFromPerson(photoId, person.id));
       actions.appendChild(rm);
+
+      // Choose this photo as the album's cover (shown on the People grid).
+      const cover = document.createElement("button");
+      cover.className = "btn btn--ghost";
+      cover.textContent = person.coverThumb === photo.thumb ? "★ Album cover" : "☆ Set as album cover";
+      cover.disabled = person.coverThumb === photo.thumb;
+      cover.addEventListener("click", () => setAlbumCover(person.id, photo));
+      actions.appendChild(cover);
     }
   }
 
@@ -5455,6 +5609,16 @@ async function showLightboxPhoto() {
   dl.addEventListener("click", () => downloadPhoto(photo, dl));
   actions.appendChild(dl);
 
+  // Re-scan this one photo for faces the first pass missed (common with lower-
+  // res cloud imports). New faces are matched to your people and added.
+  if (!photo.isVideo) {
+    const rescan = document.createElement("button");
+    rescan.className = "btn btn--ghost";
+    rescan.textContent = "Find faces in this photo";
+    rescan.addEventListener("click", () => findFacesInPhoto(photo, rescan));
+    actions.appendChild(rescan);
+  }
+
   const del = document.createElement("button");
   del.className = "btn btn--danger";
   del.textContent = "Delete photo everywhere";
@@ -5465,6 +5629,7 @@ async function showLightboxPhoto() {
 function closeLightbox() {
   el("lightbox").hidden = true;
   el("lightboxImg").src = "";
+  clearFaceOverlay();
   const vid = el("lightboxVideo");
   vid.pause?.();
   vid.removeAttribute("src");
@@ -5474,6 +5639,132 @@ function closeLightbox() {
     lightboxMediaUrl = null;
   }
   lightboxPhotoId = null;
+}
+
+/* ------------------------------------------- face boxes over the photo */
+// Facebook-style clickable/hover face boxes drawn on top of the open photo.
+// Tapping a box jumps to (and flashes) that face's row in the tagging panel;
+// hovering shows who it is. Works on any photo: faces saved with box data use
+// it directly; older photos get boxes detected on-demand from the thumbnail and
+// matched back to the saved faces by descriptor.
+let faceOverlayResize = null;
+
+function clearFaceOverlay() {
+  const ov = el("faceOverlay");
+  if (ov) ov.remove();
+  if (faceOverlayResize) {
+    window.removeEventListener("resize", faceOverlayResize);
+    faceOverlayResize = null;
+  }
+}
+
+// The on-screen rectangle actually covered by the photo inside the <img> box
+// (accounts for object-fit letterboxing, though with a natural aspect ratio the
+// insets are ~0).
+function imgContainRect(img) {
+  const cw = img.clientWidth;
+  const ch = img.clientHeight;
+  const nw = img.naturalWidth;
+  const nh = img.naturalHeight;
+  if (!nw || !nh) return { left: 0, top: 0, width: cw, height: ch };
+  const scale = Math.min(cw / nw, ch / nh);
+  const w = nw * scale;
+  const h = nh * scale;
+  return { left: (cw - w) / 2, top: (ch - h) / 2, width: w, height: h };
+}
+
+async function renderFaceOverlay(photo) {
+  clearFaceOverlay();
+  if (!photo || photo.isVideo) return;
+  const stage = document.querySelector(".lightbox__stage");
+  const img = el("lightboxImg");
+  if (!stage || !img || img.hidden) return;
+  const faces = state.faces.filter((f) => f.photoId === photo.id);
+  if (!faces.length) return;
+
+  // If no face has a stored box (older import), detect boxes on the thumbnail
+  // once and cache them on the in-memory face objects (not persisted).
+  if (!faces.some((f) => f.box || f._box)) {
+    try {
+      const dets = await face.detectBoxes(photo.thumb);
+      for (const f of faces) {
+        let best = null;
+        let bestD = Infinity;
+        for (const d of dets) {
+          const dist = face.euclidean(f.descriptor, d.descriptor);
+          if (dist < bestD) {
+            bestD = dist;
+            best = d;
+          }
+        }
+        if (best && bestD < 0.6) f._box = best.box;
+      }
+    } catch {
+      /* detection unavailable — just skip the overlay */
+    }
+    // The viewer may have moved on while we were detecting.
+    if (lightboxPhotoId !== photo.id) return;
+  }
+
+  const overlay = document.createElement("div");
+  overlay.id = "faceOverlay";
+  overlay.className = "face-overlay";
+  stage.appendChild(overlay);
+  const people = namedPeople();
+
+  const build = () => {
+    const rect = imgContainRect(img);
+    overlay.style.left = img.offsetLeft + rect.left + "px";
+    overlay.style.top = img.offsetTop + rect.top + "px";
+    overlay.style.width = rect.width + "px";
+    overlay.style.height = rect.height + "px";
+    overlay.innerHTML = "";
+    for (const f of faces) {
+      const b = f.box || f._box;
+      if (!b) continue;
+      const person = f.personId && f.personId !== IGNORED ? people.find((p) => p.id === f.personId) : null;
+      const tagged = !!person;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "face-box" + (tagged ? " is-tagged" : f.personId === IGNORED ? " is-ignored" : "");
+      btn.style.left = b.x * 100 + "%";
+      btn.style.top = b.y * 100 + "%";
+      btn.style.width = b.w * 100 + "%";
+      btn.style.height = b.h * 100 + "%";
+      btn.setAttribute("aria-label", person ? person.name : "Tag this face");
+      const label = document.createElement("span");
+      label.className = "face-box__label";
+      label.textContent = person ? person.name : f.personId === IGNORED ? "Ignored" : "Tag this face";
+      btn.appendChild(label);
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onFaceBoxClick(f);
+      });
+      overlay.appendChild(btn);
+    }
+  };
+
+  if (img.complete && img.naturalWidth) build();
+  else img.addEventListener("load", build, { once: true });
+  faceOverlayResize = build;
+  window.addEventListener("resize", faceOverlayResize);
+}
+
+// Clicking a face box: reveal the tagging panel and flash that face's row so the
+// user can pick a name straight away.
+function onFaceBoxClick(f) {
+  const box = el("lightboxTag");
+  if (!box) return;
+  // If this face is already resolved but hidden (only untagged are shown while
+  // some remain), nothing to flash — just bring the panel into view.
+  const row = box.querySelector(`[data-face-id="${f.id}"]`);
+  if (row) {
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.classList.add("tag-face--flash");
+    setTimeout(() => row.classList.remove("tag-face--flash"), 1500);
+  } else {
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 }
 
 // Manual tagging panel: for each detected face, show who it's tagged as and let
@@ -5526,6 +5817,7 @@ function renderLightboxTagging(photo) {
       const person = f.personId && f.personId !== IGNORED ? people.find((p) => p.id === f.personId) : null;
       const row = document.createElement("div");
       row.className = "tag-face";
+      row.dataset.faceId = f.id;
 
       const img = document.createElement("img");
       img.className = "tag-face__thumb";
@@ -5755,6 +6047,68 @@ async function removePhotoFromPerson(photoId, personId) {
   closeLightbox();
   recomputePending();
   renderAll();
+}
+
+// Re-scan a single photo for faces the first on-device pass missed (common with
+// lower-res cloud imports). New faces are matched to existing people, saved, and
+// the photo's albums refreshed. We dedup against faces already stored for this
+// photo (by descriptor distance) so re-running doesn't create copies.
+async function findFacesInPhoto(photo, btn) {
+  if (!photo || photo.isVideo) return;
+  const was = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Scanning…"; }
+  try {
+    await face.loadModels();
+    const found = await face.analyzeImage(photo.thumb);
+    const existing = state.faces.filter((f) => f.photoId === photo.id);
+    const fresh = [];
+    for (const f of found) {
+      const dup =
+        existing.some((e) => face.euclidean(e.descriptor, f.descriptor) < 0.45) ||
+        fresh.some((e) => face.euclidean(e.descriptor, f.descriptor) < 0.45);
+      if (dup) continue;
+      const match = face.matchPerson(f.descriptor, state.people);
+      fresh.push({
+        id: db.uid(),
+        photoId: photo.id,
+        descriptor: f.descriptor,
+        thumb: f.thumb,
+        box: f.box || null,
+        personId: match ? match.id : null,
+      });
+    }
+    if (fresh.length) {
+      state.faces.push(...fresh);
+      await db.bulkPut("faces", fresh);
+      const ids = new Set(photo.personIds || []);
+      for (const f of fresh) if (f.personId && f.personId !== IGNORED) ids.add(f.personId);
+      photo.personIds = [...ids];
+      await db.put("photos", photo);
+      recomputePending();
+      renderAll();
+      if (btn) btn.textContent = `Found ${fresh.length} new face${fresh.length === 1 ? "" : "s"}`;
+      renderFaceOverlay(photo);
+      renderLightboxTagging(photo);
+    } else if (btn) {
+      btn.textContent = "No new faces found";
+    }
+  } catch {
+    if (btn) btn.textContent = "Scan failed — try again";
+  } finally {
+    if (btn) setTimeout(() => { btn.disabled = false; btn.textContent = was; }, 2600);
+  }
+}
+
+// Set this photo as the person's album cover (the thumbnail shown on the
+// People grid). Falls back to the auto-picked face thumb if never set.
+async function setAlbumCover(personId, photo) {
+  const person = state.people.find((p) => p.id === personId);
+  if (!person || !photo) return;
+  person.coverThumb = photo.thumb;
+  await db.put("people", person);
+  renderAll();
+  // Re-open the photo so the button flips to the "★ Album cover" state.
+  showLightboxPhoto(photo.id);
 }
 
 // Delete a photo entirely — from every album and the "Everyone" view.
@@ -6129,6 +6483,7 @@ function wire() {
   });
 
   el("nameSave").addEventListener("click", saveNamedPerson);
+  el("nameIgnore").addEventListener("click", ignoreSelectedInModal);
   el("nameCancel").addEventListener("click", () => {
     el("nameModal").hidden = true;
     modalCluster = null;
