@@ -853,6 +853,7 @@ p { margin: 0 0 .9rem; }
           <div class="album-backup__row">
             <span class="album-backup__text" id="albumBackupText"></span>
             <button class="btn btn--primary btn--sm" id="albumBackupNow">⤒ Back up now</button>
+            <button class="btn btn--ghost btn--sm" id="albumBackupRepair" hidden>↻ Re-upload all</button>
           </div>
           <div class="album-backup__track" id="albumBackupTrack" hidden>
             <div class="album-backup__fill" id="albumBackupFill"></div>
@@ -1859,16 +1860,31 @@ async function graphGet(url, token) {
 // missing folders in the path. Used by auto-backup to mirror new photos into
 // organised, per-album folders (e.g. "Famsort/Ava/IMG_0001.jpg"). Simple upload
 // handles files up to 250 MB, which covers phone photos and short videos.
-async function uploadFileToOneDrive(file, folderPath) {
+async function uploadFileToOneDrive(file, folderPath, uniqueKey) {
   if (!oneDriveConfigured()) throw new Error("OneDrive not configured");
   const token = await getToken();
   const segs = String(folderPath || "Famsort")
     .split("/")
     .filter(Boolean)
     .map((s) => encodeURIComponent(s.replace(/[\\/:*?"<>|]/g, "_")));
-  const name = encodeURIComponent(file.name.replace(/[\\/:*?"<>|]/g, "_"));
+  // Give every distinct photo a UNIQUE but STABLE filename. Without this, two
+  // different photos that happen to share a name (very common with camera rolls,
+  // WhatsApp and cloud imports — e.g. "image.jpg") would PUT to the same path and
+  // silently OVERWRITE each other (OneDrive's default conflict behaviour is
+  // "replace"), so "112 backed up" could leave only ~24 files. Keying the name on
+  // the photo's content hash keeps distinct photos distinct, while re-uploading
+  // the SAME photo overwrites its own file (idempotent — no duplicates).
+  let base = file.name.replace(/[\\/:*?"<>|]/g, "_") || "photo.jpg";
+  if (uniqueKey) {
+    const key = String(uniqueKey).replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "x";
+    if (!base.includes(`-${key}.`) && !base.endsWith(`-${key}`)) {
+      const dot = base.lastIndexOf(".");
+      base = dot > 0 ? `${base.slice(0, dot)}-${key}${base.slice(dot)}` : `${base}-${key}`;
+    }
+  }
+  const name = encodeURIComponent(base);
   const path = [...segs, name].join("/");
-  const url = `${GRAPH}/me/drive/root:/${path}:/content`;
+  const url = `${GRAPH}/me/drive/root:/${path}:/content?@microsoft.graph.conflictBehavior=replace`;
   const res = await fetch(url, {
     method: "PUT",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": file.type || "application/octet-stream" },
@@ -2729,10 +2745,10 @@ async function backupPhotos(list) {
         ok++;
       } else {
         const folder = backupFolderFor(personIds);
-        const item = await cloud.uploadFileToOneDrive(file, folder);
+        const photo = state.photos.find((p) => p.id === photoId);
+        const item = await cloud.uploadFileToOneDrive(file, folder, photo?.hash || photoId);
         state.backedUpKeys.add(key);
         // Remember where it landed so any device can fetch the original later.
-        const photo = state.photos.find((p) => p.id === photoId);
         if (photo && item && item.id) {
           photo.cloudId = item.id;
           // Track the organised copy separately so re-file-on-tag can MOVE it later
@@ -2805,10 +2821,29 @@ function forceBackupAlbum(id) {
   forceBackupPhotos(photos.map((p) => p.id), albumDisplayName(id));
 }
 
+// Recovery for the old same-filename overwrite bug: an album can say "all backed
+// up" while only some files actually reached OneDrive (earlier uploads clobbered
+// each other at a shared path). This force re-uploads EVERY photo in the album —
+// including ones already flagged saved — now that each gets a unique filename, so
+// the full set lands. Replaces copies in place; never deletes anything.
+async function repairAlbumBackup(id) {
+  if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
+  const photos = albumPhotos(id);
+  if (!photos.length || forceBackupBusy) return;
+  const ok = window.confirm(
+    `Re-upload all ${photos.length} photos in this album to OneDrive?\n\n` +
+      `Use this if the album says everything is backed up but the files aren't all in OneDrive. ` +
+      `Copies are replaced in place and nothing is deleted (you may briefly see a few duplicates of ` +
+      `already-saved photos).`
+  );
+  if (!ok) return;
+  await forceBackupPhotos(photos.map((p) => p.id), albumDisplayName(id), true);
+}
+
 // Upload a specific set of photos right now, with live per-photo progress so the
 // user can SEE what's saved and what's still going. Prioritises whatever list it
 // is given (e.g. one album), independent of the normal auto-sweep order.
-async function forceBackupPhotos(ids, label) {
+async function forceBackupPhotos(ids, label, includeSaved = false) {
   if (forceBackupBusy) return;
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
@@ -2819,7 +2854,7 @@ async function forceBackupPhotos(ids, label) {
   const photos = ids
     .map((id) => state.photos.find((p) => p.id === id))
     .filter(Boolean)
-    .filter((p) => !isPhotoSaved(p));
+    .filter((p) => includeSaved || !isPhotoSaved(p));
   if (!photos.length) {
     setAutoBackupMsg("Everything here is already backed up. ✓");
     renderAlbums();
@@ -2857,7 +2892,7 @@ async function forceBackupPhotos(ids, label) {
         }
       } else {
         const folder = backupFolderFor(photo.personIds);
-        const item = await cloud.uploadFileToOneDrive(got.file, folder);
+        const item = await cloud.uploadFileToOneDrive(got.file, folder, photo.hash || photo.id);
         if (item && item.id) {
           photo.cloudId = item.id;
           photo.backupId = item.id;
@@ -2976,6 +3011,7 @@ function renderAlbumBackupBar(id, special) {
   }
   const where = device ? "this device" : "OneDrive";
   bar.hidden = false;
+  const repair = el("albumBackupRepair");
   if (unsaved === 0) {
     text.textContent = `✓ All ${photos.length} backed up to ${where}`;
     btn.hidden = true;
@@ -2984,6 +3020,16 @@ function renderAlbumBackupBar(id, special) {
     btn.hidden = false;
     btn.disabled = forceBackupBusy;
     btn.textContent = forceBackupBusy ? "Backing up…" : "⤒ Back up now";
+  }
+  // Recovery: if everything claims to be backed up to OneDrive but you can't find
+  // the files there (the old same-filename overwrite bug meant some uploads
+  // clobbered each other), "Re-upload all" force-pushes every photo again with
+  // the new unique filenames so the full set lands.
+  if (repair) {
+    const canRepair = cloudOK && photos.length > 0;
+    repair.hidden = !canRepair;
+    repair.disabled = forceBackupBusy;
+    repair.textContent = forceBackupBusy ? "Working…" : "↻ Re-upload all";
   }
 }
 
@@ -5335,7 +5381,20 @@ function renderAlbumPath(id, special) {
     open.type = "button";
     open.className = "album-path__open";
     open.textContent = "Open in OneDrive ↗";
+    // Pre-resolve the folder's web URL NOW so the click can open the tab
+    // SYNCHRONOUSLY. If we only fetch it inside the click handler, the
+    // window.open() runs after an await — the browser no longer treats it as a
+    // direct user gesture, so OneDrive's sign-in redirect drops the deep link
+    // and dumps you at the OneDrive root (the "first time it only opens the main
+    // folder" bug). With the URL ready up front, the tab opens with the real
+    // folder path intact.
+    let webUrl = null;
+    cloud.getFolderWebUrl(folder).then((u) => { webUrl = u; }).catch(() => {});
     open.addEventListener("click", async () => {
+      if (webUrl) {
+        window.open(webUrl, "_blank", "noopener");
+        return;
+      }
       open.disabled = true;
       const was = open.textContent;
       open.textContent = "Opening…";
@@ -6563,6 +6622,11 @@ function wire() {
   el("albumBackupNow").addEventListener("click", () => {
     if (state.activeAlbum) forceBackupAlbum(state.activeAlbum);
   });
+  const repairBtn = el("albumBackupRepair");
+  if (repairBtn)
+    repairBtn.addEventListener("click", () => {
+      if (state.activeAlbum) repairAlbumBackup(state.activeAlbum);
+    });
 
   const autoToggle = el("autoBackup");
   if (autoToggle) autoToggle.addEventListener("change", (e) => setAutoBackup(e.target.checked));
