@@ -298,8 +298,15 @@ p { margin: 0 0 .9rem; }
   border-radius: 7px; pointer-events: none; color: #fff; }
 .thumb__status.is-saved { background: rgba(46,125,74,.9); }
 .thumb__status.is-lowres { background: rgba(200,80,20,.92); }
+.thumb__status.is-missing { background: rgba(198,24,20,.95); }
 .thumb__status.is-pending { background: rgba(176,106,0,.85); }
 .thumb__status.is-uploading { background: rgba(20,16,14,.6); }
+/* Per-photo upload progress bar along the bottom of the thumbnail (replaces the
+   generic spinner while a photo is actively uploading). */
+.thumb__progress { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 5px;
+  border-radius: 999px; background: rgba(20,16,14,.5); overflow: hidden; pointer-events: none; }
+.thumb__progress-fill { height: 100%; width: 5%; border-radius: 999px; background: var(--accent);
+  transition: width .18s ease; }
 .spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
   border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -855,7 +862,7 @@ p { margin: 0 0 .9rem; }
             <span class="album-backup__text" id="albumBackupText"></span>
             <button class="btn btn--primary btn--sm" id="albumBackupNow">⤒ Back up now</button>
             <button class="btn btn--ghost btn--sm" id="albumBackupFullRes" hidden>⬆ Upload full quality</button>
-            <button class="btn btn--ghost btn--sm" id="albumBackupRepair" hidden>↻ Re-upload all</button>
+            <button class="btn btn--ghost btn--sm" id="albumBackupRepair" hidden>↻ Force re-upload all</button>
           </div>
           <div class="album-backup__track" id="albumBackupTrack" hidden>
             <div class="album-backup__fill" id="albumBackupFill"></div>
@@ -1877,7 +1884,9 @@ async function graphGet(url, token) {
 // missing folders in the path. Used by auto-backup to mirror new photos into
 // organised, per-album folders (e.g. "Famsort/Ava/IMG_0001.jpg"). Simple upload
 // handles files up to 250 MB, which covers phone photos and short videos.
-async function uploadFileToOneDrive(file, folderPath, uniqueKey) {
+// `onProgress(fraction 0..1)` is called during the upload so the UI can show a
+// real progress bar instead of a generic spinner.
+async function uploadFileToOneDrive(file, folderPath, uniqueKey, onProgress) {
   if (!oneDriveConfigured()) throw new Error("OneDrive not configured");
   const token = await getToken();
   const segs = String(folderPath || "Famsort")
@@ -1893,7 +1902,7 @@ async function uploadFileToOneDrive(file, folderPath, uniqueKey) {
   // the SAME photo overwrites its own file (idempotent — no duplicates).
   let base = file.name.replace(/[\\/:*?"<>|]/g, "_") || "photo.jpg";
   if (uniqueKey) {
-    const key = String(uniqueKey).replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "x";
+    const key = cloudFileKey(uniqueKey);
     if (!base.includes(`-${key}.`) && !base.endsWith(`-${key}`)) {
       const dot = base.lastIndexOf(".");
       base = dot > 0 ? `${base.slice(0, dot)}-${key}${base.slice(dot)}` : `${base}-${key}`;
@@ -1902,13 +1911,77 @@ async function uploadFileToOneDrive(file, folderPath, uniqueKey) {
   const name = encodeURIComponent(base);
   const path = [...segs, name].join("/");
   const url = `${GRAPH}/me/drive/root:/${path}:/content?@microsoft.graph.conflictBehavior=replace`;
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": file.type || "application/octet-stream" },
-    body: file,
+  // XHR (not fetch) so we get upload.onprogress for a real per-photo progress bar.
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          try {
+            onProgress(e.total ? e.loaded / e.total : 0);
+          } catch {
+            /* UI callback must never break the upload */
+          }
+        }
+      };
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          resolve({});
+        }
+      } else {
+        reject(new Error(`Upload ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Upload failed"));
+    xhr.send(file);
   });
-  if (!res.ok) throw new Error(`Upload ${res.status}`);
-  return res.json();
+}
+
+// The 8-char content key appended to every organised filename (see
+// uploadFileToOneDrive). Exposed so the app can VERIFY — by listing a folder —
+// whether a given photo's file is actually present in OneDrive, rather than
+// trusting an optimistic local "saved" flag.
+function cloudFileKey(uniqueKey) {
+  return String(uniqueKey || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "x";
+}
+
+// List the FILES directly inside one of our organised folders (e.g.
+// "Famsort/Mary"). Returns [{id, name, size}] on success, [] if the folder
+// doesn't exist yet (nothing uploaded), or null if we couldn't verify (not
+// signed in / offline / error) — callers MUST treat null as "unknown" and not
+// mark anything as missing. Used to reconcile the album against OneDrive.
+async function listFolderFiles(folderPath) {
+  if (!oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  const path = String(folderPath || "Famsort")
+    .split("/")
+    .filter(Boolean)
+    .map((s) => encodeURIComponent(s.replace(/[\\/:*?"<>|]/g, "_")))
+    .join("/");
+  let next = `${GRAPH}/me/drive/root:/${path}:/children?$select=id,name,size,file&$top=200`;
+  const files = [];
+  try {
+    while (next) {
+      const page = await graphGet(next, token);
+      for (const it of page.value || []) {
+        if (it.file) files.push({ id: it.id, name: it.name, size: it.size || 0 });
+      }
+      next = page["@odata.nextLink"];
+    }
+  } catch (e) {
+    // A 404 means the folder hasn't been created yet → it's verifiably EMPTY.
+    if (String(e && e.message).includes("404")) return [];
+    return null; // genuine failure — don't let this mark photos as missing
+  }
+  return files;
 }
 
 // Ensure a nested folder path (e.g. "Famsort/Ava") exists under the drive root,
@@ -2270,7 +2343,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, moveCloudFile, getFolderWebUrl, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, moveCloudFile, getFolderWebUrl, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -2619,7 +2692,12 @@ function startAutoSync() {
   stopAutoSync();
   if (!state.autoBackup) return;
   autoSyncTimer = setInterval(() => {
-    if (document.visibilityState === "visible") autoSweep(true);
+    if (document.visibilityState === "visible") {
+      autoSweep(true);
+      // Continuously reconcile the open album against OneDrive so "backed up"
+      // stays truthful and any gaps get re-uploaded automatically.
+      if (state.activeAlbum) maybeReconcileAlbum(state.activeAlbum);
+    }
   }, 90000);
   registerPeriodicSync();
 }
@@ -2774,6 +2852,7 @@ async function backupPhotos(list) {
           photo.backupId = item.id;
           photo.backupFolder = folder;
           photo.backupLowRes = false; // auto-backup uses the live original = full quality
+          photo.cloudVerified = true; // we just put it there this second
           await db.put("photos", photo);
         }
         ok++;
@@ -2795,6 +2874,17 @@ async function backupPhotos(list) {
 // Has this photo got a saved copy in the user's output (OneDrive or device)?
 function isPhotoSaved(p) {
   return !!(p && (p.cloudId || p.backupId || p.deviceAlbum));
+}
+
+// Like isPhotoSaved, but HONEST about OneDrive: if we've actually listed the
+// folder and the photo's file isn't there (cloudVerified === false), it is NOT
+// backed up — no matter what the optimistic cloudId flag says. This is what
+// stops the app claiming "all saved" when files are really missing.
+function isPhotoBackedUp(p) {
+  if (!p) return false;
+  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  if (cloudOK && p.cloudVerified === false) return false;
+  return isPhotoSaved(p);
 }
 
 const asFile = (blob, name) =>
@@ -2832,12 +2922,55 @@ async function getUploadableFile(photo) {
 }
 
 let forceBackupBusy = false;
+// Cloud reconciliation state: are we mid-verify, and when did we last verify each
+// album (to throttle the background re-checks)?
+let reconcileBusy = false;
+const reconciledAt = new Map();
 
 // Back up a whole album's un-saved photos on demand, so the user doesn't have to
-// wait for (or trust) the background sweep.
+// wait for (or trust) the background sweep. In cloud mode this first VERIFIES
+// against OneDrive (so it only uploads what's genuinely missing — dedupe) then
+// uploads; in device mode it just pushes anything not yet written.
 function forceBackupAlbum(id) {
-  const photos = albumPhotos(id).filter((p) => !isPhotoSaved(p));
-  forceBackupPhotos(photos.map((p) => p.id), albumDisplayName(id));
+  if (state.outputMode === "cloud" && cloud.oneDriveConfigured()) {
+    syncAlbumToCloud(id);
+    return;
+  }
+  const photos = albumPhotos(id).filter((p) => !isPhotoBackedUp(p));
+  forceBackupPhotos(photos.map((p) => p.id), albumDisplayName(id), true);
+}
+
+// Verify an album against OneDrive, then upload ONLY the photos that aren't
+// genuinely there (dedupe), with a final re-check to confirm. This is the real
+// "sync" the user triggers from the album bar, and the engine auto-sync reuses.
+async function syncAlbumToCloud(id) {
+  if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
+  if (forceBackupBusy || reconcileBusy) return;
+  setAutoBackupMsg("Checking which photos are really in OneDrive…");
+  reconcileBusy = true;
+  try {
+    await reconcileAlbumCloud(id);
+    reconciledAt.set(id, Date.now());
+  } finally {
+    reconcileBusy = false;
+  }
+  if (state.activeAlbum === id) renderAlbumDetail();
+  const missing = albumPhotos(id).filter((p) => !isPhotoBackedUp(p));
+  if (!missing.length) {
+    setAutoBackupMsg(`✓ All ${albumPhotos(id).length} photos verified in OneDrive.`);
+    renderAlbums();
+    return;
+  }
+  await forceBackupPhotos(missing.map((p) => p.id), albumDisplayName(id), true);
+  // Confirm reality rather than trusting the just-set optimistic flags.
+  reconcileBusy = true;
+  try {
+    await reconcileAlbumCloud(id);
+    reconciledAt.set(id, Date.now());
+  } finally {
+    reconcileBusy = false;
+  }
+  if (state.activeAlbum === id) renderAlbumDetail();
 }
 
 // Recovery for the old same-filename overwrite bug: an album can say "all backed
@@ -2857,6 +2990,85 @@ async function repairAlbumBackup(id) {
   );
   if (!ok) return;
   await forceBackupPhotos(photos.map((p) => p.id), albumDisplayName(id), true);
+}
+
+// Verify an album's photos against the ACTUAL OneDrive folders by listing them
+// and matching each photo's content-key filename. Sets photo.cloudVerified
+// (true = the file is really there, false = it isn't) and adopts a cloudId for
+// any photo we find already in OneDrive. Leaves flags untouched for folders we
+// couldn't read (offline), so a dropped connection never falsely marks photos as
+// missing. Returns true if anything changed.
+async function reconcileAlbumCloud(id) {
+  if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return false;
+  const photos = albumPhotos(id);
+  if (!photos.length) return false;
+  // Each photo's organised copy lives in the folder for its OWN tag set, so group
+  // by target folder and list each distinct folder once.
+  const groups = new Map();
+  for (const p of photos) {
+    const folder = p.backupFolder || backupFolderFor(p.personIds);
+    if (!groups.has(folder)) groups.set(folder, []);
+    groups.get(folder).push(p);
+  }
+  let changed = false;
+  for (const [folder, ps] of groups) {
+    const files = await cloud.listFolderFiles(folder);
+    if (files === null) continue; // couldn't verify this folder — leave as-is
+    const lower = files.map((f) => ({ id: f.id, name: String(f.name || "").toLowerCase() }));
+    for (const p of ps) {
+      const key = cloud.cloudFileKey(p.hash || p.id).toLowerCase();
+      const match = lower.find((f) => f.name.includes(`-${key}`));
+      const present = !!match;
+      if (p.cloudVerified !== present) {
+        p.cloudVerified = present;
+        changed = true;
+      }
+      // Found in OneDrive but we'd lost the pointer — adopt it so downloads work
+      // and re-file-on-tag can move the right item.
+      if (present && !p.cloudId) {
+        p.cloudId = match.id;
+        p.backupId = p.backupId || match.id;
+        p.backupFolder = folder;
+        changed = true;
+      }
+      if (changed) {
+        try {
+          await db.put("photos", p);
+        } catch {
+          /* best-effort persistence */
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+// Throttled background verify for the open album: list the real OneDrive folders,
+// mark what's truly missing, and — if auto-backup is on — quietly upload the gaps
+// so "backed up" stays honest without the user pressing anything.
+async function maybeReconcileAlbum(id, force = false) {
+  if (reconcileBusy || forceBackupBusy) return;
+  if (id === ALL_ALBUM || id === UNTAGGED || id === AWAITING) return;
+  if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
+  if (!force && Date.now() - (reconciledAt.get(id) || 0) < 45000) return;
+  if (!(cloudSignedIn || (await cloud.hasCloudAccount()))) return;
+  reconcileBusy = true;
+  try {
+    cloudSignedIn = true;
+    const changed = await reconcileAlbumCloud(id);
+    reconciledAt.set(id, Date.now());
+    if (changed && state.activeAlbum === id) renderAlbumDetail();
+  } finally {
+    reconcileBusy = false;
+  }
+  // Auto-heal: upload anything verified-missing, no button required.
+  if (state.autoBackup && !forceBackupBusy) {
+    const missing = albumPhotos(id).filter((p) => !isPhotoBackedUp(p));
+    if (missing.length) {
+      await forceBackupPhotos(missing.map((p) => p.id), albumDisplayName(id), true);
+      if (state.activeAlbum === id) renderAlbumDetail();
+    }
+  }
 }
 
 // Quality recovery: for photos whose cloud copy is only a LOW-RES preview (the
@@ -3008,12 +3220,15 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
         }
       } else {
         const folder = backupFolderFor(photo.personIds);
-        const item = await cloud.uploadFileToOneDrive(got.file, folder, photo.hash || photo.id);
+        const item = await cloud.uploadFileToOneDrive(got.file, folder, photo.hash || photo.id, (f) =>
+          setThumbProgress(photo.id, f)
+        );
         if (item && item.id) {
           photo.cloudId = item.id;
           photo.backupId = item.id;
           photo.backupFolder = folder;
           photo.backupLowRes = !!got.lowRes;
+          photo.cloudVerified = true;
           await db.put("photos", photo);
           state.backedUpKeys.add(`${got.file.name}|${got.file.size}|${got.file.lastModified || 0}`);
           ok++;
@@ -3024,7 +3239,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
     } catch {
       fail++;
     }
-    setThumbStatus(photo.id, isPhotoSaved(photo) ? (photo.backupLowRes ? "savedLowRes" : "saved") : "pending");
+    setThumbStatus(photo.id, isPhotoBackedUp(photo) ? (photo.backupLowRes ? "savedLowRes" : "saved") : "missing");
   }
   state.uploadingPhotoId = null;
   setAlbumBackupProgress(photos.length, photos.length);
@@ -3046,15 +3261,17 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
 // none (no destination configured — don't clutter the grid).
 function photoBackupStatus(p) {
   if (p.id === state.uploadingPhotoId) return "uploading";
-  if (isPhotoSaved(p)) return p.backupLowRes ? "savedLowRes" : "saved";
-  const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  // Verified NOT in OneDrive → show it as missing, even if a stale flag says saved.
+  if (cloudOK && p.cloudVerified === false) return "missing";
+  if (isPhotoBackedUp(p)) return p.backupLowRes ? "savedLowRes" : "saved";
+  const device = state.outputMode === "device" && !!state.outputHandle;
   if (state.autoBackup && (device || cloudOK)) return "pending";
   return "none";
 }
 
 function applyThumbStatus(badge, status) {
-  badge.classList.remove("is-saved", "is-pending", "is-uploading", "is-lowres");
+  badge.classList.remove("is-saved", "is-pending", "is-uploading", "is-lowres", "is-missing");
   if (status === "saved") {
     badge.classList.add("is-saved");
     badge.innerHTML = "☁";
@@ -3063,6 +3280,10 @@ function applyThumbStatus(badge, status) {
     badge.classList.add("is-lowres");
     badge.innerHTML = "⚠";
     badge.title = "Backed up as a low-res preview only — add the original to upload full quality";
+  } else if (status === "missing") {
+    badge.classList.add("is-missing");
+    badge.innerHTML = "⚠";
+    badge.title = "Not in OneDrive yet — syncing (or tap Back up now)";
   } else if (status === "uploading") {
     badge.classList.add("is-uploading");
     badge.innerHTML = '<span class="spin"></span>';
@@ -3078,12 +3299,48 @@ function applyThumbStatus(badge, status) {
 }
 
 // Targeted update of ONE thumbnail's status badge, without re-rendering the grid
-// (so the per-photo spinner updates smoothly during a force backup).
-function setThumbStatus(pid, status) {
+// (so the per-photo status updates smoothly during a force backup). While a photo
+// is uploading we hide the corner badge and show a real progress BAR along the
+// bottom instead (set via setThumbProgress), which is clearer and more satisfying
+// than a generic spinner.
+function thumbCell(pid) {
   const grid = el("albumGrid");
-  if (!grid) return;
-  const cell = grid.querySelector('.thumb[data-pid="' + pid + '"]');
+  return grid ? grid.querySelector('.thumb[data-pid="' + pid + '"]') : null;
+}
+
+function setThumbProgress(pid, frac) {
+  const cell = thumbCell(pid);
   if (!cell) return;
+  let bar = cell.querySelector(".thumb__progress");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.className = "thumb__progress";
+    const fill = document.createElement("div");
+    fill.className = "thumb__progress-fill";
+    bar.appendChild(fill);
+    cell.appendChild(bar);
+  }
+  const pct = Math.max(4, Math.min(100, Math.round((frac || 0) * 100)));
+  bar.firstChild.style.width = pct + "%";
+}
+
+function clearThumbProgress(pid) {
+  const cell = thumbCell(pid);
+  if (!cell) return;
+  const bar = cell.querySelector(".thumb__progress");
+  if (bar) bar.remove();
+}
+
+function setThumbStatus(pid, status) {
+  const cell = thumbCell(pid);
+  if (!cell) return;
+  if (status === "uploading") {
+    const badge = cell.querySelector(".thumb__status");
+    if (badge) applyThumbStatus(badge, "none"); // hide the corner badge while the bar shows
+    setThumbProgress(pid, 0.05);
+    return;
+  }
+  clearThumbProgress(pid);
   let badge = cell.querySelector(".thumb__status");
   if (!badge) {
     badge = document.createElement("span");
@@ -3117,16 +3374,16 @@ function renderAlbumBackupBar(id, special) {
   }
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
-  const unsaved = photos.filter((p) => !isPhotoSaved(p)).length;
+  const notBacked = photos.filter((p) => !isPhotoBackedUp(p)).length;
   const text = el("albumBackupText");
   const btn = el("albumBackupNow");
   if (!device && !cloudOK) {
-    if (unsaved === 0) {
+    if (notBacked === 0) {
       bar.hidden = true;
       return;
     }
     bar.hidden = false;
-    text.textContent = `${unsaved} not backed up — pick a destination in Family ⚙️`;
+    text.textContent = `${notBacked} not backed up — pick a destination in Family ⚙️`;
     btn.hidden = true;
     return;
   }
@@ -3135,28 +3392,33 @@ function renderAlbumBackupBar(id, special) {
   const repair = el("albumBackupRepair");
   const full = el("albumBackupFullRes");
   const cs = albumCloudStatus(id);
-  if (unsaved === 0) {
+  const busy = forceBackupBusy || reconcileBusy;
+  if (notBacked === 0) {
     if (cs.lowRes > 0) {
       text.textContent = `⚠ ${photos.length} backed up, but ${cs.lowRes} are low-res previews (originals weren't on this device)`;
+    } else if (cloudOK && cs.checked >= photos.length) {
+      text.textContent = `✓ All ${photos.length} verified in ${where}`;
     } else {
       text.textContent = `✓ All ${photos.length} backed up to ${where}`;
     }
     btn.hidden = true;
   } else {
-    text.textContent = `${unsaved} of ${photos.length} still to back up to ${where}`;
+    if (cloudOK && cs.missing > 0) {
+      text.textContent = `⚠ Not fully synced — ${cs.saved}/${photos.length} in ${where}, ${notBacked} missing`;
+    } else {
+      text.textContent = `${notBacked} of ${photos.length} still to back up to ${where}`;
+    }
     btn.hidden = false;
-    btn.disabled = forceBackupBusy;
-    btn.textContent = forceBackupBusy ? "Backing up…" : "⤒ Back up now";
+    btn.disabled = busy;
+    btn.textContent = busy ? "Syncing…" : cloudOK ? `⤒ Upload ${notBacked} missing` : "⤒ Back up now";
   }
-  // Recovery: if everything claims to be backed up to OneDrive but you can't find
-  // the files there (the old same-filename overwrite bug meant some uploads
-  // clobbered each other), "Re-upload all" force-pushes every photo again with
-  // the new unique filenames so the full set lands.
+  // Last-resort hammer: force re-upload EVERY photo (ignores verification) for the
+  // rare case the check itself is wrong. The normal flow only uploads real gaps.
   if (repair) {
     const canRepair = cloudOK && photos.length > 0;
     repair.hidden = !canRepair;
-    repair.disabled = forceBackupBusy;
-    repair.textContent = forceBackupBusy ? "Working…" : "↻ Re-upload all";
+    repair.disabled = busy;
+    repair.textContent = busy ? "Working…" : "↻ Force re-upload all";
   }
   // Quality fix: some copies are only low-res previews because the full-size
   // originals weren't reachable when they were backed up. Let the user point us
@@ -5324,17 +5586,22 @@ async function toggleFavAlbum(id) {
   renderAlbums();
 }
 
-// How many of an album's photos have an organised copy saved to the output.
+// How many of an album's photos have an organised copy saved to the output, plus
+// how many are verified present / verified MISSING in OneDrive (so the UI can be
+// honest about sync state instead of trusting optimistic flags).
 function albumCloudStatus(id) {
   const photos = albumPhotos(id);
-  const savedPhotos = photos.filter((p) => p.cloudId || p.backupId || p.deviceAlbum);
+  const savedPhotos = photos.filter((p) => isPhotoBackedUp(p));
   const lowRes = savedPhotos.filter((p) => p.backupLowRes).length;
-  return { saved: savedPhotos.length, total: photos.length, lowRes };
+  const missing = photos.filter((p) => p.cloudVerified === false).length;
+  const checked = photos.filter((p) => p.cloudVerified !== undefined).length;
+  return { saved: savedPhotos.length, total: photos.length, lowRes, missing, checked };
 }
 
-function cloudInfoText({ saved, total }) {
+function cloudInfoText({ saved, total, missing }) {
   if (!total) return "";
   const where = state.outputMode === "device" ? "this device" : "OneDrive";
+  if (missing > 0) return `⚠ ${missing} not in ${where}`;
   if (!state.autoBackup) return `Saving to ${where} is off`;
   if (saved >= total) return `Saved to ${where}`;
   if (saved === 0) return `Not saved to ${where} yet`;
@@ -5599,6 +5866,14 @@ function renderAlbumDetail() {
   let photos = albumPhotos(id).slice();
   if (state.albumPhotoSort === "newest") photos.reverse();
 
+  // Surface anything NOT safely backed up at the very top, so at-risk photos are
+  // the first thing the user sees (stable sort keeps the chosen order within each
+  // group). Only when a cloud output is configured.
+  const cloudConfigured = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  if (cloudConfigured) {
+    photos.sort((a, b) => (isPhotoBackedUp(a) ? 1 : 0) - (isPhotoBackedUp(b) ? 1 : 0));
+  }
+
   const cs = albumCloudStatus(id);
   const info = cloudInfoText(cs);
   const rel = person ? relationshipLabel(person) : "";
@@ -5632,6 +5907,11 @@ function renderAlbumDetail() {
     }
     grid.appendChild(cell);
   }
+
+  // Kick off a throttled background verify against the real OneDrive folders.
+  // Fire-and-forget: it updates flags, re-renders, and (if auto-backup is on)
+  // uploads any genuine gaps without the user doing anything.
+  maybeReconcileAlbum(id);
 }
 
 /* --------------------------------------------------------- lightbox */
