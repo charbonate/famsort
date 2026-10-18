@@ -297,6 +297,7 @@ p { margin: 0 0 .9rem; }
   align-items: center; justify-content: center; font-size: .72rem; line-height: 1; padding: 0 4px;
   border-radius: 7px; pointer-events: none; color: #fff; }
 .thumb__status.is-saved { background: rgba(46,125,74,.9); }
+.thumb__status.is-lowres { background: rgba(200,80,20,.92); }
 .thumb__status.is-pending { background: rgba(176,106,0,.85); }
 .thumb__status.is-uploading { background: rgba(20,16,14,.6); }
 .spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
@@ -853,6 +854,7 @@ p { margin: 0 0 .9rem; }
           <div class="album-backup__row">
             <span class="album-backup__text" id="albumBackupText"></span>
             <button class="btn btn--primary btn--sm" id="albumBackupNow">⤒ Back up now</button>
+            <button class="btn btn--ghost btn--sm" id="albumBackupFullRes" hidden>⬆ Upload full quality</button>
             <button class="btn btn--ghost btn--sm" id="albumBackupRepair" hidden>↻ Re-upload all</button>
           </div>
           <div class="album-backup__track" id="albumBackupTrack" hidden>
@@ -1486,6 +1488,21 @@ async function analyzeFile(file) {
   };
 }
 
+// Lightweight: perceptual hash + pixel dimensions of an image file WITHOUT
+// running face detection. Used by the "upload full quality" recovery to match a
+// re-picked original back to the stored (low-res) photo by content — fast, since
+// it skips the expensive detector.
+async function hashFile(file) {
+  const img = await fileToImage(file);
+  const canvas = toScaledCanvas(img, DETECT_MAX);
+  return {
+    hash: perceptualHash(canvas),
+    width: img.naturalWidth,
+    height: img.naturalHeight,
+    isVideo: false,
+  };
+}
+
 // Re-detect faces on an ALREADY-STORED photo thumbnail (a dataURL). Used by the
 // "Re-scan faces" recovery when the original files aren't available to re-import
 // (e.g. picked photos, or cloud/device sources already imported). Lower
@@ -1742,7 +1759,7 @@ function matchPerson(descriptor, people, threshold = MATCH_THRESHOLD) {
   return bestId ? { id: bestId, dist: bestDist } : null;
 }
 
-return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, detectorInfo, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, analyzeImage, detectBoxes, analyzeVideoFile, clusterFaces, matchPerson };
+return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, detectorInfo, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, hashFile, analyzeImage, detectBoxes, analyzeVideoFile, clusterFaces, matchPerson };
 })();
 
 const cloud = (function () {
@@ -2740,6 +2757,7 @@ async function backupPhotos(list) {
         const photo = state.photos.find((p) => p.id === photoId);
         if (photo) {
           photo.deviceAlbum = album;
+          photo.backupLowRes = false; // auto-backup uses the live original = full quality
           await db.put("photos", photo);
         }
         ok++;
@@ -2755,6 +2773,7 @@ async function backupPhotos(list) {
           // (never the camera-roll original) and know which folder it currently sits in.
           photo.backupId = item.id;
           photo.backupFolder = folder;
+          photo.backupLowRes = false; // auto-backup uses the live original = full quality
           await db.put("photos", photo);
         }
         ok++;
@@ -2840,6 +2859,102 @@ async function repairAlbumBackup(id) {
   await forceBackupPhotos(photos.map((p) => p.id), albumDisplayName(id), true);
 }
 
+// Quality recovery: for photos whose cloud copy is only a LOW-RES preview (the
+// full-size original wasn't reachable when it was backed up), let the user point
+// us at the original files. We match each picked file back to its photo by
+// perceptual hash — image CONTENT, not filename — so a rename can't mis-assign
+// it, then replace the preview with a full-resolution upload.
+async function fixLowResBackups(id) {
+  const device = state.outputMode === "device" && !!state.outputHandle;
+  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  if ((!device && !cloudOK) || forceBackupBusy) return;
+  const targets = albumPhotos(id).filter((p) => p.backupLowRes && !p.isVideo);
+  if (!targets.length) {
+    setAutoBackupMsg("No low-res photos to upgrade here. ✓");
+    return;
+  }
+  // Let the user choose the originals (folder or multi-select — works on phone).
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.multiple = true;
+  input.style.display = "none";
+  document.body.appendChild(input);
+  const files = await new Promise((resolve) => {
+    input.addEventListener("change", () => resolve(Array.from(input.files || [])), { once: true });
+    window.addEventListener(
+      "focus",
+      () => setTimeout(() => resolve(Array.from(input.files || [])), 500),
+      { once: true }
+    );
+    input.click();
+  });
+  input.remove();
+  if (!files.length) return;
+
+  forceBackupBusy = true;
+  renderAlbumBackupBar(id, false);
+  const where = device ? "this device" : "OneDrive";
+  let fixed = 0;
+  let unmatched = 0;
+  let failed = 0;
+  const remaining = targets.slice();
+  for (let i = 0; i < files.length; i++) {
+    setAutoBackupMsg(`Checking ${i + 1} of ${files.length} original${files.length === 1 ? "" : "s"}…`);
+    let r;
+    try {
+      r = await face.hashFile(files[i]);
+    } catch {
+      continue;
+    }
+    r.name = files[i].name;
+    const match = findDuplicate(r, remaining); // content match against the low-res set
+    if (!match) {
+      unmatched++;
+      continue;
+    }
+    try {
+      if (device) {
+        const album = albumNameFor(match.personIds);
+        if (await writeToDeviceFolder(files[i], album)) {
+          match.deviceAlbum = album;
+          match.backupLowRes = false;
+          await db.put("photos", match);
+          fixed++;
+        } else failed++;
+      } else {
+        const folder = backupFolderFor(match.personIds);
+        const item = await cloud.uploadFileToOneDrive(files[i], folder, match.hash || match.id);
+        if (item && item.id) {
+          match.cloudId = item.id;
+          match.backupId = item.id;
+          match.backupFolder = folder;
+          match.backupLowRes = false;
+          await db.put("photos", match);
+          fixed++;
+        } else failed++;
+      }
+      const idx = remaining.indexOf(match);
+      if (idx >= 0) remaining.splice(idx, 1);
+    } catch {
+      failed++;
+    }
+  }
+  forceBackupBusy = false;
+  await saveBackedUpKeys();
+  if (!device) {
+    scheduleCloudSync();
+    scheduleLibrarySync();
+  }
+  recomputePending();
+  renderAll();
+  let msg = fixed ? `Upgraded ${fixed} to full quality on ${where}.` : "No photos were upgraded.";
+  if (unmatched) msg += ` ${unmatched} picked file${unmatched === 1 ? "" : "s"} didn't match a low-res photo here.`;
+  if (failed) msg += ` ${failed} failed — try again.`;
+  if (remaining.length) msg += ` ${remaining.length} still need their original.`;
+  setAutoBackupMsg(msg);
+}
+
 // Upload a specific set of photos right now, with live per-photo progress so the
 // user can SEE what's saved and what's still going. Prioritises whatever list it
 // is given (e.g. one album), independent of the normal auto-sweep order.
@@ -2885,6 +3000,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
       if (device) {
         if (await writeToDeviceFolder(got.file, album)) {
           photo.deviceAlbum = album;
+          photo.backupLowRes = !!got.lowRes;
           await db.put("photos", photo);
           ok++;
         } else {
@@ -2897,6 +3013,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
           photo.cloudId = item.id;
           photo.backupId = item.id;
           photo.backupFolder = folder;
+          photo.backupLowRes = !!got.lowRes;
           await db.put("photos", photo);
           state.backedUpKeys.add(`${got.file.name}|${got.file.size}|${got.file.lastModified || 0}`);
           ok++;
@@ -2907,7 +3024,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
     } catch {
       fail++;
     }
-    setThumbStatus(photo.id, isPhotoSaved(photo) ? "saved" : "pending");
+    setThumbStatus(photo.id, isPhotoSaved(photo) ? (photo.backupLowRes ? "savedLowRes" : "saved") : "pending");
   }
   state.uploadingPhotoId = null;
   setAlbumBackupProgress(photos.length, photos.length);
@@ -2929,7 +3046,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
 // none (no destination configured — don't clutter the grid).
 function photoBackupStatus(p) {
   if (p.id === state.uploadingPhotoId) return "uploading";
-  if (isPhotoSaved(p)) return "saved";
+  if (isPhotoSaved(p)) return p.backupLowRes ? "savedLowRes" : "saved";
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
   if (state.autoBackup && (device || cloudOK)) return "pending";
@@ -2937,11 +3054,15 @@ function photoBackupStatus(p) {
 }
 
 function applyThumbStatus(badge, status) {
-  badge.classList.remove("is-saved", "is-pending", "is-uploading");
+  badge.classList.remove("is-saved", "is-pending", "is-uploading", "is-lowres");
   if (status === "saved") {
     badge.classList.add("is-saved");
     badge.innerHTML = "☁";
     badge.title = "Backed up to your output";
+  } else if (status === "savedLowRes") {
+    badge.classList.add("is-lowres");
+    badge.innerHTML = "⚠";
+    badge.title = "Backed up as a low-res preview only — add the original to upload full quality";
   } else if (status === "uploading") {
     badge.classList.add("is-uploading");
     badge.innerHTML = '<span class="spin"></span>';
@@ -3012,8 +3133,14 @@ function renderAlbumBackupBar(id, special) {
   const where = device ? "this device" : "OneDrive";
   bar.hidden = false;
   const repair = el("albumBackupRepair");
+  const full = el("albumBackupFullRes");
+  const cs = albumCloudStatus(id);
   if (unsaved === 0) {
-    text.textContent = `✓ All ${photos.length} backed up to ${where}`;
+    if (cs.lowRes > 0) {
+      text.textContent = `⚠ ${photos.length} backed up, but ${cs.lowRes} are low-res previews (originals weren't on this device)`;
+    } else {
+      text.textContent = `✓ All ${photos.length} backed up to ${where}`;
+    }
     btn.hidden = true;
   } else {
     text.textContent = `${unsaved} of ${photos.length} still to back up to ${where}`;
@@ -3030,6 +3157,15 @@ function renderAlbumBackupBar(id, special) {
     repair.hidden = !canRepair;
     repair.disabled = forceBackupBusy;
     repair.textContent = forceBackupBusy ? "Working…" : "↻ Re-upload all";
+  }
+  // Quality fix: some copies are only low-res previews because the full-size
+  // originals weren't reachable when they were backed up. Let the user point us
+  // at the originals so we can replace those with full-quality versions.
+  if (full) {
+    const canFull = (cloudOK || device) && cs.lowRes > 0;
+    full.hidden = !canFull;
+    full.disabled = forceBackupBusy;
+    full.textContent = forceBackupBusy ? "Working…" : `⬆ Upload ${cs.lowRes} in full quality`;
   }
 }
 
@@ -5191,8 +5327,9 @@ async function toggleFavAlbum(id) {
 // How many of an album's photos have an organised copy saved to the output.
 function albumCloudStatus(id) {
   const photos = albumPhotos(id);
-  const saved = photos.filter((p) => p.cloudId || p.backupId || p.deviceAlbum).length;
-  return { saved, total: photos.length };
+  const savedPhotos = photos.filter((p) => p.cloudId || p.backupId || p.deviceAlbum);
+  const lowRes = savedPhotos.filter((p) => p.backupLowRes).length;
+  return { saved: savedPhotos.length, total: photos.length, lowRes };
 }
 
 function cloudInfoText({ saved, total }) {
@@ -6626,6 +6763,11 @@ function wire() {
   if (repairBtn)
     repairBtn.addEventListener("click", () => {
       if (state.activeAlbum) repairAlbumBackup(state.activeAlbum);
+    });
+  const fullResBtn = el("albumBackupFullRes");
+  if (fullResBtn)
+    fullResBtn.addEventListener("click", () => {
+      if (state.activeAlbum) fixLowResBackups(state.activeAlbum);
     });
 
   const autoToggle = el("autoBackup");
