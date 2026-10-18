@@ -600,6 +600,27 @@ p { margin: 0 0 .9rem; }
 
 </style>
 
+  <!-- Earliest possible error catcher: must run BEFORE the app bundle so that a
+       throw during the bundle's top-level evaluation (which would otherwise
+       freeze the boot overlay silently on "Warming up…") is surfaced on screen
+       and mirrored to the dev diag endpoint. -->
+  <script>
+    (function () {
+      function showBootError(label, err) {
+        try {
+          var msg = (err && (err.stack || err.message)) || String(err);
+          var s = document.getElementById("bootStatus");
+          if (s) s.textContent = "Startup error (" + label + "): " + msg;
+          var r = document.getElementById("bootRetry");
+          if (r) r.hidden = false;
+          try { fetch("/api/diag", { method: "POST", body: "EARLY " + label + ": " + msg }); } catch (_) {}
+        } catch (_) {}
+      }
+      window.addEventListener("error", function (e) { showBootError("error", e.error || e.message); });
+      window.addEventListener("unhandledrejection", function (e) { showBootError("promise", e.reason); });
+    })();
+  </script>
+
   <!-- On-device face recognition (bundled TF.js). Runs locally in the browser.
        Loaded with a CDN fallback: if the first source is blocked or stalls, the
        next is tried, so boot never dead-ends on "Warming up…". FACE_MODEL_BASE
@@ -5226,7 +5247,6 @@ function renderAlbumDetail() {
 
   const cs = albumCloudStatus(id);
   const info = cloudInfoText(cs);
-  const person = state.people.find((p) => p.id === id);
   const rel = person ? relationshipLabel(person) : "";
   el("albumDetailMeta").textContent =
     (rel ? `${rel} · ` : "") + `${photos.length} photo${photos.length === 1 ? "" : "s"}` + (info ? ` · ${info}` : "");
