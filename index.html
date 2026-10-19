@@ -3638,73 +3638,129 @@ async function fixLowResBackups(id) {
     setAutoBackupMsg("No low-res photos to upgrade here. ✓");
     return;
   }
-  // Let the user choose the originals (folder or multi-select — works on phone).
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.multiple = true;
-  input.style.display = "none";
-  document.body.appendChild(input);
-  const files = await new Promise((resolve) => {
-    input.addEventListener("change", () => resolve(Array.from(input.files || [])), { once: true });
-    window.addEventListener(
-      "focus",
-      () => setTimeout(() => resolve(Array.from(input.files || [])), 500),
-      { once: true }
-    );
-    input.click();
-  });
-  input.remove();
-  if (!files.length) return;
-
+  const where = device ? "this device" : "OneDrive";
   forceBackupBusy = true;
   renderAlbumBackupBar(id, false);
-  const where = device ? "this device" : "OneDrive";
   let fixed = 0;
-  let unmatched = 0;
   let failed = 0;
-  const remaining = targets.slice();
-  for (let i = 0; i < files.length; i++) {
-    setAutoBackupMsg(`Checking ${i + 1} of ${files.length} original${files.length === 1 ? "" : "s"}…`);
-    let r;
-    try {
-      r = await face.hashFile(files[i]);
-    } catch {
-      continue;
-    }
-    r.name = files[i].name;
-    const match = findDuplicate(r, remaining); // content match against the low-res set
-    if (!match) {
-      unmatched++;
+  const stillNeed = [];
+
+  // STEP 1 — the app is the connector: pull each full-size original straight from
+  // the SOURCE the user imported from (the media store, or a connected watched
+  // folder, or the existing OneDrive copy) and re-upload it in full quality. No
+  // manual step — that's what the app is for.
+  for (let i = 0; i < targets.length; i++) {
+    const photo = targets[i];
+    setAutoBackupMsg(`Pulling full-size original ${i + 1} of ${targets.length} from your source…`);
+    state.uploadingPhotoId = photo.id;
+    setThumbStatus(photo.id, "uploading");
+    const got = await getUploadableFile(photo);
+    if (!got || got.lowRes) {
+      stillNeed.push(photo); // the original genuinely isn't reachable on this device
+      setThumbStatus(photo.id, "savedLowRes");
       continue;
     }
     try {
       if (device) {
-        const album = albumNameFor(match.personIds);
-        if (await writeToDeviceFolder(files[i], album)) {
-          match.deviceAlbum = album;
-          match.backupLowRes = false;
-          await db.put("photos", match);
+        const album = albumNameFor(photo.personIds);
+        if (await writeToDeviceFolder(got.file, album)) {
+          photo.deviceAlbum = album;
+          photo.backupLowRes = false;
+          await db.put("photos", photo);
           fixed++;
         } else failed++;
       } else {
-        const folder = backupFolderFor(match.personIds);
-        const item = await cloud.uploadFileToOneDrive(files[i], folder, match.hash || match.id);
+        // Upload into the SAME folder the photo already lives in, so verification
+        // (which checks that exact folder) lines up and no stray copy is left.
+        const folder = photo.backupFolder || backupFolderFor(photo.personIds);
+        const item = await cloud.uploadFileToOneDrive(got.file, folder, photo.hash || photo.id, (f) =>
+          setThumbProgress(photo.id, f)
+        );
         if (item && item.id) {
-          match.cloudId = item.id;
-          match.backupId = item.id;
-          match.backupFolder = folder;
-          match.backupLowRes = false;
-          await db.put("photos", match);
+          photo.cloudId = item.id;
+          photo.backupId = item.id;
+          photo.backupFolder = folder;
+          photo.backupLowRes = false;
+          photo.cloudVerified = true;
+          await db.put("photos", photo);
           fixed++;
         } else failed++;
       }
-      const idx = remaining.indexOf(match);
-      if (idx >= 0) remaining.splice(idx, 1);
     } catch {
       failed++;
     }
+    setThumbStatus(photo.id, photo.backupLowRes ? "savedLowRes" : "saved");
   }
+  state.uploadingPhotoId = null;
+
+  // STEP 2 — last resort: ONLY the ones whose original isn't on this device.
+  // Offer to point us at them (works on phone — pick a whole folder); we match by
+  // image CONTENT so the order/names don't matter.
+  if (stillNeed.length) {
+    setAutoBackupMsg(
+      `${stillNeed.length} original${stillNeed.length === 1 ? " isn't" : "s aren't"} on this device — pick ${
+        stillNeed.length === 1 ? "it" : "them"
+      } (or the whole folder) to finish, or Cancel to leave for now.`
+    );
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.style.display = "none";
+    document.body.appendChild(input);
+    const files = await new Promise((resolve) => {
+      input.addEventListener("change", () => resolve(Array.from(input.files || [])), { once: true });
+      window.addEventListener("focus", () => setTimeout(() => resolve(Array.from(input.files || [])), 500), {
+        once: true,
+      });
+      input.click();
+    });
+    input.remove();
+    const remaining = stillNeed.slice();
+    for (let i = 0; i < files.length; i++) {
+      setAutoBackupMsg(`Matching ${i + 1} of ${files.length} picked original${files.length === 1 ? "" : "s"}…`);
+      let r;
+      try {
+        r = await face.hashFile(files[i]);
+      } catch {
+        continue;
+      }
+      r.name = files[i].name;
+      const match = findDuplicate(r, remaining); // content match against the low-res set
+      if (!match) continue;
+      try {
+        if (device) {
+          const album = albumNameFor(match.personIds);
+          if (await writeToDeviceFolder(files[i], album)) {
+            match.deviceAlbum = album;
+            match.backupLowRes = false;
+            await db.put("photos", match);
+            fixed++;
+          } else failed++;
+        } else {
+          const folder = match.backupFolder || backupFolderFor(match.personIds);
+          const item = await cloud.uploadFileToOneDrive(files[i], folder, match.hash || match.id);
+          if (item && item.id) {
+            match.cloudId = item.id;
+            match.backupId = item.id;
+            match.backupFolder = folder;
+            match.backupLowRes = false;
+            match.cloudVerified = true;
+            await db.put("photos", match);
+            fixed++;
+          } else failed++;
+        }
+        const idx = remaining.indexOf(match);
+        if (idx >= 0) remaining.splice(idx, 1);
+      } catch {
+        failed++;
+      }
+    }
+    stillNeed.length = 0;
+    for (const p of remaining) stillNeed.push(p);
+  }
+
+  state.uploadingPhotoId = null;
   forceBackupBusy = false;
   await saveBackedUpKeys();
   if (!device) {
@@ -3713,10 +3769,11 @@ async function fixLowResBackups(id) {
   }
   recomputePending();
   renderAll();
-  let msg = fixed ? `Upgraded ${fixed} to full quality on ${where}.` : "No photos were upgraded.";
-  if (unmatched) msg += ` ${unmatched} picked file${unmatched === 1 ? "" : "s"} didn't match a low-res photo here.`;
+  let msg = fixed ? `Upgraded ${fixed} to full quality on ${where}. ✓` : "";
+  if (stillNeed.length)
+    msg += `${msg ? " " : ""}${stillNeed.length} still need their original — it isn't on this device. Reconnect the source folder you imported from (Family ⚙️) and try again.`;
   if (failed) msg += ` ${failed} failed — try again.`;
-  if (remaining.length) msg += ` ${remaining.length} still need their original.`;
+  if (!msg) msg = "No photos were upgraded.";
   setAutoBackupMsg(msg);
 }
 
@@ -3745,8 +3802,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
   const where = device ? "this device" : "OneDrive";
   let ok = 0;
   let fail = 0;
-  let unreachable = 0;
-  let lowRes = 0;
+  let needsSource = 0;
   for (let i = 0; i < photos.length; i++) {
     const photo = photos[i];
     state.uploadingPhotoId = photo.id;
@@ -3754,25 +3810,31 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
     setAlbumBackupProgress(i, photos.length);
     setAutoBackupMsg(`Backing up ${i + 1} of ${photos.length} to ${where}…`);
     const got = await getUploadableFile(photo);
-    if (!got) {
-      unreachable++;
+    if (!got || got.lowRes) {
+      // FULL QUALITY ONLY. We never store a low-res preview as the "backup": if
+      // the full-size original isn't reachable on this device right now, leave the
+      // photo waiting and tell the user WHY (so they can reconnect the source they
+      // imported from) instead of quietly uploading a smaller copy.
+      needsSource++;
       setThumbStatus(photo.id, "pending");
       continue;
     }
-    if (got.lowRes) lowRes++;
     try {
       const album = albumNameFor(photo.personIds);
       if (device) {
         if (await writeToDeviceFolder(got.file, album)) {
           photo.deviceAlbum = album;
-          photo.backupLowRes = !!got.lowRes;
+          photo.backupLowRes = false;
           await db.put("photos", photo);
           ok++;
         } else {
           fail++;
         }
       } else {
-        const folder = backupFolderFor(photo.personIds);
+        // Re-upload into the SAME folder this photo already lives in (if any), so
+        // verification — which checks that exact folder — always lines up and we
+        // never leave a stray copy in a second folder.
+        const folder = photo.backupFolder || backupFolderFor(photo.personIds);
         const item = await cloud.uploadFileToOneDrive(got.file, folder, photo.hash || photo.id, (f) =>
           setThumbProgress(photo.id, f)
         );
@@ -3780,7 +3842,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
           photo.cloudId = item.id;
           photo.backupId = item.id;
           photo.backupFolder = folder;
-          photo.backupLowRes = !!got.lowRes;
+          photo.backupLowRes = false;
           photo.cloudVerified = true;
           await db.put("photos", photo);
           state.backedUpKeys.add(`${got.file.name}|${got.file.size}|${got.file.lastModified || 0}`);
@@ -3792,7 +3854,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
     } catch {
       fail++;
     }
-    setThumbStatus(photo.id, isPhotoBackedUp(photo) ? (photo.backupLowRes ? "savedLowRes" : "saved") : "missing");
+    setThumbStatus(photo.id, isPhotoBackedUp(photo) ? "saved" : "missing");
   }
   state.uploadingPhotoId = null;
   setAlbumBackupProgress(photos.length, photos.length);
@@ -3803,9 +3865,9 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
     scheduleLibrarySync();
   }
   renderAll();
-  let msg = `Backed up ${ok} to ${where}.`;
-  if (lowRes) msg += ` ${lowRes} used a smaller preview (the full-size original isn't on this device).`;
-  if (unreachable) msg += ` ${unreachable} couldn't be found — reconnect the source folder, then try again.`;
+  let msg = `Backed up ${ok} to ${where} in full quality.`;
+  if (needsSource)
+    msg += ` ${needsSource} still waiting — their full-size original isn't on this device. Reconnect the folder you imported from (Family ⚙️), then tap Back up again.`;
   if (fail) msg += ` ${fail} failed — they'll retry automatically.`;
   setAutoBackupMsg(msg);
 }
@@ -3832,11 +3894,11 @@ function applyThumbStatus(badge, status) {
   } else if (status === "savedLowRes") {
     badge.classList.add("is-lowres");
     badge.innerHTML = "⚠";
-    badge.title = "Backed up as a low-res preview only — add the original to upload full quality";
+    badge.title = "Saved as a low-res preview only — the full-size original wasn't on this device. Use ‘Pull from source in full quality’ to replace it.";
   } else if (status === "missing") {
     badge.classList.add("is-missing");
     badge.innerHTML = "⚠";
-    badge.title = "Not in OneDrive yet — syncing (or tap Back up now)";
+    badge.title = "Not found in its OneDrive folder yet — tap Back up to upload it in full quality.";
   } else if (status === "uploading") {
     badge.classList.add("is-uploading");
     badge.innerHTML = '<span class="spin"></span>';
@@ -3956,7 +4018,7 @@ function renderAlbumBackupBar(id, special) {
   const busy = forceBackupBusy || reconcileBusy;
   if (notBacked === 0) {
     if (cs.lowRes > 0) {
-      text.textContent = `⚠ ${photos.length} backed up, but ${cs.lowRes} are low-res previews (originals weren't on this device)`;
+      text.textContent = `⚠ ${cs.lowRes} of ${photos.length} were saved as low-res previews — the full-size originals weren't on this device when they backed up. Tap below to pull them from your source in full quality.`;
     } else if (cloudOK && cs.checked >= photos.length) {
       text.textContent = `✓ All ${photos.length} verified in ${where}`;
     } else {
@@ -3965,7 +4027,7 @@ function renderAlbumBackupBar(id, special) {
     btn.hidden = true;
   } else {
     if (cloudOK && cs.missing > 0) {
-      text.textContent = `⚠ Not fully synced — ${cs.saved}/${photos.length} in ${where}, ${notBacked} missing`;
+      text.textContent = `⚠ ${notBacked} of ${photos.length} aren't in ${where} yet — we checked their folder and the file wasn't there. Tap to upload the missing ones in full quality.`;
     } else {
       text.textContent = `${notBacked} of ${photos.length} still to back up to ${where}`;
     }
@@ -3988,7 +4050,7 @@ function renderAlbumBackupBar(id, special) {
     const canFull = (cloudOK || device) && cs.lowRes > 0;
     full.hidden = !canFull;
     full.disabled = forceBackupBusy;
-    full.textContent = forceBackupBusy ? "Working…" : `⬆ Upload ${cs.lowRes} in full quality`;
+    full.textContent = forceBackupBusy ? "Working…" : `⬆ Pull ${cs.lowRes} from source in full quality`;
   }
   // Governance: compare the REAL OneDrive file count to how many photos we track.
   // Offer a one-tap clean-up whenever there are more files than photos (duplicate
