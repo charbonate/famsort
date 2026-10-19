@@ -35,7 +35,10 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; }
+/* Native-app feel: lock the rubber-band page scroll, kill the long-press text
+   selection + iOS image copy/share callout on chrome, and drop the 300ms tap delay. */
+html { overscroll-behavior: none; }
+html, body { margin: 0; overscroll-behavior-y: none; }
 body {
   font-family: var(--font-sans);
   color: var(--ink);
@@ -43,6 +46,28 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+/* ...but keep text selectable / editable exactly where it matters. */
+input, textarea, [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
+img { -webkit-touch-callout: none; -webkit-user-drag: none; -webkit-user-select: none; user-select: none; }
+button, .btn, .tabbar__btn, [role="button"], a { touch-action: manipulation; }
+/* Momentum scrolling inside panels so they glide + bounce like native lists. */
+.folder-list, .modal__card, .modal__card--wide, .lightbox__strip, #existingPeople {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Screen-switch transition — a quick slide+fade so moving between tabs feels
+   like an app, not a page reload. Disabled when the user prefers reduced motion. */
+.view--enter { animation: viewIn .22s cubic-bezier(.22, .61, .36, 1); }
+@keyframes viewIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .view--enter { animation: none; }
 }
 h1, h2, h3 { font-family: var(--font-serif); line-height: 1.15; margin: 0 0 .4em; }
 em { font-style: italic; color: var(--accent-dark); }
@@ -2994,6 +3019,62 @@ function backupFolderFor(personIds) {
   return `${root}/${albumNameFor(personIds)}`;
 }
 
+// Copy-per-person: EVERY folder a photo belongs in — one per named (non-ignored)
+// person it's tagged with — so each person's folder holds every photo they're in
+// and its file count matches their in-app album exactly. A photo with no named
+// people goes to a single "Unsorted" folder. Distinct + stable order.
+function backupFoldersFor(personIds) {
+  const root = (state.outputRoot || "Famsort").replace(/\/+$/, "");
+  const safe = (s) => String(s).replace(/[\\/:*?"<>|]/g, "_");
+  const names = (personIds || [])
+    .map((id) => state.people.find((p) => p.id === id))
+    .filter((p) => p && !p.ignored)
+    .map((p) => safe(p.name));
+  const uniq = [...new Set(names)];
+  if (!uniq.length) return [`${root}/Unsorted`];
+  return uniq.map((n) => `${root}/${n}`);
+}
+
+// The per-folder cloud copies we've tracked for a photo: { folderPath: itemId }.
+// Falls back to the legacy single-copy fields so photos saved before copy-per-
+// person keep working without a data migration.
+function photoCloudCopies(p) {
+  if (p && p.cloudCopies && typeof p.cloudCopies === "object") return p.cloudCopies;
+  if (p && p.backupFolder && (p.backupId || p.cloudId)) return { [p.backupFolder]: p.backupId || p.cloudId };
+  return {};
+}
+
+// Record that a photo now has a copy (itemId) in `folder`, keeping the legacy
+// single-copy fields pointed at SOME valid copy so download / move still work.
+function setPhotoCloudCopy(p, folder, itemId) {
+  const copies = { ...photoCloudCopies(p) };
+  if (itemId) copies[folder] = itemId;
+  p.cloudCopies = copies;
+  p.cloudId = itemId || p.cloudId;
+  p.backupId = itemId || p.backupId;
+  p.backupFolder = folder || p.backupFolder;
+}
+
+// Upload one photo's full-size FILE into EVERY OneDrive folder it belongs to —
+// one per tagged person — so each person's folder holds every photo they're in.
+// Idempotent per folder (the content-key filename replaces in place). Returns
+// true only when every target folder succeeded.
+async function uploadPhotoToAllFolders(photo, file, onProgress) {
+  const folders = backupFoldersFor(photo.personIds);
+  let allOk = folders.length > 0;
+  for (const folder of folders) {
+    let item = null;
+    try {
+      item = await cloud.uploadFileToOneDrive(file, folder, photo.hash || photo.id, onProgress);
+    } catch {
+      item = null;
+    }
+    if (item && item.id) setPhotoCloudCopy(photo, folder, item.id);
+    else allOk = false;
+  }
+  return allOk;
+}
+
 // Permission gate for the chosen device OUTPUT folder (needs read/write).
 async function ensureHandleRW(handle) {
   if (!handle) return false;
@@ -3055,21 +3136,16 @@ async function backupPhotos(list) {
         }
         ok++;
       } else {
-        const folder = backupFolderFor(personIds);
         const photo = state.photos.find((p) => p.id === photoId);
-        const item = await cloud.uploadFileToOneDrive(file, folder, photo?.hash || photoId);
-        state.backedUpKeys.add(key);
-        // Remember where it landed so any device can fetch the original later.
-        if (photo && item && item.id) {
-          photo.cloudId = item.id;
-          // Track the organised copy separately so re-file-on-tag can MOVE it later
-          // (never the camera-roll original) and know which folder it currently sits in.
-          photo.backupId = item.id;
-          photo.backupFolder = folder;
+        if (photo) {
+          // A copy in EVERY tagged person's folder — tracks each landing spot so any
+          // device can fetch the original and re-file-on-tag knows where copies are.
+          const allOk = await uploadPhotoToAllFolders(photo, file);
           photo.backupLowRes = false; // auto-backup uses the live original = full quality
-          photo.cloudVerified = true; // we just put it there this second
+          photo.cloudVerified = allOk; // true only when every person-folder got it
           await db.put("photos", photo);
         }
+        state.backedUpKeys.add(key);
         ok++;
       }
     } catch {
@@ -3310,74 +3386,108 @@ async function reconcileAlbumCloud(id) {
   if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return false;
   const photos = albumPhotos(id);
   if (!photos.length) return false;
-  // Each photo's organised copy lives in the folder for its OWN tag set, so group
-  // by target folder and list each distinct folder once.
-  const groups = new Map();
+  // Copy-per-person: a photo lives in one folder PER tagged person, so each
+  // person's folder holds every photo they're in. Work out every folder we need
+  // to inspect and which photos should appear in each, then list each once.
+  const folderPhotos = new Map(); // folder → [photos that belong in it]
+  const targets = new Map(); // photo → [its folders]
   for (const p of photos) {
-    const folder = p.backupFolder || backupFolderFor(p.personIds);
-    if (!groups.has(folder)) groups.set(folder, []);
-    groups.get(folder).push(p);
+    const folders = backupFoldersFor(p.personIds);
+    targets.set(p, folders);
+    for (const f of folders) {
+      if (!folderPhotos.has(f)) folderPhotos.set(f, []);
+      folderPhotos.get(f).push(p);
+    }
   }
+  // Governance (file-count / duplicate detection) is about THIS album's own
+  // person-folder only. Shared photos also live in other people's folders, but
+  // those are audited when you open that person's album — not counted as extras here.
+  const ownFolder = backupFoldersFor([id])[0];
   let changed = false;
   const audit = { fileCount: 0, keepers: 0, exactDups: [], staleDups: [], unknown: 0, verified: true };
-  for (const [folder, ps] of groups) {
+  const pools = new Map(); // folder → claim pool, or null if we couldn't read it
+  for (const [folder, ps] of folderPhotos) {
     const files = await cloud.listFolderFiles(folder);
     if (files === null) {
-      audit.verified = false; // couldn't read this folder — audit is incomplete
-      continue; // couldn't verify this folder — leave as-is
+      if (folder === ownFolder) audit.verified = false; // couldn't read this album's folder
+      pools.set(folder, null);
+      continue;
     }
-    // Governance: tally real files vs tracked photos and spot duplicate/old copies.
-    const cls = classifyFolderFiles(files, ps);
-    audit.fileCount += cls.fileCount;
-    audit.keepers += cls.keepers.length;
-    audit.unknown += cls.unknown.length;
-    for (const f of cls.exactDups) audit.exactDups.push({ folder, id: f.id, name: f.name });
-    for (const f of cls.staleDups) audit.staleDups.push({ folder, id: f.id, name: f.name });
-    // Verify each photo against a DISTINCT file: claim the file we match so one
-    // physical file can never make several photos look "saved" (that false green
-    // is exactly how missing photos hid before). A photo that can't claim its own
-    // unclaimed file is honestly marked NOT in OneDrive.
-    const pool = files.map((f) => ({
-      id: f.id,
-      name: String(f.name || "").toLowerCase(),
-      width: f.width || 0,
-      height: f.height || 0,
-      claimed: false,
-    }));
-    for (const p of ps) {
-      const key = cloud.cloudFileKey(p.hash || p.id).toLowerCase();
+    // Governance: tally real files vs tracked photos and spot duplicate/old copies
+    // — only for this album's own folder (see ownFolder note above).
+    if (folder === ownFolder) {
+      const cls = classifyFolderFiles(files, ps);
+      audit.fileCount += cls.fileCount;
+      audit.keepers += cls.keepers.length;
+      audit.unknown += cls.unknown.length;
+      for (const f of cls.exactDups) audit.exactDups.push({ folder, id: f.id, name: f.name });
+      for (const f of cls.staleDups) audit.staleDups.push({ folder, id: f.id, name: f.name });
+    }
+    // Claim the file we match so one physical file can never make several photos
+    // look "saved" (that false green is exactly how missing photos hid before).
+    pools.set(
+      folder,
+      files.map((f) => ({
+        id: f.id,
+        name: String(f.name || "").toLowerCase(),
+        width: f.width || 0,
+        height: f.height || 0,
+        claimed: false,
+      }))
+    );
+  }
+  // Verify each photo across EVERY folder it belongs to. A photo is only "in
+  // OneDrive" when every one of its person-folders holds its own distinct copy.
+  for (const p of photos) {
+    const folders = targets.get(p) || [];
+    const key = cloud.cloudFileKey(p.hash || p.id).toLowerCase();
+    const copies = { ...photoCloudCopies(p) };
+    let anyUnlistable = false;
+    let allPresent = folders.length > 0;
+    let qualityMatch = null;
+    for (const folder of folders) {
+      const pool = pools.get(folder);
+      if (pool == null) {
+        anyUnlistable = true; // couldn't read this folder → leave it unknown
+        continue;
+      }
       const match = pool.find((f) => !f.claimed && f.name.includes(`-${key}`));
-      if (match) match.claimed = true;
-      const present = !!match;
-      if (p.cloudVerified !== present) {
-        p.cloudVerified = present;
+      if (match) {
+        match.claimed = true;
+        copies[folder] = match.id;
+        qualityMatch = qualityMatch || match;
+      } else {
+        delete copies[folder]; // not in this person's folder (any more)
+        allPresent = false;
+      }
+    }
+    p.cloudCopies = copies;
+    const anyId = Object.values(copies)[0] || null;
+    if (anyId && !p.cloudId) {
+      p.cloudId = anyId;
+      changed = true;
+    }
+    if (anyId && !p.backupId) p.backupId = anyId;
+    if (anyId && !p.backupFolder) p.backupFolder = Object.keys(copies)[0] || null;
+    // Only decide verified/missing once we could read every folder it belongs to,
+    // so a dropped connection never falsely marks a photo as missing.
+    if (!anyUnlistable && p.cloudVerified !== allPresent) {
+      p.cloudVerified = allPresent;
+      changed = true;
+    }
+    // Quality marker: compare a stored copy's pixel size to the original we
+    // recorded at import. Much smaller = low-res preview; close = full quality.
+    if (qualityMatch && qualityMatch.width && qualityMatch.height && p.dims && p.dims.w && p.dims.h) {
+      const lowRes = qualityMatch.width * qualityMatch.height < p.dims.w * p.dims.h * 0.5;
+      if (p.backupLowRes !== lowRes) {
+        p.backupLowRes = lowRes;
         changed = true;
       }
-      // Found in OneDrive but we'd lost the pointer — adopt it so downloads work
-      // and re-file-on-tag can move the right item.
-      if (present && !p.cloudId) {
-        p.cloudId = match.id;
-        p.backupId = p.backupId || match.id;
-        p.backupFolder = folder;
-        changed = true;
-      }
-      // Quality marker: compare the ACTUAL stored copy's pixel size to the
-      // original dimensions we recorded at import. A copy much smaller than the
-      // source is a lower-res preview; one close to it is full source quality.
-      if (present && match.width && match.height && p.dims && p.dims.w && p.dims.h) {
-        const lowRes = match.width * match.height < p.dims.w * p.dims.h * 0.5;
-        if (p.backupLowRes !== lowRes) {
-          p.backupLowRes = lowRes;
-          changed = true;
-        }
-      }
-      if (changed) {
-        try {
-          await db.put("photos", p);
-        } catch {
-          /* best-effort persistence */
-        }
-      }
+    }
+    try {
+      await db.put("photos", p);
+    } catch {
+      /* best-effort persistence */
     }
   }
   cloudAudit.set(id, audit);
@@ -3467,17 +3577,15 @@ async function cleanupAlbumDuplicates(id) {
   // doing when OneDrive actually has more files than photos.
   const hasExtras = audit.fileCount > tracked;
   if (hasExtras) {
+    // Clean up only THIS album's own person-folder — the same folder the audit
+    // counted. Shared photos' copies in other people's folders aren't extras.
+    const ownFolder = backupFoldersFor([id])[0];
     const groups = new Map();
-    for (const p of photos) {
-      const folder = p.backupFolder || backupFolderFor(p.personIds);
-      if (!groups.has(folder)) groups.set(folder, []);
-      groups.get(folder).push(p);
-    }
+    groups.set(ownFolder, photos);
     forceBackupBusy = true;
     let hashed = 0;
     try {
-      for (const [, ps] of groups) {
-        const folder = ps[0].backupFolder || backupFolderFor(ps[0].personIds);
+      for (const [folder, ps] of groups) {
         const files = await cloud.listFolderFiles(folder);
         if (!files || files.length < 2) continue;
         // Perceptual-hash each file via its server thumbnail (no full download).
@@ -3670,16 +3778,10 @@ async function fixLowResBackups(id) {
           fixed++;
         } else failed++;
       } else {
-        // Upload into the SAME folder the photo already lives in, so verification
-        // (which checks that exact folder) lines up and no stray copy is left.
-        const folder = photo.backupFolder || backupFolderFor(photo.personIds);
-        const item = await cloud.uploadFileToOneDrive(got.file, folder, photo.hash || photo.id, (f) =>
-          setThumbProgress(photo.id, f)
-        );
-        if (item && item.id) {
-          photo.cloudId = item.id;
-          photo.backupId = item.id;
-          photo.backupFolder = folder;
+        // Re-upload the full-size original into EVERY person-folder, so each
+        // person's folder matches their album and verification lines up.
+        const allOk = await uploadPhotoToAllFolders(photo, got.file, (f) => setThumbProgress(photo.id, f));
+        if (allOk) {
           photo.backupLowRes = false;
           photo.cloudVerified = true;
           await db.put("photos", photo);
@@ -3738,12 +3840,8 @@ async function fixLowResBackups(id) {
             fixed++;
           } else failed++;
         } else {
-          const folder = match.backupFolder || backupFolderFor(match.personIds);
-          const item = await cloud.uploadFileToOneDrive(files[i], folder, match.hash || match.id);
-          if (item && item.id) {
-            match.cloudId = item.id;
-            match.backupId = item.id;
-            match.backupFolder = folder;
+          const allOk = await uploadPhotoToAllFolders(match, files[i]);
+          if (allOk) {
             match.backupLowRes = false;
             match.cloudVerified = true;
             await db.put("photos", match);
@@ -3820,8 +3918,8 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
       continue;
     }
     try {
-      const album = albumNameFor(photo.personIds);
       if (device) {
+        const album = albumNameFor(photo.personIds);
         if (await writeToDeviceFolder(got.file, album)) {
           photo.deviceAlbum = album;
           photo.backupLowRes = false;
@@ -3831,23 +3929,17 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
           fail++;
         }
       } else {
-        // Re-upload into the SAME folder this photo already lives in (if any), so
-        // verification — which checks that exact folder — always lines up and we
-        // never leave a stray copy in a second folder.
-        const folder = photo.backupFolder || backupFolderFor(photo.personIds);
-        const item = await cloud.uploadFileToOneDrive(got.file, folder, photo.hash || photo.id, (f) =>
-          setThumbProgress(photo.id, f)
-        );
-        if (item && item.id) {
-          photo.cloudId = item.id;
-          photo.backupId = item.id;
-          photo.backupFolder = folder;
+        // A full-quality copy in EVERY tagged person's folder, so each person's
+        // folder matches their album. Verification checks those same folders.
+        const allOk = await uploadPhotoToAllFolders(photo, got.file, (f) => setThumbProgress(photo.id, f));
+        if (allOk) {
           photo.backupLowRes = false;
           photo.cloudVerified = true;
           await db.put("photos", photo);
           state.backedUpKeys.add(`${got.file.name}|${got.file.size}|${got.file.lastModified || 0}`);
           ok++;
         } else {
+          await db.put("photos", photo);
           fail++;
         }
       }
@@ -4072,11 +4164,12 @@ function renderAlbumBackupBar(id, special) {
   }
 }
 
-/* --------------------------------------------- re-file on tag (move) */
-// When a face is named, the photo's album changes (e.g. Unsorted → Ava). If an
-// organised copy already lives in OneDrive, physically MOVE it into the new
-// child's album folder so the cloud layout matches the in-app albums. Only ever
-// moves OUR copies (photo.backupId), never the user's camera-roll originals.
+/* --------------------------------------------- re-file on tag (sync folders) */
+// When a face is named/unnamed, the photo's set of people changes. Copy-per-
+// person means it should have a copy in EACH tagged person's folder, so we add a
+// copy to any newly-tagged person's folder and remove our copy from a person's
+// folder it's no longer tagged into. Only ever touches OUR keyed copies
+// (photo.cloudCopies), never the user's camera-roll originals.
 const refilePending = new Set();
 let refileTimer = null;
 
@@ -4090,8 +4183,12 @@ function scheduleRefile(photos) {
       if (!p.deviceAlbum) continue; // no local copy yet → next backup files it correctly
       if (albumNameFor(p.personIds) === p.deviceAlbum) continue; // already in the right folder
     } else {
-      if (!p.backupId) continue; // no organised copy yet → next backup files it correctly
-      if (backupFolderFor(p.personIds) === p.backupFolder) continue; // already in the right folder
+      const copies = photoCloudCopies(p);
+      if (!Object.keys(copies).length) continue; // nothing organised yet → next backup files it
+      const target = backupFoldersFor(p.personIds);
+      const have = Object.keys(copies);
+      const same = target.length === have.length && target.every((f) => have.includes(f));
+      if (same) continue; // copies already sit in exactly the right person-folders
     }
     refilePending.add(p.id);
     queued = true;
@@ -4140,19 +4237,58 @@ async function runRefile() {
       }
       continue;
     }
-    if (!photo.backupId) continue;
-    const target = backupFolderFor(photo.personIds);
-    if (target === photo.backupFolder) continue;
-    try {
-      const item = await cloud.moveCloudFile(photo.backupId, target);
-      if (item) {
-        photo.backupFolder = target;
-        if (item.id) photo.backupId = item.id;
-        await db.put("photos", photo);
-        moved++;
+    // Cloud copy-per-person: keep this photo's copies matching its tags — ADD a
+    // copy to any new person-folder, REMOVE our copy from folders it's no longer
+    // tagged into. Only ever touches our own keyed copies, never user originals.
+    const copies = photoCloudCopies(photo);
+    const have = Object.keys(copies);
+    if (!have.length) continue;
+    const target = backupFoldersFor(photo.personIds);
+    const toAdd = target.filter((f) => !have.includes(f));
+    const toRemove = have.filter((f) => !target.includes(f));
+    if (!toAdd.length && !toRemove.length) continue;
+    let dirty = false;
+    if (toAdd.length) {
+      let got = null;
+      try {
+        got = await getUploadableFile(photo);
+      } catch {
+        got = null;
       }
-    } catch {
-      /* offline / transient — a later tag change re-queues it */
+      if (got && got.file && !got.lowRes) {
+        for (const folder of toAdd) {
+          try {
+            const item = await cloud.uploadFileToOneDrive(got.file, folder, photo.hash || photo.id);
+            if (item && item.id) {
+              setPhotoCloudCopy(photo, folder, item.id);
+              dirty = true;
+            }
+          } catch {
+            /* offline / transient — a later tag change re-queues it */
+          }
+        }
+      }
+    }
+    for (const folder of toRemove) {
+      try {
+        if (await cloud.deleteCloudFile(copies[folder])) {
+          const next = { ...photoCloudCopies(photo) };
+          delete next[folder];
+          photo.cloudCopies = next;
+          if (photo.backupFolder === folder) {
+            photo.backupFolder = Object.keys(next)[0] || null;
+            photo.backupId = Object.values(next)[0] || null;
+            photo.cloudId = photo.backupId || photo.cloudId;
+          }
+          dirty = true;
+        }
+      } catch {
+        /* offline / transient — a later tag change re-queues it */
+      }
+    }
+    if (dirty) {
+      await db.put("photos", photo);
+      moved++;
     }
   }
   if (moved && !device) scheduleLibrarySync();
@@ -4275,6 +4411,7 @@ function buildLibraryManifest() {
       cloudId: p.cloudId || null,
       backupId: p.backupId || null,
       backupFolder: p.backupFolder || null,
+      cloudCopies: p.cloudCopies || null,
     })),
   };
 }
@@ -4328,6 +4465,7 @@ async function rebuildFromManifest() {
       cloudId: e.cloudId || null,
       backupId: e.backupId || null,
       backupFolder: e.backupFolder || null,
+      cloudCopies: e.cloudCopies || null,
       fromCloud: true, // original lives in OneDrive, not on this device
     });
   }
@@ -7734,6 +7872,13 @@ function navTo(view) {
   );
   if (view === "activity") renderActivity();
   window.scrollTo(0, 0);
+  // Replay the slide+fade so switching tabs feels like a native screen change.
+  const active = document.querySelector(`.view[data-view="${view}"]`);
+  if (active) {
+    active.classList.remove("view--enter");
+    void active.offsetWidth; // force reflow so the animation restarts
+    active.classList.add("view--enter");
+  }
 }
 
 /* ------------------------------------------------------------- wiring */
