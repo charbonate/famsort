@@ -2109,7 +2109,7 @@ async function listFolderFiles(folderPath) {
     .filter(Boolean)
     .map((s) => encodeURIComponent(s.replace(/[\\/:*?"<>|]/g, "_")))
     .join("/");
-  let next = `${GRAPH}/me/drive/root:/${path}:/children?$select=id,name,size,file&$top=200`;
+  let next = `${GRAPH}/me/drive/root:/${path}:/children?$select=id,name,size,file,image&$top=200`;
   const files = [];
   try {
     while (next) {
@@ -2123,6 +2123,10 @@ async function listFolderFiles(folderPath) {
             size: it.size || 0,
             // Content hash lets us remove only PROVABLY identical copies.
             hash: String(h.quickXorHash || h.sha256Hash || h.sha1Hash || "").toLowerCase(),
+            // Original pixel dimensions (from OneDrive) — free, no download. Used
+            // to tell which of two same-image copies is the higher quality one.
+            width: (it.image && it.image.width) || 0,
+            height: (it.image && it.image.height) || 0,
           });
         }
       }
@@ -2134,6 +2138,25 @@ async function listFolderFiles(folderPath) {
     return null; // genuine failure — don't let this mark photos as missing
   }
   return files;
+}
+
+// Fetch a small server-rendered THUMBNAIL of a file as a Blob (OneDrive renders
+// it for us, so we don't download the full-size image). Used to perceptual-hash
+// a file's visual content cheaply when deciding if two copies are the same shot.
+// Returns null if unavailable.
+async function fileThumbnailBlob(cloudId, size = "large") {
+  if (!cloudId || !oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  try {
+    const meta = await graphGet(`${GRAPH}/me/drive/items/${cloudId}/thumbnails/0/${size}`, token);
+    if (!meta || !meta.url) return null;
+    const res = await fetch(meta.url); // pre-authenticated, short-lived URL
+    if (!res.ok) return null;
+    return await res.blob();
+  } catch {
+    return null;
+  }
 }
 
 // Delete one of OUR organised copies from OneDrive by item id. Returns true on
@@ -2150,6 +2173,27 @@ async function deleteCloudFile(cloudId) {
       headers: { Authorization: `Bearer ${token}` },
     });
     return res.ok || res.status === 404; // 404 = already gone → treat as success
+  } catch {
+    return false;
+  }
+}
+
+// Rename one of OUR organised copies in OneDrive. Used by the "keep best quality"
+// clean-up so that when we keep a HIGHER-resolution copy of a photo, it can adopt
+// the photo's content-key filename and stay recognised by verification (before we
+// remove the lower-res copy). Returns true on success. Never renames originals —
+// we only ever pass ids of our own Famsort copies.
+async function renameCloudFile(cloudId, newName) {
+  if (!cloudId || !newName || !oneDriveConfigured()) return false;
+  const token = await getTokenSilent();
+  if (!token) return false;
+  try {
+    const res = await fetch(`${GRAPH}/me/drive/items/${cloudId}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: String(newName).replace(/[\\/:*?"<>|]/g, "_") }),
+    });
+    return res.ok;
   } catch {
     return false;
   }
@@ -2514,7 +2558,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, deleteCloudFile, moveCloudFile, getFolderWebUrl, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -3293,7 +3337,13 @@ async function reconcileAlbumCloud(id) {
     // physical file can never make several photos look "saved" (that false green
     // is exactly how missing photos hid before). A photo that can't claim its own
     // unclaimed file is honestly marked NOT in OneDrive.
-    const pool = files.map((f) => ({ id: f.id, name: String(f.name || "").toLowerCase(), claimed: false }));
+    const pool = files.map((f) => ({
+      id: f.id,
+      name: String(f.name || "").toLowerCase(),
+      width: f.width || 0,
+      height: f.height || 0,
+      claimed: false,
+    }));
     for (const p of ps) {
       const key = cloud.cloudFileKey(p.hash || p.id).toLowerCase();
       const match = pool.find((f) => !f.claimed && f.name.includes(`-${key}`));
@@ -3311,6 +3361,16 @@ async function reconcileAlbumCloud(id) {
         p.backupFolder = folder;
         changed = true;
       }
+      // Quality marker: compare the ACTUAL stored copy's pixel size to the
+      // original dimensions we recorded at import. A copy much smaller than the
+      // source is a lower-res preview; one close to it is full source quality.
+      if (present && match.width && match.height && p.dims && p.dims.w && p.dims.h) {
+        const lowRes = match.width * match.height < p.dims.w * p.dims.h * 0.5;
+        if (p.backupLowRes !== lowRes) {
+          p.backupLowRes = lowRes;
+          changed = true;
+        }
+      }
       if (changed) {
         try {
           await db.put("photos", p);
@@ -3324,13 +3384,55 @@ async function reconcileAlbumCloud(id) {
   return changed;
 }
 
-// Governance / de-duplication: OneDrive should have EXACTLY one file per photo.
-// If it has MORE (old-scheme copies left behind after the filename upgrade, or
-// accidental re-uploads), remove the duplicate/stale extras so the app stays KING
-// at de-duping instead of creating clutter. Only ever deletes files we can prove
-// are duplicates of a photo we still keep a current copy of; anything it can't
-// classify is left untouched. Fetches a FRESH listing first, confirms, deletes,
-// then re-verifies.
+// Does this OneDrive filename carry the current content-key of one of these
+// photos? Returns that key (so we know the file is an app-recognised copy) or "".
+function cloudFileCurrentKey(name, photos) {
+  const n = String(name || "").toLowerCase();
+  for (const p of photos) {
+    const k = cloud.cloudFileKey(p.hash || p.id).toLowerCase();
+    if (k && n.includes(`-${k}`)) return k;
+  }
+  return "";
+}
+
+// Are two listed OneDrive files the SAME shot? Uses the SAME strict perceptual
+// test the in-app duplicate finder uses (tiny hamming distance, or a slightly
+// looser distance only when the aspect ratios also match), so we never treat two
+// genuinely different photos as copies of each other.
+function cloudSameImage(a, b) {
+  if (!a.hash || !b.hash) return false;
+  const len = Math.min(a.hash.length, b.hash.length);
+  if (!len) return false;
+  let d = 0;
+  for (let i = 0; i < len; i++) if (a.hash[i] !== b.hash[i]) d++;
+  const strict = Math.max(2, Math.round(len * DUP_STRICT_FRAC));
+  const loose = Math.max(6, Math.round(len * DUP_LOOSE_FRAC));
+  if (d <= strict) return true;
+  const ara = a.area && a.f.height ? a.f.width / a.f.height : 0;
+  const arb = b.area && b.f.height ? b.f.width / b.f.height : 0;
+  if (d <= loose && ara && arb && Math.abs(ara - arb) / ara < 0.02) return true;
+  return false;
+}
+
+// Inject a content-key into a filename (before the extension) so a kept higher-res
+// copy adopts the photo's recognised name: "oldpic.jpg" -> "oldpic-<key>.jpg".
+function injectCloudKey(name, key) {
+  const base = String(name || "photo.jpg");
+  if (base.toLowerCase().includes(`-${key}`)) return base;
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? `${base.slice(0, dot)}-${key}${base.slice(dot)}` : `${base}-${key}`;
+}
+
+// Governance / de-duplication: OneDrive should hold exactly ONE, best-quality copy
+// per photo. This removes (1) byte-identical extra copies and (2) LOWER-or-equal
+// resolution copies of a photo we already keep a better copy of — keeping the
+// highest-resolution version of every photo. It is deliberately conservative:
+//  - Same-image copies are matched by IMAGE CONTENT (perceptual hash of a cheap
+//    server thumbnail + aspect ratio), never by filename.
+//  - It only ever touches a group that still contains an app-recognised copy, and
+//    always keeps the highest-resolution member (renaming it to stay recognised),
+//    so no photo is ever left without a copy.
+// Confirms with exact counts before deleting; shows a progress bar.
 async function cleanupAlbumDuplicates(id) {
   if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
   if (forceBackupBusy || reconcileBusy) return;
@@ -3343,40 +3445,138 @@ async function cleanupAlbumDuplicates(id) {
     reconcileBusy = false;
   }
   const audit = cloudAudit.get(id);
-  const tracked = albumPhotos(id).length;
+  const photos = albumPhotos(id);
+  const tracked = photos.length;
   if (!audit || !audit.verified) {
     setAutoBackupMsg("Couldn't read OneDrive to check for duplicates — try again when you're online.");
     return;
   }
-  // SAFE only: byte-identical copies OneDrive itself confirms. Never name-guessed.
-  const toDelete = audit.exactDups;
-  if (!toDelete.length) {
+
+  // Plan every removal up front (read-only), so we can confirm an exact count.
+  const plan = []; // {id, name, kind:"identical"|"lowerquality"}
+  const seen = new Set();
+  const renames = []; // {id, newName} — applied before deletes to keep verification
+  // (1) byte-identical copies — free, straight from the audit.
+  for (const f of audit.exactDups) {
+    if (seen.has(f.id)) continue;
+    plan.push({ id: f.id, name: f.name, kind: "identical" });
+    seen.add(f.id);
+  }
+
+  // (2) same-image lower-quality copies — needs a cheap content check. Only worth
+  // doing when OneDrive actually has more files than photos.
+  const hasExtras = audit.fileCount > tracked;
+  if (hasExtras) {
+    const groups = new Map();
+    for (const p of photos) {
+      const folder = p.backupFolder || backupFolderFor(p.personIds);
+      if (!groups.has(folder)) groups.set(folder, []);
+      groups.get(folder).push(p);
+    }
+    forceBackupBusy = true;
+    let hashed = 0;
+    try {
+      for (const [, ps] of groups) {
+        const folder = ps[0].backupFolder || backupFolderFor(ps[0].personIds);
+        const files = await cloud.listFolderFiles(folder);
+        if (!files || files.length < 2) continue;
+        // Perceptual-hash each file via its server thumbnail (no full download).
+        const items = [];
+        for (const f of files) {
+          setAutoBackupMsg(`Checking image content… ${++hashed}`);
+          let hash = null;
+          const blob = await cloud.fileThumbnailBlob(f.id, "large");
+          if (blob) {
+            try {
+              const r = await face.hashFile(asFile(blob, f.name || "img.jpg"));
+              hash = r && r.hash ? r.hash : null;
+            } catch {
+              hash = null;
+            }
+          }
+          items.push({
+            f,
+            hash,
+            area: (f.width || 0) * (f.height || 0),
+            key: cloudFileCurrentKey(f.name, ps),
+          });
+        }
+        // Greedily group identical-looking shots and keep the best of each group.
+        const used = new Array(items.length).fill(false);
+        for (let i = 0; i < items.length; i++) {
+          if (used[i] || !items[i].hash) continue;
+          const group = [items[i]];
+          used[i] = true;
+          for (let j = i + 1; j < items.length; j++) {
+            if (used[j] || !items[j].hash) continue;
+            if (cloudSameImage(items[i], items[j])) {
+              group.push(items[j]);
+              used[j] = true;
+            }
+          }
+          if (group.length < 2) continue;
+          // SAFETY: only touch a group that still has an app-recognised copy, so a
+          // recognised, verifiable copy always survives.
+          const groupKey = group.map((g) => g.key).find(Boolean);
+          if (!groupKey) continue;
+          // Keep the highest-resolution member (tie → bigger file → already-keyed).
+          group.sort(
+            (a, b) => b.area - a.area || (b.f.size || 0) - (a.f.size || 0) || (b.key ? 1 : 0) - (a.key ? 1 : 0)
+          );
+          const keeper = group[0];
+          // If the best copy isn't the keyed one, rename it to adopt the key so
+          // verification still finds it after we remove the lower-res keyed copy.
+          if (!keeper.key) renames.push({ id: keeper.f.id, newName: injectCloudKey(keeper.f.name, groupKey) });
+          for (let k = 1; k < group.length; k++) {
+            const m = group[k];
+            if (seen.has(m.f.id)) continue;
+            if (m.area <= keeper.area) {
+              plan.push({ id: m.f.id, name: m.f.name, kind: "lowerquality" });
+              seen.add(m.f.id);
+            }
+          }
+        }
+      }
+    } finally {
+      forceBackupBusy = false;
+    }
+  }
+
+  const identicalN = plan.filter((x) => x.kind === "identical").length;
+  const qualityN = plan.filter((x) => x.kind === "lowerquality").length;
+  if (!plan.length) {
     const extra = audit.fileCount - tracked;
     if (extra > 0) {
-      setAutoBackupMsg(`OneDrive has ${audit.fileCount} files for ${tracked} photos, but none are identical copies we can safely remove — left untouched.`);
+      setAutoBackupMsg(`OneDrive has ${audit.fileCount} files for ${tracked} photos, but none are duplicate or lower-quality copies we can safely remove — left untouched.`);
     } else {
-      setAutoBackupMsg(`✓ No duplicate files — OneDrive has ${audit.fileCount} file${audit.fileCount === 1 ? "" : "s"} for ${tracked} photo${tracked === 1 ? "" : "s"}.`);
+      setAutoBackupMsg(`✓ No duplicates — OneDrive has ${audit.fileCount} file${audit.fileCount === 1 ? "" : "s"} for ${tracked} photo${tracked === 1 ? "" : "s"}.`);
     }
     if (state.activeAlbum === id) renderAlbumDetail();
     return;
   }
+  const parts = [];
+  if (identicalN) parts.push(`${identicalN} identical`);
+  if (qualityN) parts.push(`${qualityN} lower-quality`);
   const ok = window.confirm(
-    `Remove ${toDelete.length} duplicate file${toDelete.length === 1 ? "" : "s"}?\n\n` +
-      `These are byte-for-byte identical extra copies — every photo keeps one copy, so nothing is lost. ` +
-      `Files that aren't identical copies are always left alone.`
+    `Remove ${plan.length} extra file${plan.length === 1 ? "" : "s"}? (${parts.join(" + ")})\n\n` +
+      `The best (highest-resolution) version of every photo is kept — these are only duplicate or smaller copies of photos you already have. Nothing unique is removed.`
   );
   if (!ok) return;
   forceBackupBusy = true;
   let done = 0;
   let failed = 0;
-  setAlbumBackupProgress(0, toDelete.length);
+  const total = plan.length;
+  setAlbumBackupProgress(0, total);
   try {
-    for (const f of toDelete) {
+    // Rename the kept higher-res copies FIRST so a recognised copy exists before
+    // we remove the lower-res one.
+    for (const r of renames) await cloud.renameCloudFile(r.id, r.newName);
+    for (const f of plan) {
       const okDel = await cloud.deleteCloudFile(f.id);
       if (okDel) done++;
       else failed++;
-      setAlbumBackupProgress(done + failed, toDelete.length);
-      setAutoBackupMsg(`Removing duplicate copies… ${done + failed}/${toDelete.length}`);
+      setAlbumBackupProgress(done + failed, total);
+      setAutoBackupMsg(`Cleaning up copies… ${done + failed}/${total}`);
     }
   } finally {
     forceBackupBusy = false;
@@ -3390,7 +3590,7 @@ async function cleanupAlbumDuplicates(id) {
   }
   const after = cloudAudit.get(id);
   setAutoBackupMsg(
-    `✓ Removed ${done} duplicate${done === 1 ? "" : "s"}${failed ? ` (${failed} couldn't be removed)` : ""}. ` +
+    `✓ Removed ${done} cop${done === 1 ? "y" : "ies"}${failed ? ` (${failed} couldn't be removed)` : ""}. ` +
       `OneDrive now has ${after ? after.fileCount : "?"} file${after && after.fileCount === 1 ? "" : "s"} for ${tracked} photo${tracked === 1 ? "" : "s"}.`
   );
   if (state.activeAlbum === id) renderAlbumDetail();
@@ -3791,25 +3991,22 @@ function renderAlbumBackupBar(id, special) {
     full.textContent = forceBackupBusy ? "Working…" : `⬆ Upload ${cs.lowRes} in full quality`;
   }
   // Governance: compare the REAL OneDrive file count to how many photos we track.
-  // If OneDrive has duplicate copies, surface it + a one-tap clean-up. Only
-  // byte-identical copies are offered for removal (safe); other extras are shown
-  // but left alone.
+  // Offer a one-tap clean-up whenever there are more files than photos (duplicate
+  // or lower-quality copies) — the clean-up itself checks image content and keeps
+  // the best copy of each photo.
   const dedup = el("albumBackupDedup");
   if (dedup) {
     const audit = cloudAudit.get(id);
-    const extras = audit && audit.verified ? audit.exactDups.length : 0;
-    if (cloudOK && audit && audit.verified && audit.fileCount > photos.length && notBacked === 0) {
-      const extraTotal = audit.fileCount - photos.length;
-      if (extras > 0) {
-        text.textContent = `OneDrive has ${audit.fileCount} files for ${photos.length} photos — ${extras} identical duplicate${extras === 1 ? "" : "s"} can be cleaned up`;
-      } else {
-        text.textContent = `OneDrive has ${audit.fileCount} files for ${photos.length} photos (${extraTotal} extra, kept — not identical copies)`;
-      }
+    const identical = audit && audit.verified ? audit.exactDups.length : 0;
+    const extra = audit && audit.verified ? Math.max(0, audit.fileCount - photos.length) : 0;
+    const canDedup = cloudOK && audit && audit.verified && (identical > 0 || extra > 0);
+    if (canDedup && notBacked === 0) {
+      text.textContent = `OneDrive has ${audit.fileCount} files for ${photos.length} photos — tidy up duplicate / lower-quality copies`;
     }
-    const canDedup = cloudOK && extras > 0;
     dedup.hidden = !canDedup;
     dedup.disabled = busy;
-    dedup.textContent = busy ? "Working…" : `🧹 Clean up ${extras} duplicate${extras === 1 ? "" : "s"}`;
+    const n = extra || identical;
+    dedup.textContent = busy ? "Working…" : `🧹 Clean up ${n} extra cop${n === 1 ? "y" : "ies"}`;
   }
 }
 
