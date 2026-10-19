@@ -19,16 +19,28 @@
   --cream-2: #f4ece0;
   --ink: #241f1b;
   --ink-soft: #5b534c;
-  --accent: #e8734a;
-  --accent-dark: #c8552f;
-  --accent-2: #3f7f74;
+  --accent: #f26a3f;
+  --accent-dark: #c8461f;
+  --accent-soft: #fde2d6;
+  --accent-2: #2f8f7f;
+  --accent-2-dark: #22685b;
+  --accent-2-soft: #d9efe9;
+  --berry: #d6457f;
+  --sun: #f2a63c;
+  --success: #2e9d5b;
+  --success-soft: #e6f6ec;
+  --warn: #c57b00;
+  --warn-soft: #fff3df;
   --danger: #c0392b;
   --card: #ffffff;
-  --line: #e7ddce;
+  --line: #ecdfce;
   --radius: 16px;
   --radius-sm: 10px;
+  --grad-brand: linear-gradient(135deg, #ff8a5c 0%, #f26a3f 42%, #2f8f7f 100%);
+  --grad-primary: linear-gradient(135deg, #f8824f, #e4511f);
   --shadow: 0 10px 30px -14px rgba(50, 35, 20, 0.28);
   --shadow-sm: 0 4px 14px -6px rgba(50, 35, 20, 0.18);
+  --shadow-accent: 0 8px 20px -8px rgba(226, 85, 47, 0.5);
   --font-sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   --font-serif: "Fraunces", Georgia, serif;
   --tabbar-h: 64px;
@@ -43,6 +55,10 @@ body {
   font-family: var(--font-sans);
   color: var(--ink);
   background: var(--cream);
+  background-image:
+    radial-gradient(1100px 520px at 108% -8%, rgba(242, 106, 63, 0.10), transparent 60%),
+    radial-gradient(900px 480px at -10% 4%, rgba(47, 143, 127, 0.09), transparent 58%);
+  background-attachment: fixed;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
@@ -75,10 +91,10 @@ p { margin: 0 0 .9rem; }
 
 .brand { display: inline-flex; align-items: center; gap: .5em; }
 .brand__mark {
-  width: 26px; height: 26px; border-radius: 9px; flex: none;
+  width: 27px; height: 27px; border-radius: 9px; flex: none;
   display: grid; place-items: center;
-  background: linear-gradient(145deg, var(--accent), var(--accent-2));
-  box-shadow: 0 3px 8px -3px rgba(200, 85, 47, .55), inset 0 1px 0 rgba(255, 255, 255, .35);
+  background: var(--grad-brand);
+  box-shadow: 0 4px 10px -3px rgba(226, 85, 47, .6), inset 0 1px 0 rgba(255, 255, 255, .4);
 }
 .brand__mark svg { width: 60%; height: 60%; display: block; }
 .brand__name { font-family: var(--font-serif); font-weight: 700; font-size: 1.15rem; }
@@ -109,8 +125,9 @@ p { margin: 0 0 .9rem; }
   transition: transform .1s ease, background .18s ease;
 }
 .btn:active { transform: scale(.97); }
-.btn--primary { background: var(--accent); color: #fff; }
-.btn--primary:hover { background: var(--accent-dark); }
+.btn--primary { background: var(--grad-primary); color: #fff; border-color: transparent;
+  box-shadow: var(--shadow-accent); }
+.btn--primary:hover { filter: brightness(1.04); box-shadow: 0 10px 24px -8px rgba(226, 85, 47, 0.6); }
 .btn--ghost { background: #fff; color: var(--ink); border-color: var(--line); }
 .btn--danger { background: #fff; color: var(--danger); border-color: #eccac4; }
 .btn--small { padding: .45em .9em; font-size: .85rem; }
@@ -251,10 +268,13 @@ p { margin: 0 0 .9rem; }
 @media (min-width: 520px) { .album-cards { grid-template-columns: repeat(3, 1fr); } }
 .album-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
   cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; display: flex; flex-direction: column; }
-.album-card:hover, .album-card:focus-visible { transform: translateY(-2px);
-  box-shadow: 0 8px 22px rgba(20,16,14,.12); outline: none; }
+.album-card:hover, .album-card:focus-visible { transform: translateY(-3px);
+  box-shadow: 0 12px 26px -10px rgba(226,85,47,.32); border-color: var(--accent-soft); outline: none; }
 .album-card--special { border-color: var(--accent-soft, #f3cfcc); }
-.album-card__cover { position: relative; aspect-ratio: 1; background: var(--cream-2); }
+.album-card--special .album-card__cover {
+  background: linear-gradient(145deg, var(--accent-soft), var(--accent-2-soft)); }
+.album-card__cover { position: relative; aspect-ratio: 1;
+  background: linear-gradient(160deg, var(--cream-2), #efe4d2); }
 .album-card__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .album-card__ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 2rem; opacity: .5; }
@@ -271,8 +291,18 @@ p { margin: 0 0 .9rem; }
   text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .album-card__rel { flex: 0 0 auto; font-size: .7rem; font-weight: 700; color: var(--accent);
   background: var(--accent-soft, #f3cfcc); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-.album-card__saved { position: absolute; left: 8px; bottom: 8px; background: rgba(46,125,74,.9);
-  color: #fff; font-size: .72rem; line-height: 1; padding: 3px 6px; border-radius: 999px; pointer-events: none; }
+.album-card__saved { position: absolute; left: 8px; bottom: 8px;
+  background: linear-gradient(135deg, #37b06a, #2e9d5b);
+  color: #fff; font-size: .72rem; line-height: 1; padding: 3px 7px; border-radius: 999px;
+  pointer-events: none; box-shadow: 0 2px 6px -2px rgba(46,157,91,.6); font-weight: 700; }
+/* Still confirming against OneDrive this session — neutral, gently pulsing. */
+.album-card__saved.is-checking { background: rgba(91,83,76,.82); box-shadow: none;
+  animation: badgePulse 1.4s ease-in-out infinite; }
+@keyframes badgePulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .album-card__saved.is-checking { animation: none; opacity: .8; } }
+/* Verified this session but some photos aren't in OneDrive. */
+.album-card__saved.is-missing { background: linear-gradient(135deg, #e89a2c, #c57b00);
+  box-shadow: 0 2px 6px -2px rgba(197,123,0,.6); min-width: 16px; text-align: center; }
 
 /* Where-it-lives breadcrumb inside an open album */
 .album-path { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 2px 0 12px;
@@ -534,7 +564,7 @@ p { margin: 0 0 .9rem; }
 }
 .tabbar__ico svg { width: 23px; height: 23px; display: block; }
 .tabbar__btn.is-active { color: var(--accent-dark); }
-.tabbar__btn.is-active .tabbar__ico { background: #f7e4da; }
+.tabbar__btn.is-active .tabbar__ico { background: var(--accent-soft); }
 .tabbar__btn:active .tabbar__ico { transform: scale(.88); }
 
 /* Boot overlay */
@@ -3237,6 +3267,19 @@ let forceBackupBusy = false;
 // album (to throttle the background re-checks)?
 let reconcileBusy = false;
 const reconciledAt = new Map();
+// Albums whose OneDrive folders we've actually READ since the app opened. A
+// persisted cloudVerified flag from a PREVIOUS session is NOT enough to show the
+// confident "backed up" tick — files can be deleted/moved in OneDrive while the
+// app is closed. Until an album appears in this set (re-checked THIS session) the
+// UI shows a neutral "Checking…" state instead of a false green. Cleared on
+// reload (it's in-memory), re-filled by the startup sweep + per-album reconciles.
+const verifiedThisSession = new Set();
+function albumVerifiedThisSession(id) {
+  // Device output verifies locally every render, so the session gate is only for
+  // the cloud case where a real network read is required to be sure.
+  if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return true;
+  return verifiedThisSession.has(id);
+}
 // The album id drawn by the last renderAlbumDetail — lets us tell a fresh OPEN
 // (force an immediate cloud re-verify) from an in-place re-render (throttled).
 let lastRenderedAlbum = null;
@@ -3511,6 +3554,11 @@ async function reconcileAlbumCloud(id) {
     }
   }
   cloudAudit.set(id, audit);
+  // We could READ every folder this album's photos live in → its "backed up"
+  // state is confirmed for THIS session, so the UI may now show a real tick
+  // (not an optimistic one carried over from a previous launch).
+  const anyUnlistableOverall = [...pools.values()].some((pl) => pl == null);
+  if (!anyUnlistableOverall) verifiedThisSession.add(id);
   return changed;
 }
 
@@ -4503,6 +4551,33 @@ async function rebuildFromManifest() {
 async function cloudStartup() {
   await restoreCloudModel();
   await rebuildFromManifest();
+  // Re-verify every album against OneDrive now, in the background, so the cards
+  // show a real "backed up" tick instead of one carried over from last launch.
+  verifyAllAlbums();
+}
+
+// On open/restart, walk every person album and re-check its OneDrive folders so
+// the "backed up" ticks reflect what's ACTUALLY in the cloud right now — the
+// user shouldn't have to force an update to find out a photo went missing.
+// Runs one album at a time (gentle on Graph) and refreshes the index as each
+// album clears, so ticks flip from "Checking…" to green (or ⚠) on their own.
+let verifyingAll = false;
+async function verifyAllAlbums() {
+  if (verifyingAll) return;
+  if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
+  if (!(cloudSignedIn || (await cloud.hasCloudAccount()))) return;
+  verifyingAll = true;
+  try {
+    const ids = namedPeopleHere().map((p) => p.id);
+    for (const id of ids) {
+      await maybeReconcileAlbum(id, true);
+      // Repaint whichever view the user is looking at as each album is confirmed.
+      const av = el("view-albums");
+      if (av && !av.hidden && !state.activeAlbum) renderAlbumIndex();
+    }
+  } finally {
+    verifyingAll = false;
+  }
 }
 
 // One unified list of input sources: device folders AND cloud folders together.
@@ -6400,12 +6475,17 @@ function albumCloudStatus(id) {
   const lowRes = savedPhotos.filter((p) => p.backupLowRes).length;
   const missing = photos.filter((p) => p.cloudVerified === false).length;
   const checked = photos.filter((p) => p.cloudVerified !== undefined).length;
-  return { saved: savedPhotos.length, total: photos.length, lowRes, missing, checked };
+  // verified = we've actually read this album's cloud folders since the app
+  // opened, so a green tick reflects reality rather than a stale saved-flag.
+  return { saved: savedPhotos.length, total: photos.length, lowRes, missing, checked, verified: albumVerifiedThisSession(id) };
 }
 
-function cloudInfoText({ saved, total, missing }) {
+function cloudInfoText({ saved, total, missing, verified }) {
   if (!total) return "";
   const where = state.outputMode === "device" ? "this device" : "OneDrive";
+  // Be honest while we're still confirming against OneDrive this session — don't
+  // claim "Saved" off a flag we haven't re-checked since the app opened.
+  if (verified === false) return `Checking ${where}…`;
   if (missing > 0) return `⚠ ${missing} not in ${where}`;
   if (!state.autoBackup) return `Saving to ${where} is off`;
   if (saved >= total) return `Saved to ${where}`;
@@ -6521,9 +6601,18 @@ function albumCard(a) {
   const ph = a.id === AWAITING ? "🔍" : "📷";
   // Show a cloud tick when every photo in this album is saved to the output.
   const cs = a.special ? { saved: 0, total: 0 } : albumCloudStatus(id);
-  const savedBadge = !a.special && state.autoBackup && cs.total && cs.saved >= cs.total
-    ? '<span class="album-card__saved" title="Saved to your output folder">☁</span>'
-    : "";
+  const cloudMode = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  let savedBadge = "";
+  if (!a.special && state.autoBackup && cs.total) {
+    if (cloudMode && !cs.verified) {
+      // Still confirming against OneDrive this session — neutral, not a false tick.
+      savedBadge = '<span class="album-card__saved is-checking" title="Checking OneDrive…">☁</span>';
+    } else if (cloudMode && cs.missing > 0) {
+      savedBadge = `<span class="album-card__saved is-missing" title="${cs.missing} not backed up yet">!</span>`;
+    } else if (cs.saved >= cs.total) {
+      savedBadge = '<span class="album-card__saved" title="Backed up">☁</span>';
+    }
+  }
   const rel = a.person ? relationshipLabel(a.person) : "";
   card.innerHTML = `
     <div class="album-card__cover">
