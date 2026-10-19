@@ -1558,29 +1558,36 @@ async function hashFile(file) {
 async function analyzeImage(dataUrl, opts = {}) {
   const img = await dataUrlToImage(dataUrl);
   const canvas = toScaledCanvas(img, DETECT_MAX);
-  let results = await detectFaces(canvas);
   let used = canvas;
-  if (opts.thorough) {
-    // Second chance: up-scale (helps when all we have is a small thumbnail) and
-    // relax the detector so borderline faces clear the bar.
+  let results = await detectFaces(canvas);
+  let rawCount = results.length;
+  let minPx = Math.max(MIN_FACE_PX, Math.max(used.width, used.height) * MIN_FACE_FRAC);
+  let plausible = results.filter((r) => isPlausibleFace(r, minPx));
+  if (!plausible.length && opts.thorough) {
+    // Nothing cleared the bar on the first pass — UP-scale (helps when all we
+    // have is a small thumbnail, or a face that's soft/distant) and retry. We
+    // only adopt the retry's PLAUSIBLE faces; we must NOT let a pile of
+    // sub-threshold junk from a looser pass replace a good first-pass result.
     const big = toSizedCanvas(img, DETECT_MAX);
-    const retry = await detectFaces(big, { minConf: 0.2 });
-    if (retry.length > results.length) {
-      results = retry;
+    const retry = await detectFaces(big);
+    rawCount = Math.max(rawCount, retry.length);
+    const minPx2 = Math.max(MIN_FACE_PX, Math.max(big.width, big.height) * MIN_FACE_FRAC);
+    const retryPlausible = retry.filter((r) => isPlausibleFace(r, minPx2));
+    if (retryPlausible.length) {
       used = big;
+      plausible = retryPlausible;
     }
   }
-  const minPx = Math.max(MIN_FACE_PX, Math.max(used.width, used.height) * MIN_FACE_FRAC);
-  const plausible = results.filter((r) => isPlausibleFace(r, minPx));
-  // Report raw vs plausible so the caller can tell "nothing here" apart from
-  // "found something but it was filtered out / already tagged".
   const faces = plausible.map((r) => ({
     descriptor: Array.from(r.descriptor),
     thumb: cropFace(used, r.detection.box),
     box: normBox(r.detection.box, used),
     score: r.detection.score,
   }));
-  faces.rawCount = results.length;
+  // Raw detections (before the plausibility/geometry filter) so the caller can
+  // tell "nothing here" from "found something but it was filtered / already
+  // tagged" and give the right next-step message.
+  faces.rawCount = rawCount;
   return faces;
 }
 
@@ -1617,15 +1624,21 @@ async function detectInRegion(dataUrl, box) {
   const rw = Math.min(W - rx, (box.w + padX * 2) * W);
   const rh = Math.min(H - ry, (box.h + padY * 2) * H);
   if (rw < 8 || rh < 8) return null;
-  // Upscale the crop so its longest edge is ~640px — enough pixels for the
-  // detector even when the user boxed a small face.
-  const target = 640;
+  // Upscale the crop so its longest edge is ~768px — enough pixels for the
+  // detector even when the user boxed a small or dim face.
+  const target = 768;
   const scale = Math.max(1, target / Math.max(rw, rh));
   const crop = document.createElement("canvas");
   crop.width = Math.round(rw * scale);
   crop.height = Math.round(rh * scale);
-  crop.getContext("2d").drawImage(full, rx, ry, rw, rh, 0, 0, crop.width, crop.height);
-  const results = await detectFaces(crop);
+  const cctx = crop.getContext("2d");
+  cctx.imageSmoothingEnabled = true;
+  cctx.imageSmoothingQuality = "high";
+  cctx.drawImage(full, rx, ry, rw, rh, 0, 0, crop.width, crop.height);
+  // The user has TOLD us there's a face in this box, so detect leniently — a low
+  // confidence threshold catches dim / side-on / softly-lit faces the normal
+  // scan skips. No plausibility gate here: we trust the human's box.
+  let results = await detectFaces(crop, { minConf: 0.1 });
   if (!results.length) return null;
   // The one the user boxed is almost certainly the biggest face in the region.
   results.sort(
@@ -2082,7 +2095,8 @@ function cloudFileKey(uniqueKey) {
 }
 
 // List the FILES directly inside one of our organised folders (e.g.
-// "Famsort/Mary"). Returns [{id, name, size}] on success, [] if the folder
+// "Famsort/Mary"). Returns [{id, name, size, hash}] on success (hash = OneDrive's
+// content hash, used for SAFE byte-identical de-duplication), [] if the folder
 // doesn't exist yet (nothing uploaded), or null if we couldn't verify (not
 // signed in / offline / error) — callers MUST treat null as "unknown" and not
 // mark anything as missing. Used to reconcile the album against OneDrive.
@@ -2101,7 +2115,16 @@ async function listFolderFiles(folderPath) {
     while (next) {
       const page = await graphGet(next, token);
       for (const it of page.value || []) {
-        if (it.file) files.push({ id: it.id, name: it.name, size: it.size || 0 });
+        if (it.file) {
+          const h = it.file.hashes || {};
+          files.push({
+            id: it.id,
+            name: it.name,
+            size: it.size || 0,
+            // Content hash lets us remove only PROVABLY identical copies.
+            hash: String(h.quickXorHash || h.sha256Hash || h.sha1Hash || "").toLowerCase(),
+          });
+        }
       }
       next = page["@odata.nextLink"];
     }
@@ -3181,73 +3204,56 @@ async function repairAlbumBackup(id) {
 // unknown, verified }.
 const cloudAudit = new Map();
 
-// Parse one of our organised filenames "<prefix>-<key>.<ext>" into its parts.
-function parseCloudName(nameLower) {
-  const dot = nameLower.lastIndexOf(".");
-  const stem = dot > 0 ? nameLower.slice(0, dot) : nameLower;
-  const ext = dot > 0 ? nameLower.slice(dot) : "";
-  const dash = stem.lastIndexOf("-");
-  return {
-    prefix: dash > 0 ? stem.slice(0, dash) : stem,
-    key: dash >= 0 ? stem.slice(dash + 1) : "",
-    ext,
-  };
-}
-
-// The sanitized name prefix (no extension) a photo is uploaded under — mirrors
-// how cloud.uploadFileToOneDrive builds the filename, so we can recognise an
-// OLD-scheme copy of the SAME photo (same prefix, different/weaker key).
-function cloudNamePrefix(photo) {
-  const base = String(photo.name || "photo.jpg").replace(/[\\/:*?"<>|]/g, "_");
-  const dot = base.lastIndexOf(".");
-  return (dot > 0 ? base.slice(0, dot) : base).toLowerCase();
-}
-
-// Classify every real file in ONE folder against the photos we track there:
-//  - keepers    : the one current-key file per photo (what we keep)
-//  - exactDups  : >1 file sharing a photo's current key (true duplicate copies)
-//  - staleDups  : old-scheme copies of a photo we ALSO have a current keeper for
-//                 (same name prefix, EVERY photo of that prefix already present)
-//  - unknown    : files matching no tracked photo — LEFT ALONE (never deleted)
-// The "every photo of the prefix is present" rule guarantees we never delete the
-// last remaining copy of a photo that simply hasn't been re-uploaded yet.
+// Classify the real files in ONE folder for SAFE de-duplication. The ONLY files
+// we ever propose removing are BYTE-IDENTICAL duplicates — two files OneDrive
+// reports with the SAME content hash. We keep one copy of each distinct content
+// (preferring the one whose name matches a current photo's key, i.e. our tidy
+// name) and mark the rest as removable.
+//
+// We NEVER delete based on filename. Different photos very often share a
+// filename (IMG_1234.jpg, image.jpg, …) — that's the whole reason we content-key
+// our uploads — so a name-based guess could destroy a genuinely different photo.
+//  - keepers    : one file per distinct content (what stays)
+//  - exactDups  : provably byte-identical extra copies (safe to remove)
+//  - unknown    : kept files that match no tracked photo key (informational only;
+//                 NEVER deleted — could be a photo from another view/album)
 function classifyFolderFiles(files, photos) {
   const validKeys = new Set();
-  const prefixKeys = new Map(); // name prefix -> [current keys of photos with it]
-  for (const p of photos) {
-    const key = cloud.cloudFileKey(p.hash || p.id).toLowerCase();
-    validKeys.add(key);
-    const pre = cloudNamePrefix(p);
-    if (!prefixKeys.has(pre)) prefixKeys.set(pre, []);
-    prefixKeys.get(pre).push(key);
+  for (const p of photos) validKeys.add(cloud.cloudFileKey(p.hash || p.id).toLowerCase());
+  const matchesKey = (f) => {
+    const name = String(f.name || "").toLowerCase();
+    for (const k of validKeys) if (k && name.includes(`-${k}`)) return true;
+    return false;
+  };
+  // Group by content hash. Only a non-empty hash can prove two files identical.
+  const byHash = new Map();
+  const noHash = [];
+  for (const f of files) {
+    const h = String(f.hash || "").toLowerCase();
+    if (!h) {
+      noHash.push(f);
+      continue;
+    }
+    if (!byHash.has(h)) byHash.set(h, []);
+    byHash.get(h).push(f);
   }
   const keepers = [];
   const exactDups = [];
-  const seenKey = new Set();
-  const pending = [];
-  for (const f of files) {
-    const parsed = parseCloudName(String(f.name || "").toLowerCase());
-    if (parsed.key && validKeys.has(parsed.key)) {
-      if (seenKey.has(parsed.key)) exactDups.push(f);
-      else {
-        seenKey.add(parsed.key);
-        keepers.push(f);
-      }
-    } else {
-      pending.push({ f, parsed });
+  for (const group of byHash.values()) {
+    if (group.length === 1) {
+      keepers.push(group[0]);
+      continue;
+    }
+    // Byte-identical copies: keep the tidily-named one (or the first), drop rest.
+    const keep = group.find(matchesKey) || group[0];
+    for (const f of group) {
+      if (f === keep) keepers.push(f);
+      else exactDups.push(f);
     }
   }
-  const prefixSafe = new Set();
-  for (const [pre, keys] of prefixKeys) {
-    if (keys.every((k) => seenKey.has(k))) prefixSafe.add(pre);
-  }
-  const staleDups = [];
-  const unknown = [];
-  for (const { f, parsed } of pending) {
-    if (prefixSafe.has(parsed.prefix)) staleDups.push(f);
-    else unknown.push(f);
-  }
-  return { keepers, exactDups, staleDups, unknown, fileCount: files.length };
+  for (const f of noHash) keepers.push(f); // can't prove identity → always keep
+  const unknown = keepers.filter((f) => !matchesKey(f)).length;
+  return { keepers, exactDups, staleDups: [], unknown, fileCount: files.length };
 }
 
 // Verify an album's photos against the ACTUAL OneDrive folders by listing them
@@ -3283,10 +3289,15 @@ async function reconcileAlbumCloud(id) {
     audit.unknown += cls.unknown.length;
     for (const f of cls.exactDups) audit.exactDups.push({ folder, id: f.id, name: f.name });
     for (const f of cls.staleDups) audit.staleDups.push({ folder, id: f.id, name: f.name });
-    const lower = files.map((f) => ({ id: f.id, name: String(f.name || "").toLowerCase() }));
+    // Verify each photo against a DISTINCT file: claim the file we match so one
+    // physical file can never make several photos look "saved" (that false green
+    // is exactly how missing photos hid before). A photo that can't claim its own
+    // unclaimed file is honestly marked NOT in OneDrive.
+    const pool = files.map((f) => ({ id: f.id, name: String(f.name || "").toLowerCase(), claimed: false }));
     for (const p of ps) {
       const key = cloud.cloudFileKey(p.hash || p.id).toLowerCase();
-      const match = lower.find((f) => f.name.includes(`-${key}`));
+      const match = pool.find((f) => !f.claimed && f.name.includes(`-${key}`));
+      if (match) match.claimed = true;
       const present = !!match;
       if (p.cloudVerified !== present) {
         p.cloudVerified = present;
@@ -3337,28 +3348,35 @@ async function cleanupAlbumDuplicates(id) {
     setAutoBackupMsg("Couldn't read OneDrive to check for duplicates — try again when you're online.");
     return;
   }
-  const toDelete = [...audit.exactDups, ...audit.staleDups];
+  // SAFE only: byte-identical copies OneDrive itself confirms. Never name-guessed.
+  const toDelete = audit.exactDups;
   if (!toDelete.length) {
-    setAutoBackupMsg(`✓ No duplicates — OneDrive has ${audit.fileCount} file${audit.fileCount === 1 ? "" : "s"} for ${tracked} photo${tracked === 1 ? "" : "s"}.`);
+    const extra = audit.fileCount - tracked;
+    if (extra > 0) {
+      setAutoBackupMsg(`OneDrive has ${audit.fileCount} files for ${tracked} photos, but none are identical copies we can safely remove — left untouched.`);
+    } else {
+      setAutoBackupMsg(`✓ No duplicate files — OneDrive has ${audit.fileCount} file${audit.fileCount === 1 ? "" : "s"} for ${tracked} photo${tracked === 1 ? "" : "s"}.`);
+    }
     if (state.activeAlbum === id) renderAlbumDetail();
     return;
   }
   const ok = window.confirm(
-    `OneDrive has ${audit.fileCount} files here but this album has ${tracked} photos.\n\n` +
-      `Remove ${toDelete.length} duplicate / old extra cop${toDelete.length === 1 ? "y" : "ies"}? ` +
-      `Every photo keeps one copy — nothing you still have here is lost.` +
-      (audit.unknown ? `\n\n${audit.unknown} file${audit.unknown === 1 ? "" : "s"} that don't match any photo here will be LEFT ALONE.` : "")
+    `Remove ${toDelete.length} duplicate file${toDelete.length === 1 ? "" : "s"}?\n\n` +
+      `These are byte-for-byte identical extra copies — every photo keeps one copy, so nothing is lost. ` +
+      `Files that aren't identical copies are always left alone.`
   );
   if (!ok) return;
   forceBackupBusy = true;
   let done = 0;
   let failed = 0;
+  setAlbumBackupProgress(0, toDelete.length);
   try {
     for (const f of toDelete) {
       const okDel = await cloud.deleteCloudFile(f.id);
       if (okDel) done++;
       else failed++;
-      setAutoBackupMsg(`Removing duplicates… ${done + failed}/${toDelete.length}`);
+      setAlbumBackupProgress(done + failed, toDelete.length);
+      setAutoBackupMsg(`Removing duplicate copies… ${done + failed}/${toDelete.length}`);
     }
   } finally {
     forceBackupBusy = false;
@@ -3773,16 +3791,19 @@ function renderAlbumBackupBar(id, special) {
     full.textContent = forceBackupBusy ? "Working…" : `⬆ Upload ${cs.lowRes} in full quality`;
   }
   // Governance: compare the REAL OneDrive file count to how many photos we track.
-  // If OneDrive has extra/duplicate copies, surface it + a one-tap clean-up.
+  // If OneDrive has duplicate copies, surface it + a one-tap clean-up. Only
+  // byte-identical copies are offered for removal (safe); other extras are shown
+  // but left alone.
   const dedup = el("albumBackupDedup");
   if (dedup) {
     const audit = cloudAudit.get(id);
-    const extras = audit && audit.verified ? audit.exactDups.length + audit.staleDups.length : 0;
-    if (cloudOK && audit && audit.verified && audit.fileCount > photos.length) {
-      // Make the count honest even when everything "saved": show the mismatch.
+    const extras = audit && audit.verified ? audit.exactDups.length : 0;
+    if (cloudOK && audit && audit.verified && audit.fileCount > photos.length && notBacked === 0) {
       const extraTotal = audit.fileCount - photos.length;
-      if (notBacked === 0) {
-        text.textContent = `⚠ OneDrive has ${audit.fileCount} files but this album has ${photos.length} photos — ${extraTotal} duplicate/extra`;
+      if (extras > 0) {
+        text.textContent = `OneDrive has ${audit.fileCount} files for ${photos.length} photos — ${extras} identical duplicate${extras === 1 ? "" : "s"} can be cleaned up`;
+      } else {
+        text.textContent = `OneDrive has ${audit.fileCount} files for ${photos.length} photos (${extraTotal} extra, kept — not identical copies)`;
       }
     }
     const canDedup = cloudOK && extras > 0;
@@ -6737,7 +6758,17 @@ async function tagFaceFromBox(photo, box) {
   let found = null;
   try {
     await face.loadModels();
-    found = await face.detectInRegion(photo.thumb, box);
+    // Detect on the HIGHEST-res source we can reach: a face cropped out of the
+    // small 480px thumbnail is too blurry for the detector, but the same region
+    // of the full-size original has plenty of pixels. Fall back to the thumbnail.
+    let src = photo.thumb;
+    try {
+      const up = await getUploadableFile(photo);
+      if (up && !up.lowRes && up.file) src = await blobToDataURL(up.file);
+    } catch {
+      /* original not reachable — the thumbnail still works for close boxes */
+    }
+    found = await face.detectInRegion(src, box);
   } catch {
     found = null;
   }
