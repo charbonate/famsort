@@ -357,6 +357,18 @@ p { margin: 0 0 .9rem; }
 @keyframes tagFaceFlash { 0%, 100% { background: transparent; } 30% { background: rgba(232,115,74,.18); } }
 .tag-face--flash { animation: tagFaceFlash 1.4s ease; border-radius: 10px; }
 
+/* Click-to-tag: the drag layer the user draws a face box on */
+.face-draw { position: absolute; z-index: 5; cursor: crosshair; touch-action: none;
+  background: rgba(20,16,14,.28); }
+.face-draw__hint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+  font-size: .78rem; font-weight: 700; color: #fff; background: rgba(20,16,14,.92);
+  padding: 5px 12px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
+.face-draw__rect { position: absolute; border: 2px solid var(--accent);
+  background: rgba(232,115,74,.16); border-radius: 6px; pointer-events: none; }
+.lightbox__banner { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  z-index: 6; max-width: 86%; text-align: center; font-size: .8rem; font-weight: 600; color: #fff;
+  background: rgba(20,16,14,.94); padding: 7px 14px; border-radius: 10px; pointer-events: none; }
+
 
 /* Manual tagging panel inside the lightbox — flows in the lightbox's own
    scroll so a long list of names is never clipped off-screen. */
@@ -871,8 +883,11 @@ p { margin: 0 0 .9rem; }
         <div class="albums-toolbar" id="albumPhotoSortWrap">
           <label class="sortsel">Sort
             <select id="albumPhotoSort">
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
+              <option value="added_new">Recently added to Famsort</option>
+              <option value="added_old">First added to Famsort</option>
+              <option value="date_new">Photo date — newest first</option>
+              <option value="date_old">Photo date — oldest first</option>
+              <option value="name">File name (A–Z)</option>
             </select>
           </label>
         </div>
@@ -1543,6 +1558,55 @@ async function detectBoxes(dataUrl) {
     .map((r) => ({ box: normBox(r.detection.box, canvas), descriptor: Array.from(r.descriptor) }));
 }
 
+// Detect a single face inside a user-drawn region of a photo (click-to-tag).
+// `box` is {x,y,w,h} as fractions of the WHOLE image. We crop that region with
+// padding and UPSCALE it so a small/distant face the first pass missed becomes
+// big enough for the detector, run detection, and return the best (largest)
+// face with its descriptor + thumb and a box renormalized back to the whole
+// image — ready to feed straight into the tagging flow. Returns null if no face
+// is found in the region (caller should ask the user to draw a tighter box).
+async function detectInRegion(dataUrl, box) {
+  const img = await dataUrlToImage(dataUrl);
+  const full = toScaledCanvas(img, DETECT_MAX);
+  const W = full.width;
+  const H = full.height;
+  const padX = box.w * 0.3;
+  const padY = box.h * 0.3;
+  const rx = Math.max(0, (box.x - padX) * W);
+  const ry = Math.max(0, (box.y - padY) * H);
+  const rw = Math.min(W - rx, (box.w + padX * 2) * W);
+  const rh = Math.min(H - ry, (box.h + padY * 2) * H);
+  if (rw < 8 || rh < 8) return null;
+  // Upscale the crop so its longest edge is ~640px — enough pixels for the
+  // detector even when the user boxed a small face.
+  const target = 640;
+  const scale = Math.max(1, target / Math.max(rw, rh));
+  const crop = document.createElement("canvas");
+  crop.width = Math.round(rw * scale);
+  crop.height = Math.round(rh * scale);
+  crop.getContext("2d").drawImage(full, rx, ry, rw, rh, 0, 0, crop.width, crop.height);
+  const results = await detectFaces(crop);
+  if (!results.length) return null;
+  // The one the user boxed is almost certainly the biggest face in the region.
+  results.sort(
+    (a, b) => b.detection.box.width * b.detection.box.height - a.detection.box.width * a.detection.box.height
+  );
+  const r = results[0];
+  const b = r.detection.box;
+  const fullBox = {
+    x: (rx + b.x / scale) / W,
+    y: (ry + b.y / scale) / H,
+    w: b.width / scale / W,
+    h: b.height / scale / H,
+  };
+  return {
+    descriptor: Array.from(r.descriptor),
+    thumb: cropFace(crop, b),
+    box: fullBox,
+    score: r.detection.score,
+  };
+}
+
 function dataUrlToImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -1766,7 +1830,7 @@ function matchPerson(descriptor, people, threshold = MATCH_THRESHOLD) {
   return bestId ? { id: bestId, dist: bestDist } : null;
 }
 
-return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, detectorInfo, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, hashFile, analyzeImage, detectBoxes, analyzeVideoFile, clusterFaces, matchPerson };
+return { MATCH_THRESHOLD, STRICT_MATCH_THRESHOLD, CLUSTER_THRESHOLD, IGNORE_MATCH_THRESHOLD, loadModels, detectorInfo, perceptualHash, hamming, euclidean, meanDescriptor, analyzeFile, hashFile, analyzeImage, detectBoxes, detectInRegion, analyzeVideoFile, clusterFaces, matchPerson };
 })();
 
 const cloud = (function () {
@@ -1944,12 +2008,37 @@ async function uploadFileToOneDrive(file, folderPath, uniqueKey, onProgress) {
   });
 }
 
-// The 8-char content key appended to every organised filename (see
+// The content key appended to every organised filename (see
 // uploadFileToOneDrive). Exposed so the app can VERIFY — by listing a folder —
 // whether a given photo's file is actually present in OneDrive, rather than
 // trusting an optimistic local "saved" flag.
+//
+// IMPORTANT: this MUST be well-distributed. The previous version took the first
+// 8 CHARACTERS of the key — but the key is usually a perceptual hash, a 128-char
+// string of "0"/"1". Its first 8 chars are only the first 8 BITS → just 256
+// possible values. Different photos collided onto the same filename, so they
+// OVERWROTE each other in OneDrive (explaining "98 saved" but only 95 files),
+// AND verification matched the wrong file (one present file satisfied many
+// photos' keys → false "saved"). We now hash the WHOLE key (FNV-1a, two passes)
+// into a ~10-char base36 token, so distinct photos get distinct, stable names.
 function cloudFileKey(uniqueKey) {
-  return String(uniqueKey || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "x";
+  const s = String(uniqueKey || "");
+  if (!s) return "x";
+  // FNV-1a 32-bit over the full string (forward pass).
+  let h1 = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h1 ^= s.charCodeAt(i);
+    h1 = Math.imul(h1, 0x01000193);
+  }
+  // Second pass over the reversed string, seeded with the length, to spread
+  // keys that share long common prefixes/suffixes (perceptual hashes do).
+  let h2 = 0x811c9dc5 ^ s.length;
+  for (let i = s.length - 1; i >= 0; i--) {
+    h2 ^= s.charCodeAt(i);
+    h2 = Math.imul(h2, 0x01000193);
+  }
+  const tok = (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36);
+  return tok.slice(0, 10) || "x";
 }
 
 // List the FILES directly inside one of our organised folders (e.g.
@@ -2393,7 +2482,7 @@ const state = {
   processedKeys: new Set(), // "name|size|lastModified" of files already ingested
   kidsOnly: false, // Albums screen filter driven by the "this is my child" flag
   albumSort: "count", // album index order: "count" (most photos) | "name"
-  albumPhotoSort: "newest", // photo order inside an open album: "newest" | "oldest"
+  albumPhotoSort: "added_new", // photo order inside an open album: added_new|added_old|date_new|date_old|name
   favAlbums: [], // album ids pinned to the top of the Albums screen
   autoBackup: true, // continuously sort new photos and back organised copies to OneDrive
   backedUpKeys: new Set(), // files already uploaded, so we never back up twice
@@ -2926,6 +3015,39 @@ let forceBackupBusy = false;
 // album (to throttle the background re-checks)?
 let reconcileBusy = false;
 const reconciledAt = new Map();
+// The album id drawn by the last renderAlbumDetail — lets us tell a fresh OPEN
+// (force an immediate cloud re-verify) from an in-place re-render (throttled).
+let lastRenderedAlbum = null;
+
+// Order an album's photos in place according to state.albumPhotoSort. "added"
+// uses the import order we store each photo in (state.photos is append-only);
+// "date" uses the file's own modified time (captured at import) and falls back
+// to import order for older photos that predate that field.
+function sortAlbumPhotos(photos) {
+  const order = new Map(state.photos.map((p, i) => [p.id, i]));
+  const idx = (p) => order.get(p.id) || 0;
+  const taken = (p) => p.fileModified || p.addedAt || 0;
+  switch (state.albumPhotoSort) {
+    case "added_old":
+    case "oldest": // legacy value
+      photos.sort((a, b) => idx(a) - idx(b));
+      break;
+    case "date_new":
+      photos.sort((a, b) => taken(b) - taken(a) || idx(b) - idx(a));
+      break;
+    case "date_old":
+      photos.sort((a, b) => taken(a) - taken(b) || idx(a) - idx(b));
+      break;
+    case "name":
+      photos.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { numeric: true }));
+      break;
+    case "added_new":
+    case "newest": // legacy value
+    default:
+      photos.sort((a, b) => idx(b) - idx(a));
+      break;
+  }
+}
 
 // Back up a whole album's un-saved photos on demand, so the user doesn't have to
 // wait for (or trust) the background sweep. In cloud mode this first VERIFIES
@@ -3335,8 +3457,16 @@ function setThumbStatus(pid, status) {
   const cell = thumbCell(pid);
   if (!cell) return;
   if (status === "uploading") {
-    const badge = cell.querySelector(".thumb__status");
-    if (badge) applyThumbStatus(badge, "none"); // hide the corner badge while the bar shows
+    // Keep the RED "not safe yet" corner icon visible during the upload (the
+    // photo isn't backed up until it lands), and ALSO show the progress bar —
+    // so there's never a moment where a syncing photo looks finished.
+    let badge = cell.querySelector(".thumb__status");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "thumb__status";
+      cell.appendChild(badge);
+    }
+    applyThumbStatus(badge, "missing");
     setThumbProgress(pid, 0.05);
     return;
   }
@@ -3897,7 +4027,11 @@ async function loadAlbumPrefs() {
   const p = await db.get("meta", "albumPrefs");
   if (!p) return;
   if (p.sort) state.albumSort = p.sort === "smart" ? "count" : p.sort;
-  if (p.photoSort) state.albumPhotoSort = p.photoSort;
+  if (p.photoSort) {
+    // Migrate the old two-option values to the new richer set.
+    const legacy = { newest: "added_new", oldest: "added_old" };
+    state.albumPhotoSort = legacy[p.photoSort] || p.photoSort;
+  }
   if (Array.isArray(p.fav)) state.favAlbums = p.fav;
   if (typeof p.kidsOnly === "boolean") state.kidsOnly = p.kidsOnly;
 }
@@ -4278,6 +4412,8 @@ async function processFiles(fileList) {
       isVideo: !!result.isVideo,
       duration: result.duration || 0,
       dims: { w: result.width || 0, h: result.height || 0 },
+      addedAt: Date.now(), // when it was imported into Famsort (for sorting)
+      fileModified: files[i] && files[i].lastModified ? files[i].lastModified : 0, // original file's own date
     };
     state.photos.push(photoRec);
     batchPhotos.push(photoRec);
@@ -5628,6 +5764,7 @@ function openAlbum(id) {
 function closeAlbum() {
   state.activeAlbum = null;
   state.albumFrom = "albums";
+  lastRenderedAlbum = null; // reopening re-verifies against OneDrive
   renderAlbums();
 }
 
@@ -5637,6 +5774,7 @@ function albumBack() {
   const from = state.albumFrom;
   state.activeAlbum = null;
   state.albumFrom = "albums";
+  lastRenderedAlbum = null; // reopening re-verifies against OneDrive
   if (from === "people") {
     renderAlbums();
     navTo("people");
@@ -5864,7 +6002,7 @@ function renderAlbumDetail() {
   grid.hidden = false;
 
   let photos = albumPhotos(id).slice();
-  if (state.albumPhotoSort === "newest") photos.reverse();
+  sortAlbumPhotos(photos);
 
   // Surface anything NOT safely backed up at the very top, so at-risk photos are
   // the first thing the user sees (stable sort keeps the chosen order within each
@@ -5908,10 +6046,13 @@ function renderAlbumDetail() {
     grid.appendChild(cell);
   }
 
-  // Kick off a throttled background verify against the real OneDrive folders.
-  // Fire-and-forget: it updates flags, re-renders, and (if auto-backup is on)
-  // uploads any genuine gaps without the user doing anything.
-  maybeReconcileAlbum(id);
+  // Kick off a verify against the real OneDrive folders. When the album was just
+  // OPENED (id changed since last render), force an immediate reconcile so a
+  // refresh re-checks straight away and auto-uploads any genuine gaps; otherwise
+  // use the throttled path to avoid hammering Graph on every re-render.
+  const freshOpen = lastRenderedAlbum !== id;
+  lastRenderedAlbum = id;
+  maybeReconcileAlbum(id, freshOpen);
 }
 
 /* --------------------------------------------------------- lightbox */
@@ -6111,6 +6252,14 @@ async function showLightboxPhoto() {
     rescan.textContent = "Find faces in this photo";
     rescan.addEventListener("click", () => findFacesInPhoto(photo, rescan));
     actions.appendChild(rescan);
+
+    // Facebook-style click-to-tag: draw a box around a face the detector missed,
+    // name it, and we'll offer to tag the same person in other photos too.
+    const tagFace = document.createElement("button");
+    tagFace.className = "btn btn--ghost";
+    tagFace.textContent = "＋ Tag a face";
+    tagFace.addEventListener("click", () => startFaceTagDraw(photo));
+    actions.appendChild(tagFace);
   }
 
   const del = document.createElement("button");
@@ -6124,6 +6273,7 @@ function closeLightbox() {
   el("lightbox").hidden = true;
   el("lightboxImg").src = "";
   clearFaceOverlay();
+  cancelFaceTagDraw();
   const vid = el("lightboxVideo");
   vid.pause?.();
   vid.removeAttribute("src");
@@ -6258,6 +6408,168 @@ function onFaceBoxClick(f) {
   const photo = state.photos.find((p) => p.id === lightboxPhotoId) || null;
   closeLightbox();
   openNameModal({ faces: [f] }, photo);
+}
+
+/* ------------------------- click-to-tag: draw a box over a face we missed */
+// Facebook-style manual tagging. The user taps "Tag a face", drags a box around
+// a face the detector never found, and we run detection ZOOMED INTO that region
+// (so small/side-on faces are recoverable). We then offer to tag the same person
+// in other still-untagged photos, which the user confirms by unticking any that
+// aren't them in the naming modal.
+let faceDrawState = null;
+
+function startFaceTagDraw(photo) {
+  if (!photo || photo.isVideo) return;
+  cancelFaceTagDraw();
+  const stage = document.querySelector(".lightbox__stage");
+  const img = el("lightboxImg");
+  if (!stage || !img) return;
+
+  const layer = document.createElement("div");
+  layer.id = "faceDrawLayer";
+  layer.className = "face-draw";
+  const hint = document.createElement("div");
+  hint.className = "face-draw__hint";
+  hint.textContent = "Drag a box around one face";
+  layer.appendChild(hint);
+
+  const position = () => {
+    const rect = imgContainRect(img);
+    layer.style.left = img.offsetLeft + rect.left + "px";
+    layer.style.top = img.offsetTop + rect.top + "px";
+    layer.style.width = rect.width + "px";
+    layer.style.height = rect.height + "px";
+  };
+  position();
+  stage.appendChild(layer);
+
+  let rectEl = null;
+  let sx = 0;
+  let sy = 0;
+  const toLocal = (e) => {
+    const r = layer.getBoundingClientRect();
+    return {
+      x: Math.min(Math.max(0, e.clientX - r.left), r.width),
+      y: Math.min(Math.max(0, e.clientY - r.top), r.height),
+    };
+  };
+  const onDown = (e) => {
+    e.preventDefault();
+    const p = toLocal(e);
+    sx = p.x;
+    sy = p.y;
+    rectEl = document.createElement("div");
+    rectEl.className = "face-draw__rect";
+    rectEl.style.left = sx + "px";
+    rectEl.style.top = sy + "px";
+    layer.appendChild(rectEl);
+    hint.hidden = true;
+    layer.setPointerCapture?.(e.pointerId);
+  };
+  const onMove = (e) => {
+    if (!rectEl) return;
+    const p = toLocal(e);
+    rectEl.style.left = Math.min(sx, p.x) + "px";
+    rectEl.style.top = Math.min(sy, p.y) + "px";
+    rectEl.style.width = Math.abs(p.x - sx) + "px";
+    rectEl.style.height = Math.abs(p.y - sy) + "px";
+  };
+  const onUp = async (e) => {
+    if (!rectEl) return;
+    const p = toLocal(e);
+    const lw = layer.clientWidth;
+    const lh = layer.clientHeight;
+    const bx = Math.min(sx, p.x);
+    const by = Math.min(sy, p.y);
+    const bw = Math.abs(p.x - sx);
+    const bh = Math.abs(p.y - sy);
+    cancelFaceTagDraw();
+    if (bw < 12 || bh < 12 || !lw || !lh) return; // a stray tap, not a box
+    await tagFaceFromBox(photo, { x: bx / lw, y: by / lh, w: bw / lw, h: bh / lh });
+  };
+  layer.addEventListener("pointerdown", onDown);
+  layer.addEventListener("pointermove", onMove);
+  layer.addEventListener("pointerup", onUp);
+  faceDrawState = { layer, position };
+  window.addEventListener("resize", position);
+}
+
+function cancelFaceTagDraw() {
+  if (!faceDrawState) return;
+  window.removeEventListener("resize", faceDrawState.position);
+  faceDrawState.layer.remove();
+  faceDrawState = null;
+}
+
+async function tagFaceFromBox(photo, box) {
+  showLightboxBanner("Looking for a face…");
+  let found = null;
+  try {
+    await face.loadModels();
+    found = await face.detectInRegion(photo.thumb, box);
+  } catch {
+    found = null;
+  }
+  if (!found) {
+    showLightboxBanner("Couldn't find a face there — try a tighter box around just the face.", 3400);
+    return;
+  }
+  // Save the manually-found face as a real face record on this photo.
+  const newFace = {
+    id: db.uid(),
+    photoId: photo.id,
+    descriptor: found.descriptor,
+    thumb: found.thumb,
+    box: found.box,
+    personId: null,
+    confirmed: true,
+    manual: true,
+  };
+  state.faces.push(newFace);
+  await db.put("faces", newFace);
+
+  // Offer the SAME face elsewhere: other still-untagged faces that match closely.
+  const similar = gatherSimilarUntaggedFaces(found.descriptor, new Set([newFace.id]));
+  if (similar.length) {
+    showLightboxBanner(
+      `We also found this face in ${similar.length} other photo${similar.length === 1 ? "" : "s"} — untick any that aren't them.`,
+      3600
+    );
+  }
+  const live = state.photos.find((p) => p.id === photo.id) || photo;
+  closeLightbox();
+  openNameModal({ faces: [newFace, ...similar] }, live);
+}
+
+// Untagged faces (across every photo) whose descriptor closely matches a target.
+// Kept TIGHT so we only surface confident matches for the user to confirm.
+function gatherSimilarUntaggedFaces(descriptor, excludeIds) {
+  const out = [];
+  for (const f of state.faces) {
+    if (f.personId) continue;
+    if (excludeIds && excludeIds.has(f.id)) continue;
+    if (!f.descriptor) continue;
+    const d = face.euclidean(descriptor, f.descriptor);
+    if (d < face.STRICT_MATCH_THRESHOLD) out.push({ f, d });
+  }
+  out.sort((a, b) => a.d - b.d);
+  return out.slice(0, 40).map((x) => x.f);
+}
+
+// A small transient message over the viewer (click-to-tag feedback).
+function showLightboxBanner(text, ms) {
+  const stage = document.querySelector(".lightbox__stage");
+  if (!stage) return null;
+  let b = stage.querySelector(".lightbox__banner");
+  if (!b) {
+    b = document.createElement("div");
+    b.className = "lightbox__banner";
+    stage.appendChild(b);
+  }
+  b.textContent = text;
+  if (b._t) clearTimeout(b._t);
+  if (ms) b._t = setTimeout(() => b.remove(), ms);
+  return b;
 }
 
 // Manual tagging panel: for each detected face, show who it's tagged as and let
