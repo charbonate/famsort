@@ -488,6 +488,38 @@ p { margin: 0 0 .9rem; }
 }
 .account-line--block { display: flex; margin: 4px 0 10px; }
 
+/* Co-parent access tracker: who a shared album is shared with + their level. */
+.access-tracker { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+.access-tracker__title { margin: 0 0 8px; font-size: .92rem; }
+.access-list { display: flex; flex-direction: column; gap: 8px; }
+.access-empty { margin: 0; color: var(--ink-soft, #6b6b6b); font-size: .86rem; }
+.access-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.access-row__who { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.access-row__name { font-weight: 600; font-size: .9rem; }
+.access-row__email { font-size: .76rem; color: var(--ink-soft, #6b6b6b); }
+.access-row__pending { font-size: .72rem; color: var(--warn, #c57b00); font-weight: 600; }
+.access-chip {
+  font-size: .74rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.access-chip--viewer { background: var(--accent-2-soft, #d9efe9); color: var(--accent-2-dark, #22685b); }
+.access-chip--editor { background: var(--accent-soft, #fde2d6); color: var(--accent-dark, #c8461f); }
+.access-row__actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn--sm { padding: 5px 10px; font-size: .78rem; border-radius: 8px; }
+.access-row__remove { color: var(--danger, #c0392b); }
+
 /* Cloud sources → output → sort wizard */
 .wizard { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
 .wizard__step { display: flex; gap: 12px; align-items: flex-start; }
@@ -1047,7 +1079,7 @@ p { margin: 0 0 .9rem; }
 
       <div class="card-plain">
         <h3>Invite a co-parent</h3>
-        <p>Share an album with another parent. <strong>Viewer</strong> can see the photos; <strong>Adder</strong> can also add and change them. They'll get an email with a secure link — they sign in with their own cloud account.</p>
+        <p><strong>Viewer</strong> can see and download the photos. <strong>Editor</strong> can add, change <em>and</em> delete them. They'll get an email with a secure link — they sign in with their own cloud account.</p>
         <div class="field-row">
           <input class="text-input" id="inviteEmail" type="email" inputmode="email" autocomplete="off" spellcheck="false" placeholder="their email address" />
         </div>
@@ -1055,13 +1087,18 @@ p { margin: 0 0 .9rem; }
           <select class="text-input" id="inviteAlbum"></select>
           <select class="text-input" id="inviteRole">
             <option value="read">Viewer (can see)</option>
-            <option value="write">Adder (can add &amp; change)</option>
+            <option value="write">Editor (add, change, delete)</option>
           </select>
         </div>
         <div class="btn-row">
           <button class="btn btn--primary" id="inviteSendBtn">Send invite</button>
         </div>
         <p class="msg" id="inviteMsg" hidden></p>
+        <div class="access-tracker">
+          <h4 class="access-tracker__title">Who has access</h4>
+          <div class="access-list" id="inviteAccessList"></div>
+          <p class="card-plain__fine">OneDrive supports two levels: <strong>Viewer</strong> and <strong>Editor</strong>. “Add-only” and “admin” aren’t possible on a personal cloud account.</p>
+        </div>
       </div>
 
       <div class="card-plain">
@@ -2539,6 +2576,84 @@ async function inviteToFolder(folderPath, email, role, message) {
   return res.json();
 }
 
+// Resolve a folder path to its drive-item id WITHOUT creating it (read-only).
+// Returns null if the folder doesn't exist yet.
+async function folderItemId(folderPath, token) {
+  const clean = String(folderPath || "").replace(/^\/+|\/+$/g, "");
+  const url = clean
+    ? `${GRAPH}/me/drive/root:/${encodeURI(clean)}?$select=id`
+    : `${GRAPH}/me/drive/root?$select=id`;
+  try {
+    const r = await graphGet(url, token);
+    return r.id || null;
+  } catch {
+    return null;
+  }
+}
+
+// List the people a folder is shared WITH (the access tracker). Returns
+// [{permId, name, email, role: "read"|"write", pending}] — excluding the owner
+// and any public sharing links. null = couldn't check (offline/not signed in);
+// [] = folder exists but nobody else has access (or folder not created yet).
+async function listFolderPermissions(folderPath) {
+  if (!oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  const id = await folderItemId(folderPath, token);
+  if (!id) return [];
+  try {
+    const page = await graphGet(`${GRAPH}/me/drive/items/${id}/permissions`, token);
+    const out = [];
+    for (const p of page.value || []) {
+      if (p.link) continue; // skip anyone-with-the-link permissions
+      const roles = p.roles || [];
+      if (roles.includes("owner")) continue; // that's the user themselves
+      const user = p.grantedToV2?.user || p.grantedTo?.user;
+      const email = p.invitation?.email || "";
+      if (!user && !email) continue;
+      out.push({
+        permId: p.id,
+        name: user?.displayName || email || "Someone",
+        email,
+        role: roles.includes("write") ? "write" : "read",
+        pending: !user && !!p.invitation, // invited but not yet signed in
+      });
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+// Change an existing collaborator's level between Viewer (read) and Editor (write).
+async function setPermissionRole(folderPath, permId, role) {
+  if (!oneDriveConfigured()) throw new Error("OneDrive not configured");
+  const token = await getToken();
+  const id = await folderItemId(folderPath, token);
+  if (!id) throw new Error("Folder not found");
+  const res = await fetch(`${GRAPH}/me/drive/items/${id}/permissions/${permId}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ roles: [role === "write" ? "write" : "read"] }),
+  });
+  if (!res.ok) throw new Error(`Change failed (${res.status})`);
+  return res.json();
+}
+
+// Revoke a collaborator's access to a folder entirely.
+async function removePermission(folderPath, permId) {
+  if (!oneDriveConfigured()) throw new Error("OneDrive not configured");
+  const token = await getToken();
+  const id = await folderItemId(folderPath, token);
+  if (!id) throw new Error("Folder not found");
+  const res = await fetch(`${GRAPH}/me/drive/items/${id}/permissions/${permId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`Remove failed (${res.status})`);
+  return true;
+}
+
 // Sign in only (or confirm an existing session). Returns true on success. Kept
 // separate from the camera-roll import so a returning device can rebuild its
 // library from the saved manifest BEFORE deciding whether to re-scan anything.
@@ -2811,7 +2926,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, signOut, switchAccount, inviteToFolder, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -5183,6 +5298,7 @@ function renderInviteAlbums() {
     sel.appendChild(opt);
   }
   if (prev && opts.some((o) => o.path === prev)) sel.value = prev;
+  renderInviteAccess();
 }
 
 // Refresh the parts of the settings screen that depend on live account/album state.
@@ -5192,7 +5308,95 @@ function renderSettingsExtras() {
   renderSortModeUI();
 }
 
-// Email a co-parent a secure link to an output folder as Viewer or Adder.
+// Human label for a OneDrive role. Personal OneDrive only enforces two levels:
+// read = Viewer, write = Editor (which genuinely includes add, change AND delete).
+function roleLabel(role) {
+  return role === "write" ? "Editor (add, change, delete)" : "Viewer (can see)";
+}
+
+// The access tracker: show everyone a folder is already shared with, their level,
+// and controls to change or remove it. Keeps the user from double-inviting and
+// makes it obvious "this person already has access".
+let inviteAccessToken = 0;
+async function renderInviteAccess() {
+  const box = el("inviteAccessList");
+  if (!box) return;
+  const path = el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
+  const mine = ++inviteAccessToken;
+  if (!cloud.oneDriveConfigured() || state.outputMode !== "cloud") {
+    box.innerHTML = `<p class="access-empty">Switch output to OneDrive to share albums.</p>`;
+    return;
+  }
+  box.innerHTML = `<p class="access-empty">Checking who has access…</p>`;
+  let list = null;
+  try { list = await cloud.listFolderPermissions(path); } catch { list = null; }
+  if (mine !== inviteAccessToken) return; // a newer render superseded this one
+  if (list === null) {
+    box.innerHTML = `<p class="access-empty">Couldn't check access — make sure you're signed in.</p>`;
+    return;
+  }
+  if (!list.length) {
+    box.innerHTML = `<p class="access-empty">No one else has access to this album yet.</p>`;
+    return;
+  }
+  box.innerHTML = "";
+  for (const p of list) {
+    const row = document.createElement("div");
+    row.className = "access-row";
+    const other = p.role === "write" ? "read" : "write";
+    row.innerHTML = `
+      <div class="access-row__who">
+        <span class="access-row__name">${escapeHtml(p.name)}</span>
+        ${p.email && p.email !== p.name ? `<span class="access-row__email">${escapeHtml(p.email)}</span>` : ""}
+        ${p.pending ? `<span class="access-row__pending">invite pending</span>` : ""}
+      </div>
+      <span class="access-chip ${p.role === "write" ? "access-chip--editor" : "access-chip--viewer"}">${p.role === "write" ? "Editor" : "Viewer"}</span>
+      <div class="access-row__actions">
+        <button class="btn btn--ghost btn--sm" data-act="role" data-perm="${p.permId}" data-role="${other}">Make ${other === "write" ? "Editor" : "Viewer"}</button>
+        <button class="btn btn--ghost btn--sm access-row__remove" data-act="remove" data-perm="${p.permId}">Remove</button>
+      </div>`;
+    box.appendChild(row);
+  }
+  box.querySelectorAll("button[data-act]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const permId = b.dataset.perm;
+      if (b.dataset.act === "role") changeAccessRole(permId, b.dataset.role);
+      else removeAccess(permId);
+    })
+  );
+}
+
+async function changeAccessRole(permId, role) {
+  const path = el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
+  const msg = el("inviteMsg");
+  const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  show(`Changing to ${role === "write" ? "Editor" : "Viewer"}…`);
+  try {
+    await cloud.setPermissionRole(path, permId, role);
+    show(`Updated to ${roleLabel(role)}.`);
+  } catch {
+    show("Couldn't change their access — try again.");
+  }
+  renderInviteAccess();
+}
+
+async function removeAccess(permId) {
+  if (!confirm("Remove this person's access to the album? They'll no longer be able to see it.")) return;
+  const path = el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
+  const msg = el("inviteMsg");
+  const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  show("Removing access…");
+  try {
+    await cloud.removePermission(path, permId);
+    show("Access removed.");
+  } catch {
+    show("Couldn't remove access — try again.");
+  }
+  renderInviteAccess();
+}
+
+// Email a co-parent a secure link to an output folder as Viewer or Editor. If
+// they already have access, upgrade/downgrade instead of sending a duplicate.
 async function sendInvite() {
   const email = (el("inviteEmail")?.value || "").trim();
   const path = el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
@@ -5211,11 +5415,30 @@ async function sendInvite() {
   } catch { /* non-fatal: fall through and let the invite attempt run */ }
   const btn = el("inviteSendBtn");
   if (btn) btn.disabled = true;
+  // Dedup: if this person already has access, change their level instead of
+  // sending a second invite.
+  try {
+    const existing = await cloud.listFolderPermissions(path);
+    const already = (existing || []).find((p) => p.email && p.email.toLowerCase() === email.toLowerCase());
+    if (already) {
+      if (already.role === role) {
+        show(`${email} already has access as ${roleLabel(role)} — nothing to change.`);
+      } else {
+        await cloud.setPermissionRole(path, already.permId, role);
+        show(`${email} already had access — updated them to ${roleLabel(role)}.`);
+        if (el("inviteEmail")) el("inviteEmail").value = "";
+      }
+      renderInviteAccess();
+      if (btn) btn.disabled = false;
+      return;
+    }
+  } catch { /* couldn't pre-check; fall through to a normal invite */ }
   show("Sending invite…");
   try {
     await cloud.inviteToFolder(path, email, role);
-    show(`Invite sent to ${email} as ${role === "write" ? "Adder (can add & change)" : "Viewer (can see)"}.`);
+    show(`Invite sent to ${email} as ${roleLabel(role)}.`);
     if (el("inviteEmail")) el("inviteEmail").value = "";
+    renderInviteAccess();
   } catch {
     show("Couldn't send the invite — check you're signed in and the email is correct, then try again.");
   } finally {
@@ -8415,6 +8638,7 @@ function wire() {
   el("accountSignInBtn").addEventListener("click", connectCloud);
   el("accountSwitchBtn").addEventListener("click", switchAccountFlow);
   el("accountSignOutBtn").addEventListener("click", signOutAccount);
+  el("inviteAlbum").addEventListener("change", renderInviteAccess);
   el("inviteSendBtn").addEventListener("click", sendInvite);
   el("pickOutputBtn").addEventListener("click", chooseCloudOutput);
   el("pickDeviceOutputBtn").addEventListener("click", chooseDeviceOutput);
