@@ -154,10 +154,24 @@ p { margin: 0 0 .9rem; }
   background: transparent; border: none; cursor: pointer; font: inherit; font-size: .9rem;
   color: var(--ink, #2a2320); padding: 10px; border-radius: 9px;
 }
-.account-menu__item:hover { background: var(--accent-soft, #fde2d6); }
+.account-menu__item:hover { background: var(--cream-2, #f4ece0); }
 .account-menu__item--danger { color: var(--danger, #c0392b); }
 .account-menu__item--danger:hover { background: #fde8e6; }
-.account-menu__ico { width: 20px; text-align: center; font-size: 1rem; flex: none; }
+.account-menu__ico { width: 22px; height: 22px; display: grid; place-items: center; flex: none; color: var(--ink-soft, #6b6b6b); }
+.account-menu__ico svg { width: 20px; height: 20px; display: block; }
+.account-menu__item--danger .account-menu__ico { color: var(--danger, #c0392b); }
+
+/* Account screen hero (avatar + change photo) */
+.account-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+.account-hero__avatar {
+  width: 56px; height: 56px; flex: none; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center; background: var(--grad-brand); color: #fff;
+  font-weight: 700; font-size: 1.2rem; background-size: cover; background-position: center;
+}
+.account-hero__avatar.has-photo { color: transparent; }
+.account-hero__avatar svg { width: 54%; height: 54%; }
+.account-hero__text { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.account-hero__title { margin: 0; }
 
 /* Screens */
 .screen { max-width: 680px; margin-inline: auto; padding: 18px 16px 30px; }
@@ -730,7 +744,7 @@ p { margin: 0 0 .9rem; }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(3, 1fr);
   background: rgba(255, 255, 255, .92); backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
   box-shadow: 0 -6px 20px -14px rgba(50, 35, 20, .35);
@@ -967,12 +981,12 @@ p { margin: 0 0 .9rem; }
         </div>
       </div>
       <div class="account-menu__list">
-        <button class="account-menu__item" id="accountMenuSignIn" type="button" hidden><span class="account-menu__ico">☁</span>Sign in</button>
-        <button class="account-menu__item" id="accountMenuAccount" type="button"><span class="account-menu__ico">👤</span>Your account</button>
-        <button class="account-menu__item" id="accountMenuSettings" type="button"><span class="account-menu__ico">⚙</span>Settings</button>
-        <button class="account-menu__item" id="accountMenuPhoto" type="button"><span class="account-menu__ico">🙂</span>Change photo…</button>
-        <button class="account-menu__item" id="accountMenuSwitch" type="button" hidden><span class="account-menu__ico">⇄</span>Switch account</button>
-        <button class="account-menu__item account-menu__item--danger" id="accountMenuSignOut" type="button" hidden><span class="account-menu__ico">⏻</span>Sign out</button>
+        <button class="account-menu__item" id="accountMenuSignIn" type="button" hidden><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></span>Sign in</button>
+        <button class="account-menu__item" id="accountMenuAccount" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5c0-3.3 2.9-5.2 6.5-5.2s6.5 1.9 6.5 5.2"/></svg></span>Your account</button>
+        <button class="account-menu__item" id="accountMenuSettings" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.2 14.9a1.5 1.5 0 0 0 .3 1.7 2 2 0 1 1-2.8 2.8 1.5 1.5 0 0 0-2.55 1.06 2 2 0 1 1-4 0A1.5 1.5 0 0 0 7.6 19.5a1.5 1.5 0 0 0-1.7.3 2 2 0 1 1-2.8-2.8 1.5 1.5 0 0 0 .3-1.7A1.5 1.5 0 0 0 2 13.9a2 2 0 1 1 0-4 1.5 1.5 0 0 0 1.4-1.4 1.5 1.5 0 0 0-.3-1.7 2 2 0 1 1 2.8-2.8 1.5 1.5 0 0 0 1.7.3h.1A1.5 1.5 0 0 0 9.9 3a2 2 0 1 1 4 0 1.5 1.5 0 0 0 .9 1.4 1.5 1.5 0 0 0 1.7-.3 2 2 0 1 1 2.8 2.8 1.5 1.5 0 0 0-.3 1.7v.1a1.5 1.5 0 0 0 1.4.9 2 2 0 1 1 0 4 1.5 1.5 0 0 0-1.4.9z"/></svg></span>Settings</button>
+        <button class="account-menu__item" id="accountMenuActivity" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.4-7 4.2 14 2.4-7H21"/></svg></span>App activity log</button>
+        <button class="account-menu__item" id="accountMenuSwitch" type="button" hidden><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h13M14 4l3 4-3 4"/><path d="M20 16H7M10 20l-3-4 3-4"/></svg></span>Switch account</button>
+        <button class="account-menu__item account-menu__item--danger" id="accountMenuSignOut" type="button" hidden><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></span>Sign out</button>
       </div>
     </div>
     <input type="file" id="avatarPicker" accept="image/*" hidden />
@@ -1219,7 +1233,13 @@ p { margin: 0 0 .9rem; }
     <section class="view" id="view-account" data-view="account" hidden>
       <h2 class="view__title">Your account</h2>
       <div class="card-plain">
-        <h3>Your Famsort account</h3>
+        <div class="account-hero">
+          <span class="account-hero__avatar" id="accountHeroAvatar"></span>
+          <div class="account-hero__text">
+            <h3 class="account-hero__title">Your Famsort account</h3>
+            <button class="btn btn--ghost btn--small" id="accountChangePhotoBtn" type="button">Change photo</button>
+          </div>
+        </div>
         <p>Famsort uses your <strong>cloud account</strong> as your login. Sign in with the <strong>same account on any device</strong> and your people, albums, output and sorting settings follow you — so your phone and laptop never get out of step.</p>
         <div class="account-line account-line--block" id="accountLineSettings" hidden></div>
         <dl class="account-details" id="accountDetails" hidden>
@@ -1346,9 +1366,6 @@ p { margin: 0 0 .9rem; }
     </button>
     <button class="tabbar__btn" data-nav="albums">
       <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2.6"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 16.5l3.8-3.3 3 2.5L15 11l4.5 4.2"/></svg></span>Albums
-    </button>
-    <button class="tabbar__btn" data-nav="activity">
-      <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.4-7 4.2 14 2.4-7H21"/></svg></span>Activity
     </button>
   </nav>
 
@@ -5625,6 +5642,7 @@ function paintAvatar(elm) {
 function renderAccountAvatar() {
   paintAvatar(el("accountBtnAvatar"));
   paintAvatar(el("accountMenuAvatar"));
+  paintAvatar(el("accountHeroAvatar"));
 }
 
 // Fill the menu's name/email and show the right actions for signed-in vs out.
@@ -9429,12 +9447,13 @@ function wire() {
   el("accountBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleAccountMenu(); });
   el("accountMenu").addEventListener("click", (e) => e.stopPropagation());
   document.addEventListener("click", closeAccountMenu);
-  el("accountMenuPhoto").addEventListener("click", () => el("avatarPicker").click());
   el("accountMenuAccount").addEventListener("click", () => { closeAccountMenu(); navTo("account"); });
   el("accountMenuSettings").addEventListener("click", () => { closeAccountMenu(); navTo("settings"); });
+  el("accountMenuActivity").addEventListener("click", () => { closeAccountMenu(); navTo("activity"); });
   el("accountMenuSwitch").addEventListener("click", () => { closeAccountMenu(); switchAccountFlow(); });
   el("accountMenuSignOut").addEventListener("click", () => { closeAccountMenu(); signOutAccount(); });
   el("accountMenuSignIn").addEventListener("click", () => { closeAccountMenu(); connectCloud(); });
+  el("accountChangePhotoBtn").addEventListener("click", () => el("avatarPicker").click());
   // In-app confirm/alert dialog buttons.
   el("uiModalOk").addEventListener("click", () => closeUiModal(true));
   el("uiModalCancel").addEventListener("click", () => closeUiModal(false));
