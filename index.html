@@ -1038,7 +1038,10 @@ p { margin: 0 0 .9rem; }
         <div class="account-line account-line--block" id="accountLineSettings" hidden></div>
         <div class="btn-row">
           <button class="btn btn--primary" id="accountSignInBtn" hidden>Sign in to my cloud</button>
+          <button class="btn btn--ghost" id="accountSwitchBtn" hidden>Switch account</button>
+          <button class="btn btn--ghost" id="accountSignOutBtn" hidden>Sign out</button>
         </div>
+        <p class="msg" id="accountMsg" hidden></p>
         <p class="card-plain__fine">Folders you add from <strong>this device</strong> are only available on this device — cloud folders and all settings sync everywhere.</p>
       </div>
 
@@ -2120,9 +2123,15 @@ async function ensureMsal() {
   return msalInstance;
 }
 
+// The account the app is currently acting as. Prefer the explicitly chosen
+// (active) account so "switch user" works even when several accounts are cached.
+function currentAccount(msal) {
+  return msal.getActiveAccount() || msal.getAllAccounts()[0] || null;
+}
+
 async function getToken() {
   const msal = await ensureMsal();
-  const account = msal.getAllAccounts()[0];
+  const account = currentAccount(msal);
   if (account) {
     try {
       const r = await msal.acquireTokenSilent({ scopes: SCOPES, account });
@@ -2132,6 +2141,7 @@ async function getToken() {
     }
   }
   const r = await msal.loginPopup({ scopes: SCOPES });
+  if (r.account) msal.setActiveAccount(r.account);
   return r.accessToken;
 }
 
@@ -2140,7 +2150,7 @@ async function getToken() {
 async function getTokenSilent() {
   if (!oneDriveConfigured()) return null;
   const msal = await ensureMsal();
-  const account = msal.getAllAccounts()[0];
+  const account = currentAccount(msal);
   if (!account) return null;
   try {
     const r = await msal.acquireTokenSilent({ scopes: SCOPES, account });
@@ -2459,10 +2469,47 @@ async function accountInfo() {
   if (!oneDriveConfigured()) return null;
   try {
     const msal = await ensureMsal();
-    const acct = msal.getAllAccounts()[0];
+    const acct = currentAccount(msal);
     if (!acct) return null;
     return { username: acct.username || "", name: acct.name || acct.username || "" };
   } catch {
+    return null;
+  }
+}
+
+// Sign out of THIS app: forget the signed-in account so Famsort stops acting as
+// them (people/albums already synced to their OneDrive stay there untouched).
+// Returns true once the local session is cleared.
+async function signOut() {
+  if (!getClientId()) return false;
+  const msal = await ensureMsal();
+  const account = currentAccount(msal);
+  try {
+    await msal.logoutPopup({
+      account,
+      postLogoutRedirectUri: window.location.origin + window.location.pathname,
+    });
+  } catch {
+    // Fallback: at least drop the active account so the app forgets them.
+    try { msal.setActiveAccount(null); } catch { /* ignore */ }
+  }
+  return true;
+}
+
+// Switch to a DIFFERENT cloud account (co-parent's second account, a fresh
+// login, etc.). Forces the account picker, makes the chosen one active, and
+// returns its {username,name} — or null if cancelled.
+async function switchAccount(onStatus) {
+  if (!oneDriveConfigured()) return null;
+  const msal = await ensureMsal();
+  try {
+    onStatus?.("Choose an account…");
+    const r = await msal.loginPopup({ scopes: SCOPES, prompt: "select_account" });
+    if (r.account) msal.setActiveAccount(r.account);
+    const acct = currentAccount(msal);
+    return acct ? { username: acct.username || "", name: acct.name || acct.username || "" } : null;
+  } catch {
+    onStatus?.("Account switch was cancelled.");
     return null;
   }
 }
@@ -2764,7 +2811,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, inviteToFolder, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, signOut, switchAccount, inviteToFolder, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -5077,6 +5124,45 @@ async function renderAccountLine() {
   }
   const btn = el("accountSignInBtn");
   if (btn) btn.hidden = !!info || !cloud.oneDriveConfigured();
+  const sw = el("accountSwitchBtn");
+  if (sw) sw.hidden = !info;
+  const out = el("accountSignOutBtn");
+  if (out) out.hidden = !info;
+}
+
+// Sign out of this device's Famsort session (the cloud account = the login).
+async function signOutAccount() {
+  if (!confirm("Sign out of Famsort on this device? Your photos and albums stay safe in your cloud — you can sign back in anytime.")) return;
+  const msg = el("accountMsg");
+  const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  show("Signing out…");
+  try {
+    await cloud.signOut();
+    cloudSignedIn = false;
+    show("Signed out. Sign in again to pick up your albums on this device.");
+  } catch {
+    show("Couldn't sign out cleanly — try again.");
+  }
+  renderAccountLine();
+  renderSources();
+  renderOutputLabel();
+}
+
+// Switch to a different cloud account, then pull that account's library in.
+async function switchAccountFlow() {
+  const msg = el("accountMsg");
+  const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  const info = await cloud.switchAccount(show);
+  if (!info) return;
+  cloudSignedIn = true;
+  show(`Switched to ${info.username || info.name}. Bringing in their albums…`);
+  await restoreCloudModel();
+  await rebuildFromManifest();
+  renderAccountLine();
+  renderSources();
+  renderOutputLabel();
+  renderSettingsExtras();
+  show(`Signed in as ${info.username || info.name}.`);
 }
 
 // Fill the co-parent invite album dropdown with the output root (everything) plus
@@ -5116,6 +5202,13 @@ async function sendInvite() {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { show("Enter a valid email address."); return; }
   if (!cloud.oneDriveConfigured()) { show("Connect your cloud first (Add → Add from OneDrive)."); return; }
   if (state.outputMode !== "cloud") { show("Inviting works with cloud output. Switch output to OneDrive first."); return; }
+  try {
+    const me = await cloud.accountInfo();
+    if (me && me.username && me.username.trim().toLowerCase() === email.toLowerCase()) {
+      show("That's your own account — you already own these albums, so there's no need to invite yourself. Enter your co-parent's email instead.");
+      return;
+    }
+  } catch { /* non-fatal: fall through and let the invite attempt run */ }
   const btn = el("inviteSendBtn");
   if (btn) btn.disabled = true;
   show("Sending invite…");
@@ -8320,6 +8413,8 @@ function wire() {
   el("sortModeSettingsPerPerson").addEventListener("change", () => setSortMode("perPerson", true));
   el("sortModeSettingsSingle").addEventListener("change", () => setSortMode("single", true));
   el("accountSignInBtn").addEventListener("click", connectCloud);
+  el("accountSwitchBtn").addEventListener("click", switchAccountFlow);
+  el("accountSignOutBtn").addEventListener("click", signOutAccount);
   el("inviteSendBtn").addEventListener("click", sendInvite);
   el("pickOutputBtn").addEventListener("click", chooseCloudOutput);
   el("pickDeviceOutputBtn").addEventListener("click", chooseDeviceOutput);
