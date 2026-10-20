@@ -8949,9 +8949,10 @@ async function mergePersonInto(sourceId, targetId) {
     const touched = new Set();
     // 1. Faces: anyone tagged as the source becomes the target; negatives follow.
     const touchedFaces = [];
+    const facePhotos = new Set(); // photos whose face we just moved to the target
     for (const f of state.faces) {
       let ch = false;
-      if (f.personId === sourceId) { f.personId = targetId; ch = true; }
+      if (f.personId === sourceId) { f.personId = targetId; ch = true; facePhotos.add(f.photoId); }
       if (Array.isArray(f.notIds) && f.notIds.includes(sourceId)) {
         f.notIds = [...new Set(f.notIds.map((n) => (n === sourceId ? targetId : n)))];
         ch = true;
@@ -8960,20 +8961,33 @@ async function mergePersonInto(sourceId, targetId) {
     }
     if (touchedFaces.length) await db.bulkPut("faces", touchedFaces);
 
-    // 2. Manual shares (and any photo already carrying the source id) → target.
+    // 2. Fold the source album's membership into the target on EVERY photo that
+    // carried it — via a manual share, via a face we just moved, OR via a
+    // personIds entry that arrived from another device with no local face record.
+    // We remap personIds IN PLACE (source → target) rather than re-deriving them
+    // from local faces, so a membership that only lived on personIds is NEVER
+    // dropped. (Re-deriving was the bug that untagged whole synced albums.)
+    const touchedPhotos = [];
     for (const ph of state.photos) {
+      let ch = false;
       if (Array.isArray(ph.manualIds) && ph.manualIds.includes(sourceId)) {
         ph.manualIds = [...new Set(ph.manualIds.map((x) => (x === sourceId ? targetId : x)))];
-        touched.add(ph.id);
+        ch = true;
       }
-      if (Array.isArray(ph.personIds) && ph.personIds.includes(sourceId)) touched.add(ph.id);
+      const pids = new Set(ph.personIds || []);
+      if (pids.has(sourceId)) { pids.delete(sourceId); pids.add(targetId); ch = true; }
+      if (facePhotos.has(ph.id)) { pids.add(targetId); ch = true; } // face moved here → ensure tagged
+      if (ch) {
+        ph.personIds = [...pids];
+        ph.updatedAt = Date.now(); // re-tagged — newer than other devices, wins on sync
+        touched.add(ph.id);
+        touchedPhotos.push(ph);
+      }
     }
+    if (touchedPhotos.length) await db.bulkPut("photos", touchedPhotos);
+    scheduleLibrarySync(); // album membership changed — refresh the sorted-output manifest
 
-    // 3. Recompute each touched photo's albums from faces + manual shares. refile
-    // is suppressed (mergeBusy) because we relocate the cloud copies ourselves.
-    updatePhotoLabels(touched);
-
-    // 4. Keep the target's identity but union the learning and fill any blanks.
+    // 3. Keep the target's identity but union the learning and fill any blanks.
     target.descriptors = sample([...(target.descriptors || []), ...(source.descriptors || [])], 12);
     target.negatives = sample([...(target.negatives || []), ...(source.negatives || [])], 20);
     if (!target.coverThumb && source.coverThumb) { target.coverThumb = source.coverThumb; target.coverPos = source.coverPos || ""; }
@@ -8981,13 +8995,13 @@ async function mergePersonInto(sourceId, targetId) {
     if (!target.relationship && source.relationship) { target.relationship = source.relationship; target.isChild = source.isChild; }
     await savePerson(target);
 
-    // 5. Remove the source person (tombstoned so the deletion syncs everywhere).
+    // 4. Remove the source person (tombstoned so the deletion syncs everywhere).
     state.people = state.people.filter((p) => p.id !== sourceId);
     state.deletedPeople[sourceId] = Date.now();
     await db.remove("people", sourceId);
     await saveTombstones();
 
-    // 6. Repair OneDrive: move/clean each affected photo's copies so they sit in
+    // 5. Repair OneDrive: move/clean each affected photo's copies so they sit in
     // the merged album's correct, current folders only (fixes stale-root copies).
     if (state.outputMode === "cloud" && cloud.oneDriveConfigured()) {
       const photos = [...touched].map((pid) => state.photos.find((p) => p.id === pid)).filter(Boolean);
@@ -9003,7 +9017,7 @@ async function mergePersonInto(sourceId, targetId) {
       if (photos.length) await db.bulkPut("photos", photos);
     }
 
-    // 7. Dedup: the two albums usually came from the same photos imported on two
+    // 6. Dedup: the two albums usually came from the same photos imported on two
     // devices, so the merged album now holds two records of each shared shot.
     // Collapse every such duplicate to its best-quality copy (and drop the extra
     // OneDrive file), so the album — and its OneDrive folder — shows each once.
@@ -9076,6 +9090,9 @@ async function dedupeAlbumRecords(personId) {
 async function consolidatePhotoCloudCopies(photo) {
   if (!photo || !(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
   const targets = backupFoldersFor(photo.personIds); // correct, current folders
+  // An untagged photo (no target folders) has no "correct" place — leave its
+  // copies exactly where they are. Deleting here would wipe its only backup.
+  if (!targets.length) return;
   const copies = { ...photoCloudCopies(photo) };
   const have = new Set(Object.keys(copies).filter((f) => targets.includes(f)));
   for (const [folder, itemId] of Object.entries(copies)) {
@@ -9091,7 +9108,11 @@ async function consolidatePhotoCloudCopies(photo) {
       // If the move failed, leave the copy where it is — never lose the only copy.
       continue;
     }
-    // No target folder still needs a copy → this is a leftover duplicate.
+    // No target folder still needs a copy → this is a leftover duplicate. Only
+    // delete it when the photo STILL has a copy in a correct folder, so we can
+    // never remove its last remaining copy.
+    const hasSurvivor = targets.some((t) => copies[t]);
+    if (!hasSurvivor) continue;
     const del = await cloud.deleteCloudFile(itemId);
     if (del) delete copies[folder];
   }
