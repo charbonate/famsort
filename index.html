@@ -8919,7 +8919,8 @@ async function confirmMerge(sourceId, targetId) {
   closeMergeModal();
   const ok = await uiConfirm(
     `Merge “${source.name}” into “${target.name}”? ${srcCount} photo${srcCount === 1 ? "" : "s"} move into ` +
-      `“${target.name}”, and “${source.name}” is removed. This also fixes any OneDrive copies saved under an old folder.`,
+      `“${target.name}”, and “${source.name}” is removed. Any duplicate shots are collapsed to the best copy, ` +
+      `and OneDrive copies saved under an old folder are fixed.`,
     { okLabel: "Merge" }
   );
   if (!ok) return;
@@ -8941,6 +8942,7 @@ async function mergePersonInto(sourceId, targetId) {
   if (!source || !target) return;
 
   mergeBusy = true;
+  let removedDupes = 0;
   setAutoBackupMsg(`Merging “${source.name}” into “${target.name}”…`);
   renderHomeBackup();
   try {
@@ -9000,6 +9002,12 @@ async function mergePersonInto(sourceId, targetId) {
       }
       if (photos.length) await db.bulkPut("photos", photos);
     }
+
+    // 7. Dedup: the two albums usually came from the same photos imported on two
+    // devices, so the merged album now holds two records of each shared shot.
+    // Collapse every such duplicate to its best-quality copy (and drop the extra
+    // OneDrive file), so the album — and its OneDrive folder — shows each once.
+    removedDupes = await dedupeAlbumRecords(targetId);
   } finally {
     mergeBusy = false;
   }
@@ -9008,8 +9016,56 @@ async function mergePersonInto(sourceId, targetId) {
   recomputePending();
   scheduleCloudSync(); // people changed
   scheduleLibrarySync(); // photo memberships + cloud pointers changed
-  setAutoBackupMsg(`✓ Merged into “${target.name}”.`);
+  setAutoBackupMsg(
+    removedDupes
+      ? `✓ Merged into “${target.name}” — removed ${removedDupes} duplicate photo${removedDupes === 1 ? "" : "s"}.`
+      : `✓ Merged into “${target.name}”.`,
+  );
   renderHomeBackup();
+}
+
+// After a merge the combined album can hold two records of the SAME shot (one
+// from each device the person was tagged on). Group those duplicates, keep the
+// highest-resolution copy of each, and delete the redundant record — plus its
+// now-duplicate OneDrive file — so the album and its OneDrive folder list every
+// photo exactly once. Honours "Not a dupe" choices (keptDistinct).
+async function dedupeAlbumRecords(personId) {
+  const photos = albumPhotos(personId).filter((p) => !state.keptDistinct.has(p.id));
+  const assigned = new Set();
+  const losers = [];
+  for (let i = 0; i < photos.length; i++) {
+    if (assigned.has(photos[i].id)) continue;
+    const group = [photos[i]];
+    for (let j = i + 1; j < photos.length; j++) {
+      if (assigned.has(photos[j].id)) continue;
+      if (isDuplicatePair(photos[i], photos[j])) { group.push(photos[j]); assigned.add(photos[j].id); }
+    }
+    if (group.length < 2) continue;
+    assigned.add(photos[i].id);
+    const area = (p) => (p.dims ? (p.dims.w || 0) * (p.dims.h || 0) : 0);
+    group.sort((a, b) => area(b) - area(a)); // best copy first = the one we keep
+    for (let k = 1; k < group.length; k++) losers.push(group[k]);
+  }
+  if (!losers.length) return 0;
+  const cloudOn = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  let done = 0;
+  for (const ph of losers) {
+    if (cloudOn) {
+      // Delete this duplicate's OneDrive file(s); the best copy we keep stays put
+      // (or re-uploads at full quality via the normal sweep). Never blocks on a
+      // failed delete — a leftover file is harmless and the background audit
+      // tidies it later.
+      for (const itemId of Object.values(photoCloudCopies(ph))) {
+        try { await cloud.deleteCloudFile(itemId); } catch { /* leave it for the audit */ }
+      }
+    }
+    await deletePhotoRecord(ph.id);
+    done++;
+    setAutoBackupMsg(`Removing duplicate photos… ${done}/${losers.length}`);
+    renderHomeBackup();
+  }
+  await bumpDupesCleaned(losers.length);
+  return losers.length;
 }
 
 // Make a photo's OneDrive copies match EXACTLY the folders it should live in now
