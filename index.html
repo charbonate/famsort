@@ -819,6 +819,38 @@ p { margin: 0 0 .9rem; }
 .boot__status { font-weight: 600; margin-bottom: 14px; }
 .boot__fine { font-size: .82rem; color: var(--ink-soft); margin-top: 14px; }
 
+/* Blocking sign-in / sign-out overlay — covers the whole app so the user can't
+   touch half-loaded data, and tells them exactly what's happening. */
+.auth-overlay {
+  position: fixed; inset: 0; z-index: 120; display: grid; place-items: center;
+  background: var(--cream); padding: 24px;
+}
+.auth-overlay__card { max-width: 360px; text-align: center; }
+.auth-overlay .brand { justify-content: center; margin-bottom: 20px; }
+.auth-overlay__spinner {
+  width: 40px; height: 40px; margin: 6px auto 18px; border-radius: 50%;
+  border: 3px solid var(--accent-soft); border-top-color: var(--accent);
+  animation: authspin .8s linear infinite;
+}
+@keyframes authspin { to { transform: rotate(360deg); } }
+.auth-overlay__status { font-weight: 600; margin-bottom: 8px; }
+.auth-overlay__fine { font-size: .82rem; color: var(--ink-soft); }
+
+/* Signed-out welcome gate on the Add screen. */
+.signed-out-gate { text-align: center; padding: 28px 22px; }
+.signed-out-gate__brand { display: flex; justify-content: center; margin-bottom: 8px; }
+.brand__mark--lg { width: 60px; height: 60px; border-radius: 18px; }
+.signed-out-gate__title { margin: 10px 0 8px; font-size: 1.35rem; }
+.signed-out-gate__sub { color: var(--ink-soft); margin-bottom: 18px; }
+.signed-out-gate__actions { display: flex; justify-content: center; margin-bottom: 10px; }
+.signed-out-gate__actions .btn { min-width: 220px; }
+.signed-out-gate__fine { font-size: .82rem; color: var(--ink-soft); margin-bottom: 16px; }
+.signed-out-gate__device { font-size: .9rem; }
+
+/* Untagged-album re-scan action. */
+.albumdet-actions { margin: 4px 0 12px; }
+.albumdet-actions__hint { display: block; font-size: .82rem; color: var(--ink-soft); margin-top: 6px; }
+
 .bar { height: 8px; background: var(--cream-2); border-radius: 999px; overflow: hidden; }
 .bar__fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s ease; }
 
@@ -1010,6 +1042,17 @@ p { margin: 0 0 .9rem; }
     </div>
   </div>
 
+  <!-- Full-screen blocking overlay shown while signing in / signing out, so the
+       user always sees what's happening and can't touch half-loaded data. -->
+  <div id="authOverlay" class="auth-overlay" hidden>
+    <div class="auth-overlay__card">
+      <div class="brand"><span class="brand__mark"><svg viewBox="0 0 80 80" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"><rect x="14" y="26" width="38" height="38" rx="8" transform="rotate(-13 33 45)"/><rect x="28" y="16" width="38" height="38" rx="8" transform="rotate(7 47 35)" fill="#fff"/></g><circle cx="47" cy="31" r="6" fill="#5a4cd1"/><path d="M36 51c0-7.5 5-11.5 11-11.5s11 4 11 11.5" fill="#5a4cd1"/></svg></span><span class="brand__name"><span class="brand__fam">Fam</span>Sort</span></div>
+      <div class="auth-overlay__spinner" aria-hidden="true"></div>
+      <p class="auth-overlay__status" id="authOverlayStatus">Getting things ready…</p>
+      <p class="auth-overlay__fine" id="authOverlayFine">This only takes a moment — please don't close the app.</p>
+    </div>
+  </div>
+
   <header class="appbar">
     <div class="brand"><span class="brand__mark"><svg viewBox="0 0 80 80" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"><rect x="14" y="26" width="38" height="38" rx="8" transform="rotate(-13 33 45)"/><rect x="28" y="16" width="38" height="38" rx="8" transform="rotate(7 47 35)" fill="#fff"/></g><circle cx="47" cy="31" r="6" fill="#5a4cd1"/><path d="M36 51c0-7.5 5-11.5 11-11.5s11 4 11 11.5" fill="#5a4cd1"/></svg></span><span class="brand__name"><span class="brand__fam">Fam</span>Sort</span></div>
     <div class="appbar__right">
@@ -1046,6 +1089,20 @@ p { margin: 0 0 .9rem; }
       <div class="hero-mini">
         <h1>Sort your photos by <em>the people you love</em> — automatically.</h1>
         <p>Point Famsort at a folder (like your OneDrive camera roll). It finds the faces <strong>on this device</strong>, groups them, and keeps watching for new photos. Nothing is uploaded.</p>
+      </div>
+
+      <!-- Signed-out welcome / sign-in gate. Shown when no account is connected,
+           so logged-out users see a clean "sign in or get started" screen instead
+           of the cloud input controls. -->
+      <div class="card-plain signed-out-gate" id="signedOutGate" hidden>
+        <div class="signed-out-gate__brand"><span class="brand__mark brand__mark--lg"><svg viewBox="0 0 80 80" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"><rect x="14" y="26" width="38" height="38" rx="8" transform="rotate(-13 33 45)"/><rect x="28" y="16" width="38" height="38" rx="8" transform="rotate(7 47 35)" fill="#fff"/></g><circle cx="47" cy="31" r="6" fill="#5a4cd1"/><path d="M36 51c0-7.5 5-11.5 11-11.5s11 4 11 11.5" fill="#5a4cd1"/></svg></span></div>
+        <h2 class="signed-out-gate__title">Sort your photos by the people you love</h2>
+        <p class="signed-out-gate__sub">Sign in with your Microsoft account to set up Famsort and keep your people and albums in sync across every device. Your photos are sorted <strong>on your device</strong> — nothing is uploaded for face-finding.</p>
+        <div class="signed-out-gate__actions">
+          <button class="btn btn--primary" id="gateSignInBtn" type="button">Sign in or get started</button>
+        </div>
+        <p class="signed-out-gate__fine">New here? The same button sets you up. Existing user? It brings back everything you left off with.</p>
+        <button class="linkbtn signed-out-gate__device" id="gateDeviceBtn" type="button">Set up on this device only, without an account</button>
       </div>
 
       <div class="card-plain setup-summary" id="setupSummary" hidden>
@@ -1257,6 +1314,10 @@ p { margin: 0 0 .9rem; }
         <h2 class="view__title" id="albumDetailTitle">Album</h2>
         <p class="view__sub albumdet-meta" id="albumDetailMeta"></p>
         <nav class="album-path" id="albumPath" hidden aria-label="Where this album is saved"></nav>
+        <div class="albumdet-actions" id="albumRescanWrap" hidden>
+          <button class="btn btn--ghost btn--sm" id="albumRescanBtn" type="button">🔍 Re-scan these for faces (full quality)</button>
+          <span class="albumdet-actions__hint">Runs the full face-finder on the original photos to pull people out of untagged shots.</span>
+        </div>
         <div class="album-backup" id="albumBackupBar" hidden>
           <div class="album-backup__row">
             <span class="album-backup__text" id="albumBackupText"></span>
@@ -3525,7 +3586,6 @@ async function boot() {
   await loadAutoBackup();
   await loadCloudPrefs();
   await loadAlbumPrefs();
-  el("boot").hidden = true;
   recomputePending();
   renderAll();
   renderWatched();
@@ -3533,9 +3593,24 @@ async function boot() {
   // presses “Sort my photos” to start. The watch loop (auto-backup) only kicks
   // in AFTER the first manual sort, so a reload never surprises them with a scan.
   // If this device is already signed in to OneDrive, pull down the identity
-  // model AND rebuild the sorted library from its manifest — a returning/new
-  // phone restores its people and albums automatically.
-  cloudStartup();
+  // model AND rebuild the sorted library from its manifest BEFORE we reveal the
+  // UI — a returning phone restores its people and albums first, so the user
+  // never sees stale/half counts that then jump to the real ones. Capped so a
+  // slow network can't leave the boot screen stuck.
+  const alreadyIn = cloud.oneDriveConfigured() && (cloudSignedIn || (await cloud.hasCloudAccount()));
+  if (alreadyIn) {
+    el("bootStatus").textContent = "Getting your albums ready…";
+    try {
+      await Promise.race([
+        cloudStartup(),
+        new Promise((r) => setTimeout(r, 12000)),
+      ]);
+    } catch { /* offline — background sync will catch up later */ }
+  } else {
+    cloudStartup();
+  }
+  renderAll();
+  el("boot").hidden = true;
 }
 
 /* ----------------------------------------------------- watched folders */
@@ -5694,20 +5769,30 @@ function showScanMsg(text) {
 async function connectCloud() {
   const btn = el("addCloudBtn");
   if (btn) btn.disabled = true;
+  showAuthOverlay(
+    "Opening secure sign-in\u2026",
+    "A Microsoft sign-in window will appear \u2014 complete it to continue."
+  );
   try {
     const ok = await cloud.signIn(showCloudMsg);
-    if (!ok) return false;
+    if (!ok) { hideAuthOverlay(); return false; }
     cloudSignedIn = true;
+    skipAuthGate = false;
+    // Keep the overlay up (blocking the UI) while we pull everything back, so the
+    // user never sees half-loaded "weird numbers" that then jump to the real ones.
+    setAuthOverlayMsg("Getting things ready \u2014 bringing back your people\u2026");
     // Signed in — bring back people + learning first.
     await restoreCloudModel();
     // If an organised library already exists in OneDrive, rebuild straight from
     // it (no re-downloading or re-recognising). This is instant and device-safe.
+    setAuthOverlayMsg("Rebuilding your albums\u2026");
     const restored = await rebuildFromManifest();
     renderSources();
     renderOutputLabel();
     renderAccountLine();
     renderSettingsExtras();
     loadAccountPhoto();
+    renderAll();
     if (restored > 0) {
       showCloudMsg(`Connected. Restored ${restored} sorted photo${restored === 1 ? "" : "s"}.`);
     } else {
@@ -5715,9 +5800,12 @@ async function connectCloud() {
     }
     scheduleCloudSync();
     scheduleLibrarySync();
+    // Catch the album ticks up + sweep any missing backups in the background.
+    verifyAllAlbums().then(() => backupAllAlbums());
     return true;
   } finally {
     if (btn) btn.disabled = false;
+    hideAuthOverlay();
   }
 }
 
@@ -6053,23 +6141,37 @@ async function signOutAccount() {
     return;
   const msg = el("accountMsg");
   const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  // Block the whole app with a "signing you out" screen so it never looks frozen,
+  // and so nothing can be tapped while we save + wipe.
+  showAuthOverlay(
+    "Signing you out\u2026",
+    "Saving your latest changes and clearing this device for your privacy. Please wait."
+  );
   try {
-    // Push anything still pending UP to the cloud first, so a sign-out never
+    // Stop background scanning/syncing FIRST so nothing new starts or repopulates
+    // while we're signing out.
+    if (autoSyncTimer) { clearInterval(autoSyncTimer); autoSyncTimer = null; }
+    // Let any upload/scan that's already running finish cleanly (don't cut it off
+    // mid-file). No new work can start now that the timer is cleared.
+    setAuthOverlayMsg("Finishing anything still backing up\u2026");
+    await waitForBackupsIdle(15000);
+    // Push anything still pending UP to the cloud, so a sign-out never
     // loses an unsynced edit (push-before-destroy).
     if (cloud.oneDriveConfigured() && (cloudSignedIn || (await cloud.hasCloudAccount()))) {
+      setAuthOverlayMsg("Saving your latest changes to your cloud\u2026");
       show("Saving your latest changes to your cloud\u2026");
       try {
         await cloud.saveCloudModel(buildCloudModel());
         await cloud.saveCloudLibrary(buildLibraryManifest());
       } catch { /* offline \u2014 local data is kept intact below if sign-out is cancelled */ }
     }
+    setAuthOverlayMsg("Clearing this device's temporary memory for your privacy\u2026");
     show("Clearing this device's temporary memory for your privacy\u2026");
     await cloud.signOut();
     cloudSignedIn = false;
+    skipAuthGate = false; // drop back to the signed-out welcome / sign-in gate
     msProfilePhoto = null;
     photoLoadedFor = null;
-    // Stop background scanning/syncing so nothing repopulates after the wipe.
-    if (autoSyncTimer) { clearInterval(autoSyncTimer); autoSyncTimer = null; }
     await clearLocalData();
     try { localStorage.removeItem(CONNECTED_KEY); } catch { /* ignore */ }
     show("Signed out. We removed this device's temporary memory for your privacy \u2014 nothing is stored on our servers. Sign in on any device to pick up exactly where you left off.");
@@ -6082,6 +6184,7 @@ async function signOutAccount() {
   renderOutputLabel();
   renderAll();
   navTo("add");
+  hideAuthOverlay();
 }
 
 // Wipe this device's cached library (photos, faces, people, video blobs) and the
@@ -7833,6 +7936,20 @@ async function startRescan() {
   if (ids.size) await redetectFaces(ids);
 }
 
+// Full-quality re-scan of every untagged photo, triggered from the Untagged
+// album. Uses the SAME high-accuracy engine as the main re-scan (redetectFaces
+// pulls the original full-res file, not the thumbnail) so faces missed on the
+// first pass get picked up and sorted into albums.
+async function rescanUntaggedAlbum() {
+  const ids = new Set(state.photos.filter(isUntaggedPhoto).map((p) => p.id));
+  if (!ids.size) {
+    await uiAlert("There are no untagged photos to re-scan right now.", { okLabel: "OK" });
+    return;
+  }
+  await redetectFaces(ids);
+  if (state.activeAlbum === UNTAGGED) renderAlbumDetail();
+}
+
 // Try to locate the ORIGINAL full-resolution file for a photo so re-scan can run
 // the accurate detector on real detail — not the small stored thumbnail (which
 // is why re-scanning from the thumb misses faces). We look, in order, in: the
@@ -8242,6 +8359,23 @@ function renderSetupUI() {
   const summary = el("setupSummary");
   const hero = document.querySelector("#view-add .hero-mini");
   const wizard = el("sourceWizard");
+  const gate = el("signedOutGate");
+  const tips = document.querySelector("#view-add .tips");
+  // When signed OUT, show a clean welcome / sign-in gate instead of the cloud
+  // inputs and setup — logged-out users shouldn't see OneDrive controls. They can
+  // still choose to set up on this device only (sets skipAuthGate for the session).
+  const showGate = !cloudSignedIn && !skipAuthGate;
+  if (gate) gate.hidden = !showGate;
+  if (showGate) {
+    if (hero) hero.hidden = true;
+    if (summary) summary.hidden = true;
+    if (wizard) wizard.hidden = true;
+    if (tips) tips.hidden = true;
+    const statRow = el("statRow");
+    if (statRow) statRow.hidden = true;
+    return;
+  }
+  if (tips) tips.hidden = false;
   if (hero) hero.hidden = !!state.setupDone;
   if (summary) summary.hidden = !state.setupDone;
   // Before first-run setup, show the stepped wizard; afterwards collapse it
@@ -8265,6 +8399,9 @@ function renderSetupUI() {
 // Reveal the setup wizard for editing (from the summary's "Edit" button). Keeps
 // the three panes available as plain config \u2014 no first-time step pressure.
 let configEditing = false;
+// When a logged-out user chooses "set up on this device only", we drop the
+// sign-in gate for the rest of the session so they can use the wizard offline.
+let skipAuthGate = false;
 function openSetupConfig() {
   configEditing = true;
   const wizard = el("sourceWizard");
@@ -8805,6 +8942,10 @@ function renderAlbumDetail() {
   favBtn.classList.toggle("is-on", isFavAlbum(id));
   renderAlbumPath(id, special);
   renderAlbumBackupBar(id, special);
+  // The full-quality re-scan action only applies to the Untagged album — it runs
+  // the real face-finder over the originals to pull people out of untagged shots.
+  const rescanWrap = el("albumRescanWrap");
+  if (rescanWrap) rescanWrap.hidden = id !== UNTAGGED;
 
   const grid = el("albumGrid");
 
@@ -10056,6 +10197,40 @@ async function resetAll() {
 }
 
 /* --------------------------------------------------------- navigation */
+
+// Full-screen blocking overlay used during sign-in / sign-out. It covers the
+// whole app so the user can't tap half-loaded data, and always says what's going
+// on (so logging in/out never looks like a frozen screen).
+function showAuthOverlay(status, fine) {
+  const o = el("authOverlay");
+  if (!o) return;
+  if (status) { const s = el("authOverlayStatus"); if (s) s.textContent = status; }
+  if (fine !== undefined) { const f = el("authOverlayFine"); if (f) f.textContent = fine; }
+  o.hidden = false;
+}
+function setAuthOverlayMsg(status) {
+  const s = el("authOverlayStatus");
+  if (s && status) s.textContent = status;
+}
+function hideAuthOverlay() {
+  const o = el("authOverlay");
+  if (o) o.hidden = true;
+}
+
+// Wait (briefly) for any in-flight backup / scan / reconcile to finish before we
+// wipe this device on sign-out, so we never cut off an upload mid-file. No new
+// work starts because the auto-sync timer is cleared first; this just lets what's
+// already running settle. Caps the wait so sign-out can't hang forever.
+async function waitForBackupsIdle(maxMs = 15000) {
+  const start = Date.now();
+  while (
+    (forceBackupBusy || reconcileBusy || backingUpAll || scanBusy) &&
+    Date.now() - start < maxMs
+  ) {
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
 function navTo(view) {
   document.querySelectorAll(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
   document.querySelectorAll(".tabbar__btn").forEach((b) =>
@@ -10124,6 +10299,18 @@ function wire() {
   el("accountSignInBtn").addEventListener("click", connectCloud);
   el("accountSwitchBtn").addEventListener("click", switchAccountFlow);
   el("accountSignOutBtn").addEventListener("click", signOutAccount);
+  // Signed-out welcome gate.
+  const gateSignIn = el("gateSignInBtn");
+  if (gateSignIn) gateSignIn.addEventListener("click", connectCloud);
+  const gateDevice = el("gateDeviceBtn");
+  if (gateDevice) gateDevice.addEventListener("click", () => {
+    skipAuthGate = true;
+    renderSetupUI();
+    el("sourceWizard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  // Full-quality re-scan from the Untagged album.
+  const albumRescan = el("albumRescanBtn");
+  if (albumRescan) albumRescan.addEventListener("click", rescanUntaggedAlbum);
   // Top-right account avatar menu (like normal apps).
   el("accountBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleAccountMenu(); });
   el("accountMenu").addEventListener("click", (e) => e.stopPropagation());
