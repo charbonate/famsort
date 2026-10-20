@@ -563,6 +563,7 @@ p { margin: 0 0 .9rem; }
 }
 .access-chip--viewer { background: var(--accent-2-soft, #d9efe9); color: var(--accent-2-dark, #22685b); }
 .access-chip--editor { background: var(--accent-soft, #fde2d6); color: var(--accent-dark, #c8461f); }
+.access-chip--owner { background: #efe7df; color: #7a5a3a; }
 .access-row__actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .btn--sm { padding: 5px 10px; font-size: .78rem; border-radius: 8px; }
 .access-row__remove { color: var(--danger, #c0392b); }
@@ -609,6 +610,35 @@ p { margin: 0 0 .9rem; }
 }
 .access-requests__title { margin: 0; font-size: .9rem; }
 .access-row--request { background: #fff; }
+
+/* Account details list (Account screen) */
+.account-details { margin: 10px 0 12px; display: flex; flex-direction: column; gap: 6px; }
+.account-details__row { display: flex; justify-content: space-between; gap: 12px; font-size: .86rem; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.account-details__row:last-child { border-bottom: 0; }
+.account-details dt { color: var(--ink-soft, #6b6b6b); margin: 0; }
+.account-details dd { margin: 0; font-weight: 600; text-align: right; }
+.access-row--owner { background: var(--accent-2-soft, #d9efe9); }
+.access-row__you { font-size: .72rem; color: var(--accent-2-dark, #22685b); font-weight: 700; }
+
+/* In-app confirm/alert dialog */
+.ui-modal { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 20px; }
+.ui-modal[hidden] { display: none; }
+.ui-modal__backdrop { position: absolute; inset: 0; background: rgba(20, 16, 14, .5); backdrop-filter: blur(2px); opacity: 0; transition: opacity .16s ease; }
+.ui-modal.is-open .ui-modal__backdrop { opacity: 1; }
+.ui-modal__card {
+  position: relative;
+  width: min(92vw, 420px);
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .3);
+  transform: translateY(8px) scale(.98);
+  opacity: 0;
+  transition: transform .18s ease, opacity .18s ease;
+}
+.ui-modal.is-open .ui-modal__card { transform: none; opacity: 1; }
+.ui-modal__text { margin: 0 0 18px; font-size: .95rem; line-height: 1.5; white-space: pre-line; }
+.ui-modal__actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* Cloud sources → output → sort wizard */
 .wizard { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
@@ -928,8 +958,9 @@ p { margin: 0 0 .9rem; }
       </div>
       <div class="account-menu__list">
         <button class="account-menu__item" id="accountMenuSignIn" type="button" hidden><span class="account-menu__ico">☁</span>Sign in</button>
+        <button class="account-menu__item" id="accountMenuAccount" type="button"><span class="account-menu__ico">👤</span>Your account</button>
+        <button class="account-menu__item" id="accountMenuSettings" type="button"><span class="account-menu__ico">⚙</span>Settings</button>
         <button class="account-menu__item" id="accountMenuPhoto" type="button"><span class="account-menu__ico">🙂</span>Change photo…</button>
-        <button class="account-menu__item" id="accountMenuSettings" type="button"><span class="account-menu__ico">⚙</span>Account &amp; settings</button>
         <button class="account-menu__item" id="accountMenuSwitch" type="button" hidden><span class="account-menu__ico">⇄</span>Switch account</button>
         <button class="account-menu__item account-menu__item--danger" id="accountMenuSignOut" type="button" hidden><span class="account-menu__ico">⏻</span>Sign out</button>
       </div>
@@ -1174,21 +1205,31 @@ p { margin: 0 0 .9rem; }
     </section>
 
     <!-- SETTINGS SCREEN -->
-    <section class="view" id="view-settings" data-view="settings" hidden>
-      <h2 class="view__title">Family & privacy</h2>
+    <!-- ACCOUNT SCREEN (reached from the top-right avatar menu) -->
+    <section class="view" id="view-account" data-view="account" hidden>
+      <h2 class="view__title">Your account</h2>
       <div class="card-plain">
         <h3>Your Famsort account</h3>
         <p>Famsort uses your <strong>cloud account</strong> as your login. Sign in with the <strong>same account on any device</strong> and your people, albums, output and sorting settings follow you — so your phone and laptop never get out of step.</p>
         <div class="account-line account-line--block" id="accountLineSettings" hidden></div>
+        <dl class="account-details" id="accountDetails" hidden>
+          <div class="account-details__row"><dt>Signed in as</dt><dd id="accountDetailName">—</dd></div>
+          <div class="account-details__row"><dt>Cloud</dt><dd id="accountDetailCloud">Microsoft OneDrive</dd></div>
+          <div class="account-details__row"><dt>Connected on this device</dt><dd id="accountDetailSince">—</dd></div>
+        </dl>
         <div class="btn-row">
           <button class="btn btn--primary" id="accountSignInBtn" hidden>Sign in to my cloud</button>
           <button class="btn btn--ghost" id="accountSwitchBtn" hidden>Switch account</button>
           <button class="btn btn--ghost" id="accountSignOutBtn" hidden>Sign out</button>
         </div>
         <p class="msg" id="accountMsg" hidden></p>
-        <p class="card-plain__fine">Folders you add from <strong>this device</strong> are only available on this device — cloud folders and all settings sync everywhere.</p>
+        <p class="card-plain__fine">Folders you add from <strong>this device</strong> are only available on this device — cloud folders and all settings sync everywhere. Your profile picture is pulled from your cloud account; you can also set a Famsort-only one from the avatar menu (that stays on this device).</p>
       </div>
+    </section>
 
+    <!-- SETTINGS SCREEN (reached from the top-right avatar menu) -->
+    <section class="view" id="view-settings" data-view="settings" hidden>
+      <h2 class="view__title">Settings</h2>
       <div class="card-plain">
         <h3>Invite a co-parent</h3>
         <p><strong>Viewer</strong> can see and download the photos. <strong>Editor</strong> can add, change <em>and</em> delete them. They'll get an email with a secure link — they sign in with their own cloud account.</p>
@@ -1291,9 +1332,6 @@ p { margin: 0 0 .9rem; }
     </button>
     <button class="tabbar__btn" data-nav="activity">
       <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.4-7 4.2 14 2.4-7H21"/></svg></span>Activity
-    </button>
-    <button class="tabbar__btn" data-nav="settings">
-      <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.2 14.9a1.5 1.5 0 0 0 .3 1.7l.05.05a2 2 0 1 1-2.8 2.8l-.05-.05a1.5 1.5 0 0 0-2.55 1.06V21a2 2 0 1 1-4 0v-.1A1.5 1.5 0 0 0 9.3 19.5a1.5 1.5 0 0 0-1.7.3l-.05.05a2 2 0 1 1-2.8-2.8l.05-.05A1.5 1.5 0 0 0 3.7 15H3a2 2 0 1 1 0-4h.1A1.5 1.5 0 0 0 4.5 9.3a1.5 1.5 0 0 0-.3-1.7l-.05-.05a2 2 0 1 1 2.8-2.8l.05.05a1.5 1.5 0 0 0 1.7.3H9a1.5 1.5 0 0 0 .9-1.37V3a2 2 0 1 1 4 0v.1a1.5 1.5 0 0 0 2.55 1.06l.05-.05a2 2 0 1 1 2.8 2.8l-.05.05a1.5 1.5 0 0 0-.3 1.7V9a1.5 1.5 0 0 0 1.37.9H21a2 2 0 1 1 0 4h-.1a1.5 1.5 0 0 0-1.37.9z"/></svg></span>Family
     </button>
   </nav>
 
@@ -1438,6 +1476,19 @@ p { margin: 0 0 .9rem; }
     <div class="lightbox__strip" id="lightboxStrip" hidden></div>
     <div class="lightbox__tag" id="lightboxTag"></div>
     <div class="lightbox__actions" id="lightboxActions"></div>
+  </div>
+
+  <!-- In-app confirm/alert dialog (replaces the browser's window.confirm so every
+       prompt looks like part of Famsort). -->
+  <div class="ui-modal" id="uiModal" hidden>
+    <div class="ui-modal__backdrop" id="uiModalBackdrop"></div>
+    <div class="ui-modal__card" role="alertdialog" aria-modal="true" aria-labelledby="uiModalText">
+      <p class="ui-modal__text" id="uiModalText"></p>
+      <div class="ui-modal__actions">
+        <button class="btn btn--ghost" id="uiModalCancel" type="button">Cancel</button>
+        <button class="btn btn--primary" id="uiModalOk" type="button">OK</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -3184,6 +3235,7 @@ let cloudSignedIn = false; // true once OneDrive is connected this session
 // any); a user-chosen Famsort photo in localStorage overrides it; accountWho is
 // the current name/email used for the initials fallback.
 const AVATAR_KEY = "famsort.avatar";
+const CONNECTED_KEY = "famsort.connectedAt";
 let msProfilePhoto = null;
 let accountWho = "";
 const PERSON_GLYPH = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9.3" r="3.1"/><path d="M6 18.4c0-3 2.7-4.8 6-4.8s6 1.8 6 4.8"/></svg>';
@@ -3862,7 +3914,7 @@ async function repairAlbumBackup(id) {
   if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
   const photos = albumPhotos(id);
   if (!photos.length || forceBackupBusy) return;
-  const ok = window.confirm(
+  const ok = await uiConfirm(
     `Re-upload all ${photos.length} photos in this album to OneDrive?\n\n` +
       `Use this if the album says everything is backed up but the files aren't all in OneDrive. ` +
       `Copies are replaced in place and nothing is deleted (you may briefly see a few duplicates of ` +
@@ -4226,7 +4278,7 @@ async function cleanupAlbumDuplicates(id) {
   const parts = [];
   if (identicalN) parts.push(`${identicalN} identical`);
   if (qualityN) parts.push(`${qualityN} lower-quality`);
-  const ok = window.confirm(
+  const ok = await uiConfirm(
     `Remove ${plan.length} extra file${plan.length === 1 ? "" : "s"}? (${parts.join(" + ")})\n\n` +
       `The best (highest-resolution) version of every photo is kept — these are only duplicate or smaller copies of photos you already have. Nothing unique is removed.`
   );
@@ -5391,7 +5443,7 @@ async function setSortMode(mode, fromSettings) {
   const msgEl = fromSettings ? el("sortModeSettingsMsg") : el("sortingMsg");
   const canRefile = state.outputMode === "cloud" && cloud.oneDriveConfigured() && state.photos.length > 0;
   if (fromSettings && canRefile) {
-    const ok = window.confirm(
+    const ok = await uiConfirm(
       "Change how your photos are sorted?\n\n" +
         (next === "single"
           ? "New rule: ONE copy per photo (grouped — a photo with two people lives in one album)."
@@ -5575,7 +5627,7 @@ function downscaleSquare(dataUrl, edge) {
 
 // Sign out of this device's Famsort session (the cloud account = the login).
 async function signOutAccount() {
-  if (!confirm("Sign out of Famsort on this device? Your photos and albums stay safe in your cloud — you can sign back in anytime.")) return;
+  if (!(await uiConfirm("Sign out of Famsort on this device? Your photos and albums stay safe in your cloud — you can sign back in anytime.", { okLabel: "Sign out" }))) return;
   const msg = el("accountMsg");
   const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
   show("Signing out…");
@@ -5584,6 +5636,7 @@ async function signOutAccount() {
     cloudSignedIn = false;
     msProfilePhoto = null;
     photoLoadedFor = null;
+    try { localStorage.removeItem(CONNECTED_KEY); } catch { /* ignore */ }
     show("Signed out. Sign in again to pick up your albums on this device.");
   } catch {
     show("Couldn't sign out cleanly — try again.");
@@ -5641,6 +5694,37 @@ function renderSettingsExtras() {
   renderSortModeUI();
 }
 
+// Refresh the Account screen: identity line, the details list (who / which cloud /
+// when this device first connected). The display picture comes from the cloud
+// account (see loadAccountPhoto → cloud.profilePhoto).
+async function renderAccountExtras() {
+  renderAccountLine();
+  let info = null;
+  try { if (cloud.oneDriveConfigured()) info = await cloud.accountInfo(); } catch { info = null; }
+  const details = el("accountDetails");
+  if (details) details.hidden = !info;
+  if (!info) return;
+  const nameEl = el("accountDetailName");
+  if (nameEl) {
+    nameEl.textContent = info.name && info.name !== info.username
+      ? `${info.name} (${info.username})`
+      : (info.username || info.name || "—");
+  }
+  // Device-local record of when this device first connected (OneDrive doesn't
+  // expose an account-created date to a browser app, so we show what we can know).
+  let since = null;
+  try {
+    since = localStorage.getItem(CONNECTED_KEY);
+    if (!since) { since = new Date().toISOString(); localStorage.setItem(CONNECTED_KEY, since); }
+  } catch { /* storage blocked — leave blank */ }
+  const sinceEl = el("accountDetailSince");
+  if (sinceEl) {
+    sinceEl.textContent = since
+      ? new Date(since).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+      : "—";
+  }
+}
+
 // Human label for a OneDrive role. Personal OneDrive only enforces two levels:
 // read = Viewer, write = Editor (which genuinely includes add, change AND delete).
 function roleLabel(role) {
@@ -5665,11 +5749,12 @@ async function renderInviteAccess() {
     return;
   }
   box.innerHTML = `<p class="access-empty">Checking who has access…</p>`;
-  let list = null, config = null;
+  let list = null, config = null, me = null;
   try {
-    [list, config] = await Promise.all([
+    [list, config, me] = await Promise.all([
       cloud.listFolderPermissions(path),
       cloud.readAccessConfig(path),
+      cloud.accountInfo().catch(() => null),
     ]);
   } catch { list = null; }
   if (mine !== inviteAccessToken) return; // a newer render superseded this one
@@ -5680,10 +5765,22 @@ async function renderInviteAccess() {
     box.innerHTML = `<p class="access-empty">Couldn't check access — make sure you're signed in.</p>`;
     return;
   }
+  // The current user owns these albums — always show them first so "who has
+  // access" is the full picture, not just the people they invited.
+  const ownerName = me ? (me.name || me.username || "You") : "You";
+  const ownerEmail = me && me.username && me.username !== me.name ? me.username : "";
+  const ownerRow = `
+    <div class="access-row access-row--owner">
+      <div class="access-row__who">
+        <span class="access-row__name">${escapeHtml(ownerName)} <span class="access-row__you">You</span></span>
+        ${ownerEmail ? `<span class="access-row__email">${escapeHtml(ownerEmail)}</span>` : ""}
+      </div>
+      <span class="access-chip access-chip--owner">Owner</span>
+    </div>`;
+  box.innerHTML = ownerRow;
   if (!list.length) {
-    box.innerHTML = `<p class="access-empty">No one else has access to this album yet.</p>`;
+    box.insertAdjacentHTML("beforeend", `<p class="access-empty">No one else has access to this album yet.</p>`);
   } else {
-    box.innerHTML = "";
     for (const p of list) {
       const row = document.createElement("div");
       row.className = "access-row";
@@ -5860,7 +5957,7 @@ async function changeAccessRole(permId, role) {
 }
 
 async function removeAccess(permId) {
-  if (!confirm("Remove this person's access to the album? They'll no longer be able to see it.")) return;
+  if (!(await uiConfirm("Remove this person's access to the album? They'll no longer be able to see it.", { danger: true, okLabel: "Remove" }))) return;
   const path = el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
   const msg = el("inviteMsg");
   const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
@@ -6565,7 +6662,7 @@ async function removeAllDuplicates() {
   const toRemove = [];
   for (const g of dupGroups) for (let i = 1; i < g.length; i++) toRemove.push(g[i].id);
   if (!toRemove.length) return;
-  if (!confirm(`Remove ${toRemove.length} duplicate cop${toRemove.length === 1 ? "y" : "ies"}? The best-quality copy of each is kept. Your original files are not touched.`)) return;
+  if (!(await uiConfirm(`Remove ${toRemove.length} duplicate cop${toRemove.length === 1 ? "y" : "ies"}? The best-quality copy of each is kept. Your original files are not touched.`, { okLabel: "Remove" }))) return;
   for (const id of toRemove) await deletePhotoRecord(id);
   dupGroups = [];
   recomputePending();
@@ -7296,7 +7393,7 @@ async function deletePerson() {
   const p = state.people.find((x) => x.id === editingPersonId);
   if (!p) return closePersonEdit();
   const count = state.photos.filter((ph) => ph.personIds.includes(p.id)).length;
-  if (!confirm(`Delete "${p.name}"? Their album is removed and ${count} photo${count === 1 ? "" : "s"} go back to "to name". Your original files aren't touched.`)) return;
+  if (!(await uiConfirm(`Delete "${p.name}"? Their album is removed and ${count} photo${count === 1 ? "" : "s"} go back to "to name". Your original files aren't touched.`, { danger: true, okLabel: "Delete" }))) return;
 
   const id = p.id;
   // Faces tagged as this person → back to unassigned.
@@ -9018,7 +9115,7 @@ async function rebuildFromWatched() {
     showScanMsg("Add a watched folder first — then this re-scans it with the latest AI.");
     return;
   }
-  if (!confirm("Re-scan your watched folders with the latest AI?\n\nYour named people AND your manual album tags are kept. Photo thumbnails and face groups are rebuilt from the originals.")) return;
+  if (!(await uiConfirm("Re-scan your watched folders with the latest AI?\n\nYour named people AND your manual album tags are kept. Photo thumbnails and face groups are rebuilt from the originals.", { okLabel: "Re-scan" }))) return;
   const didRun = await withScanLock(async () => {
     // Remember every hand-made album membership (keyed by filename) so a re-scan
     // never empties an album the user built by hand.
@@ -9062,7 +9159,7 @@ async function rebuildFromWatched() {
 }
 
 async function resetAll() {
-  if (!confirm("Delete all Famsort data on this device? Your original photos are not affected.")) return;
+  if (!(await uiConfirm("Delete all Famsort data on this device? Your original photos are not affected.", { danger: true, okLabel: "Delete everything" }))) return;
   await db.clearAll();
   state.people = [];
   state.photos = [];
@@ -9091,6 +9188,7 @@ function navTo(view) {
     b.classList.toggle("is-active", b.dataset.nav === view)
   );
   if (view === "activity") renderActivity();
+  if (view === "account") renderAccountExtras();
   if (view === "settings") renderSettingsExtras();
   window.scrollTo(0, 0);
   // Replay the slide+fade so switching tabs feels like a native screen change.
@@ -9100,6 +9198,38 @@ function navTo(view) {
     void active.offsetWidth; // force reflow so the animation restarts
     active.classList.add("view--enter");
   }
+}
+
+// In-app confirm/alert dialog — replaces the browser's window.confirm so every
+// prompt and warning looks like part of Famsort. Returns a Promise<boolean>.
+let uiModalResolve = null;
+function uiConfirm(message, opts = {}) {
+  const modal = el("uiModal");
+  const text = el("uiModalText");
+  const ok = el("uiModalOk");
+  const cancel = el("uiModalCancel");
+  if (!modal || !text || !ok || !cancel) return Promise.resolve(window.confirm(message));
+  if (uiModalResolve) closeUiModal(false); // resolve any dialog already open
+  text.textContent = message;
+  ok.textContent = opts.okLabel || "OK";
+  cancel.textContent = opts.cancelLabel || "Cancel";
+  ok.classList.toggle("btn--danger", !!opts.danger);
+  ok.classList.toggle("btn--primary", !opts.danger);
+  cancel.hidden = opts.alert === true; // alert mode = single OK button
+  modal.hidden = false;
+  requestAnimationFrame(() => modal.classList.add("is-open"));
+  ok.focus();
+  return new Promise((resolve) => { uiModalResolve = resolve; });
+}
+function uiAlert(message, opts = {}) {
+  return uiConfirm(message, { ...opts, alert: true });
+}
+function closeUiModal(result) {
+  const modal = el("uiModal");
+  if (modal) { modal.classList.remove("is-open"); modal.hidden = true; }
+  const r = uiModalResolve;
+  uiModalResolve = null;
+  if (r) r(result);
 }
 
 /* ------------------------------------------------------------- wiring */
@@ -9125,10 +9255,19 @@ function wire() {
   el("accountMenu").addEventListener("click", (e) => e.stopPropagation());
   document.addEventListener("click", closeAccountMenu);
   el("accountMenuPhoto").addEventListener("click", () => el("avatarPicker").click());
+  el("accountMenuAccount").addEventListener("click", () => { closeAccountMenu(); navTo("account"); });
   el("accountMenuSettings").addEventListener("click", () => { closeAccountMenu(); navTo("settings"); });
   el("accountMenuSwitch").addEventListener("click", () => { closeAccountMenu(); switchAccountFlow(); });
   el("accountMenuSignOut").addEventListener("click", () => { closeAccountMenu(); signOutAccount(); });
   el("accountMenuSignIn").addEventListener("click", () => { closeAccountMenu(); connectCloud(); });
+  // In-app confirm/alert dialog buttons.
+  el("uiModalOk").addEventListener("click", () => closeUiModal(true));
+  el("uiModalCancel").addEventListener("click", () => closeUiModal(false));
+  el("uiModalBackdrop").addEventListener("click", () => closeUiModal(false));
+  document.addEventListener("keydown", (e) => {
+    const m = el("uiModal");
+    if (m && !m.hidden && e.key === "Escape") closeUiModal(false);
+  });
   el("avatarPicker").addEventListener("change", (e) => {
     const f = e.target.files && e.target.files[0];
     changeAvatarFromPicker(f);
