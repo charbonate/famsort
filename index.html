@@ -281,6 +281,33 @@ p { margin: 0 0 .9rem; }
 .tips h3 { font-size: .9rem; text-transform: uppercase; letter-spacing: .1em; color: var(--accent-dark); margin-bottom: .3rem; }
 .tips p { margin: 0; color: var(--ink-soft); font-size: .92rem; }
 
+/* Short intro line shown under a view title (e.g. the Family screen). */
+.view__intro { color: var(--ink-soft); margin: -4px 0 16px; max-width: 60ch; }
+
+/* Family tree: stacked generation rows of round avatar cards, with a thin
+   connector between rows so it reads like a tree. */
+.famtree { display: flex; flex-direction: column; gap: 20px; }
+.famtier { position: relative; }
+.famtier + .famtier::before { content: ""; position: absolute; top: -20px; left: 50%; width: 2px; height: 20px;
+  background: var(--line); transform: translateX(-50%); }
+.famtier__title { font-size: .82rem; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--accent-dark); margin-bottom: 10px; text-align: center; }
+.famtier__hint { font-size: .82rem; color: var(--ink-soft); text-align: center; margin: -6px 0 10px; }
+.famtier__row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.fam-card { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 92px;
+  padding: 10px 6px; border: 1px solid var(--line); border-radius: 16px; background: #fff; cursor: pointer;
+  transition: border-color .12s, transform .12s, box-shadow .12s; }
+.fam-card:hover, .fam-card:focus-visible { border-color: var(--accent-soft); outline: none;
+  transform: translateY(-2px); box-shadow: 0 10px 20px -12px rgba(20,16,14,.4); }
+.fam-card__avatar { width: 60px; height: 60px; border-radius: 50%; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; background: var(--cream-2); font-size: 1.6rem; }
+.fam-card__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.fam-card__name { font-weight: 700; font-size: .82rem; color: var(--ink); text-align: center;
+  line-height: 1.15; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fam-card__rel { font-size: .68rem; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft, #f3cfcc); padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.famtier--unplaced .fam-card { opacity: .92; }
+
 /* People grid */
 .people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
 /* "Found — needs tagging" block on the Albums screen */
@@ -1182,6 +1209,7 @@ p { margin: 0 0 .9rem; }
       <div class="account-menu__list">
         <button class="account-menu__item" id="accountMenuSignIn" type="button" hidden><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></span>Sign in</button>
         <button class="account-menu__item" id="accountMenuAccount" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5c0-3.3 2.9-5.2 6.5-5.2s6.5 1.9 6.5 5.2"/></svg></span>Your account</button>
+        <button class="account-menu__item" id="accountMenuSharing" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.1"/><path d="M3.6 19c0-2.9 2.4-4.7 5.4-4.7 1 0 2 .22 2.8.6"/><path d="M18 13v6M15 16h6"/></svg></span>Invite &amp; sharing</button>
         <button class="account-menu__item" id="accountMenuSetup" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M4 12h16M4 17h7"/><circle cx="18" cy="7" r="2"/><circle cx="14" cy="17" r="2"/></svg></span>Setup &amp; sources</button>
         <button class="account-menu__item" id="accountMenuSettings" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.2 14.9a1.5 1.5 0 0 0 .3 1.7 2 2 0 1 1-2.8 2.8 1.5 1.5 0 0 0-2.55 1.06 2 2 0 1 1-4 0A1.5 1.5 0 0 0 7.6 19.5a1.5 1.5 0 0 0-1.7.3 2 2 0 1 1-2.8-2.8 1.5 1.5 0 0 0 .3-1.7A1.5 1.5 0 0 0 2 13.9a2 2 0 1 1 0-4 1.5 1.5 0 0 0 1.4-1.4 1.5 1.5 0 0 0-.3-1.7 2 2 0 1 1 2.8-2.8 1.5 1.5 0 0 0 1.7.3h.1A1.5 1.5 0 0 0 9.9 3a2 2 0 1 1 4 0 1.5 1.5 0 0 0 .9 1.4 1.5 1.5 0 0 0 1.7-.3 2 2 0 1 1 2.8 2.8 1.5 1.5 0 0 0-.3 1.7v.1a1.5 1.5 0 0 0 1.4.9 2 2 0 1 1 0 4 1.5 1.5 0 0 0-1.4.9z"/></svg></span>Settings</button>
         <button class="account-menu__item" id="accountMenuActivity" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.4-7 4.2 14 2.4-7H21"/></svg></span>App activity log</button>
@@ -1397,9 +1425,9 @@ p { margin: 0 0 .9rem; }
         <div class="home-backup__track" id="homeBackupTrack" hidden><div class="home-backup__fill" id="homeBackupFill"></div></div>
       </div>
 
-      <div class="tips">
-        <h3>Tip</h3>
-        <p>Start with 20–50 photos that include the people you want to sort by. You can keep adding more later and they'll sort themselves.</p>
+      <div class="tips" id="tipsCard">
+        <h3 id="tipsTitle">Tip</h3>
+        <p id="tipsBody">Point Famsort at your whole camera-roll folder &mdash; it sorts everything it finds, so there's no need to pick photos one by one.</p>
       </div>
     </section>
 
@@ -1516,6 +1544,59 @@ p { margin: 0 0 .9rem; }
       </div>
     </section>
 
+    <!-- FAMILY SCREEN (a family tree built from each person's relationship-to-you) -->
+    <section class="view" id="view-family" data-view="family" hidden>
+      <h2 class="view__title">Your family</h2>
+      <p class="view__intro">The people in your albums, laid out by how they're related to you. Set a person's relationship from their album's <strong>Edit</strong> button and they'll take their place here. Tap anyone to open their album.</p>
+      <div class="famtree" id="famTree"></div>
+      <div class="empty" id="famEmpty" hidden>
+        <p>No relationships set yet. Open an album, tap <strong>Edit</strong>, and choose how that person is related to you &mdash; they'll appear in your family tree.</p>
+      </div>
+    </section>
+
+    <!-- INVITE &amp; SHARING SCREEN (reached from the top-right avatar menu) -->
+    <section class="view" id="view-sharing" data-view="sharing" hidden>
+      <h2 class="view__title">Invite &amp; sharing</h2>
+      <div class="card-plain">
+        <h3>Invite someone to your albums</h3>
+        <p>Share one album &mdash; or everything &mdash; with a partner, grandparent, or anyone you choose. <strong>Viewer</strong> can see and download the photos. <strong>Editor</strong> can add, change <em>and</em> delete them. They'll get an email with a secure link and sign in with their own cloud account.</p>
+        <div class="field-row">
+          <input class="text-input" id="inviteEmail" type="email" inputmode="email" autocomplete="off" spellcheck="false" placeholder="their email address" />
+        </div>
+        <div class="field-row">
+          <select class="text-input" id="inviteAlbum"></select>
+          <select class="text-input" id="inviteRole">
+            <option value="read">Viewer (can see)</option>
+            <option value="write">Editor (add, change, delete)</option>
+          </select>
+        </div>
+        <label class="invite-manage">Can they invite others too?
+          <select class="text-input" id="inviteManage">
+            <option value="none">No &mdash; just them</option>
+            <option value="read">Yes, up to Viewer</option>
+            <option value="write">Yes, up to Editor</option>
+          </select>
+        </label>
+        <div class="btn-row">
+          <button class="btn btn--primary" id="inviteSendBtn">Send invite</button>
+        </div>
+        <p class="msg" id="inviteMsg" hidden></p>
+        <div class="access-requests" id="inviteRequests" hidden></div>
+        <div class="access-tracker">
+          <h4 class="access-tracker__title">Who has access</h4>
+          <div class="access-list" id="inviteAccessList"></div>
+          <p class="card-plain__fine">OneDrive supports two levels: <strong>Viewer</strong> and <strong>Editor</strong>. “Add-only” and “admin” aren’t possible on a personal cloud account. When you let someone invite others, <strong>you still approve each request</strong> &mdash; the actual access is always granted from your account.</p>
+        </div>
+      </div>
+
+      <div class="card-plain">
+        <h3>Albums shared with you</h3>
+        <p>Albums someone else has shared with you show up here. If they've made you a <strong>manager</strong>, you can request to add other viewers or editors &mdash; the album's owner approves each request from their device.</p>
+        <div class="shared-list" id="sharedList"></div>
+        <p class="card-plain__fine">Use <strong>Scan this album for faces</strong> on any shared album to recognise who's in its photos and sort them into your own albums. Photos are downloaded only to detect faces and removed from your device afterwards &mdash; unless your output location is this device. Requesting to add someone else needs <strong>edit access</strong> to the shared album.</p>
+      </div>
+    </section>
+
     <!-- SETTINGS SCREEN -->
     <!-- ACCOUNT SCREEN (reached from the top-right avatar menu) -->
     <section class="view" id="view-account" data-view="account" hidden>
@@ -1549,42 +1630,11 @@ p { margin: 0 0 .9rem; }
     <section class="view" id="view-settings" data-view="settings" hidden>
       <h2 class="view__title">Settings</h2>
       <div class="card-plain">
-        <h3>Invite a co-parent</h3>
-        <p><strong>Viewer</strong> can see and download the photos. <strong>Editor</strong> can add, change <em>and</em> delete them. They'll get an email with a secure link — they sign in with their own cloud account.</p>
-        <div class="field-row">
-          <input class="text-input" id="inviteEmail" type="email" inputmode="email" autocomplete="off" spellcheck="false" placeholder="their email address" />
-        </div>
-        <div class="field-row">
-          <select class="text-input" id="inviteAlbum"></select>
-          <select class="text-input" id="inviteRole">
-            <option value="read">Viewer (can see)</option>
-            <option value="write">Editor (add, change, delete)</option>
-          </select>
-        </div>
-        <label class="invite-manage">Can they invite others too?
-          <select class="text-input" id="inviteManage">
-            <option value="none">No — just them</option>
-            <option value="read">Yes, up to Viewer</option>
-            <option value="write">Yes, up to Editor</option>
-          </select>
-        </label>
+        <h3>Invite &amp; sharing</h3>
+        <p>Invite family or friends to your albums, and see albums others have shared with you &mdash; now on its own screen.</p>
         <div class="btn-row">
-          <button class="btn btn--primary" id="inviteSendBtn">Send invite</button>
+          <button class="btn btn--primary" id="settingsToSharingBtn" type="button">Open invite &amp; sharing &rarr;</button>
         </div>
-        <p class="msg" id="inviteMsg" hidden></p>
-        <div class="access-requests" id="inviteRequests" hidden></div>
-        <div class="access-tracker">
-          <h4 class="access-tracker__title">Who has access</h4>
-          <div class="access-list" id="inviteAccessList"></div>
-          <p class="card-plain__fine">OneDrive supports two levels: <strong>Viewer</strong> and <strong>Editor</strong>. “Add-only” and “admin” aren’t possible on a personal cloud account. When you let a co-parent invite others, <strong>you still approve each request</strong> — the actual access is always granted from your account.</p>
-        </div>
-      </div>
-
-      <div class="card-plain">
-        <h3>Albums shared with you</h3>
-        <p>Albums a co-parent has shared with you show up here. If they've made you a <strong>manager</strong>, you can request to add other viewers or editors — the album's owner approves each request from their device.</p>
-        <div class="shared-list" id="sharedList"></div>
-        <p class="card-plain__fine">Use <strong>Scan this album for faces</strong> on any shared album to recognise who's in its photos and sort them into your own albums. Photos are downloaded only to detect faces and removed from your device afterwards — unless your output location is this device. Requesting to add someone else needs <strong>edit access</strong> to the shared album.</p>
       </div>
 
       <div class="card-plain">
@@ -1651,6 +1701,9 @@ p { margin: 0 0 .9rem; }
     </button>
     <button class="tabbar__btn" data-nav="albums">
       <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2.6"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 16.5l3.8-3.3 3 2.5L15 11l4.5 4.2"/></svg></span>Albums
+    </button>
+    <button class="tabbar__btn" data-nav="family">
+      <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="8.5" r="2.3"/><circle cx="17" cy="8.5" r="2.3"/><circle cx="12" cy="16.5" r="2.3"/><path d="M7 10.8v1.4a2 2 0 0 0 2 2h1M17 10.8v1.4a2 2 0 0 1-2 2h-1"/></svg></span>Family
     </button>
   </nav>
 
@@ -6795,9 +6848,99 @@ function renderInviteAlbums() {
 // Refresh the parts of the settings screen that depend on live account/album state.
 function renderSettingsExtras() {
   renderAccountLine();
-  renderInviteAlbums();
   renderSortModeUI();
+}
+
+// Invite & sharing lives on its own screen (reached from the avatar menu). It
+// holds the invite form + "who has access" tracker and the albums shared WITH
+// this account.
+function renderSharingExtras() {
+  renderAccountLine();
+  renderInviteAlbums();
   renderSharedAlbums();
+}
+
+// --- Family tree -----------------------------------------------------------
+// A light "family tree": we don't store pairwise parent/child links, we simply
+// group everyone by their relationship-to-you (person.relationship) into
+// generations. Set a relationship from a person's album Edit button and they
+// slot into the right row here.
+const FAMILY_TIERS = [
+  { key: "grandparents", title: "Grandparents", rels: ["Grandmother", "Grandfather"] },
+  { key: "parents", title: "Parents & their generation", rels: ["Mother", "Father", "Aunt", "Uncle"] },
+  { key: "you", title: "You & your generation", rels: ["Me", "Wife", "Husband", "Partner", "Sister", "Brother", "Cousin"] },
+  { key: "children", title: "Children", rels: ["Child", "Daughter", "Son", "Niece", "Nephew"] },
+  { key: "friends", title: "Friends & others", rels: ["Friend", "Other"] },
+];
+const REL_TO_TIER = (() => {
+  const m = new Map();
+  for (const t of FAMILY_TIERS) for (const r of t.rels) m.set(r, t.key);
+  return m;
+})();
+
+function renderFamily() {
+  const wrap = el("famTree");
+  const empty = el("famEmpty");
+  if (!wrap) return;
+  const people = namedPeopleHere();
+  const buckets = new Map(FAMILY_TIERS.map((t) => [t.key, []]));
+  const unplaced = [];
+  for (const p of people) {
+    const tier = REL_TO_TIER.get(p.relationship);
+    if (tier) buckets.get(tier).push(p);
+    else unplaced.push(p);
+  }
+  const placed = FAMILY_TIERS.reduce((n, t) => n + buckets.get(t.key).length, 0);
+  wrap.innerHTML = "";
+  if (!placed && !unplaced.length) {
+    wrap.hidden = true;
+    if (empty) empty.hidden = false;
+    return;
+  }
+  wrap.hidden = false;
+  if (empty) empty.hidden = true;
+
+  const card = (p) => {
+    const cover = albumCover(p.id, p);
+    const rel = p.relationship === "Me" ? "You" : (p.relationship || "");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "fam-card";
+    btn.innerHTML =
+      `<span class="fam-card__avatar">${cover ? `<img src="${cover}" alt="" />` : "\uD83D\uDC64"}</span>` +
+      `<span class="fam-card__name">${escapeHtml(p.name)}</span>` +
+      (rel ? `<span class="fam-card__rel">${escapeHtml(rel)}</span>` : "");
+    btn.addEventListener("click", () => { navTo("albums"); openAlbum(p.id); });
+    return btn;
+  };
+
+  const addTier = (title, list, opts = {}) => {
+    if (!list.length) return;
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    const tier = document.createElement("div");
+    tier.className = "famtier" + (opts.unplaced ? " famtier--unplaced" : "");
+    const h = document.createElement("h3");
+    h.className = "famtier__title";
+    h.textContent = title;
+    tier.appendChild(h);
+    if (opts.hint) {
+      const hint = document.createElement("p");
+      hint.className = "famtier__hint";
+      hint.textContent = opts.hint;
+      tier.appendChild(hint);
+    }
+    const row = document.createElement("div");
+    row.className = "famtier__row";
+    for (const p of list) row.appendChild(card(p));
+    tier.appendChild(row);
+    wrap.appendChild(tier);
+  };
+
+  for (const t of FAMILY_TIERS) addTier(t.title, buckets.get(t.key));
+  addTier("Not placed yet", unplaced, {
+    unplaced: true,
+    hint: "Open an album, tap Edit and choose how they're related to add them to the tree.",
+  });
 }
 
 // Co-parent (inbound) side: list albums shared WITH this account. For albums
@@ -6879,7 +7022,7 @@ async function requestAddToShared(s, cap, form) {
   const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { show("Enter a valid email address."); return; }
   const me = await cloud.accountInfo().catch(() => null);
-  const by = (me && (me.username || me.name)) || "a co-parent";
+  const by = (me && (me.username || me.name)) || "someone";
   show("Sending request…");
   try {
     const config = (await cloud.readSharedAccessConfig(s.driveId, s.itemId)) || {};
@@ -11503,6 +11646,31 @@ async function waitForBackupsIdle(maxMs = 15000) {
   }
 }
 
+// Rotating home-screen tips. Each time the Add screen is shown we advance to the
+// next hint. Replaces the old static "start with 20–50 photos" tip, which no
+// longer fits the flow now that people point Famsort at a whole folder/camera
+// roll rather than hand-picking a small batch.
+const HOME_TIPS = [
+  ["Point at a whole folder", "Aim Famsort at your whole camera-roll or OneDrive folder \u2014 it sorts everything it finds, so there's no need to pick photos one by one."],
+  ["Tag once, sorted for good", "Name a face once and every photo of that person \u2014 past and future \u2014 lands in their album automatically."],
+  ["Mix your sources", "Add as many places as you like: your phone gallery, a OneDrive folder and a laptop folder can all feed the same albums."],
+  ["Fix a mix-up, it learns", "If the AI confuses two look-alikes, open an album, tap the face and correct it \u2014 Famsort remembers the fix."],
+  ["Build your family tree", "Set each person's relationship from their album's Edit button to see them laid out in the new Family tab."],
+  ["Share with family", "Invite a partner or grandparent from the avatar menu \u2192 Invite & sharing. They sign in with their own cloud account."],
+  ["Videos count too", "Famsort looks for faces in video frames, not just photos \u2014 so people in your clips get sorted as well."],
+  ["Private by design", "Finding faces runs on this device \u2014 nothing is uploaded for that. Only the sorted album copies go to your cloud backup."],
+];
+let homeTipIndex = Math.floor(Math.random() * HOME_TIPS.length);
+function renderHomeTip() {
+  const title = el("tipsTitle");
+  const body = el("tipsBody");
+  if (!title || !body) return;
+  const [t, b] = HOME_TIPS[homeTipIndex % HOME_TIPS.length];
+  title.textContent = t;
+  body.textContent = b;
+  homeTipIndex = (homeTipIndex + 1) % HOME_TIPS.length;
+}
+
 function navTo(view) {
   document.querySelectorAll(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
   document.querySelectorAll(".tabbar__btn").forEach((b) =>
@@ -11511,6 +11679,9 @@ function navTo(view) {
   if (view === "activity") renderActivity();
   if (view === "account") renderAccountExtras();
   if (view === "settings") renderSettingsExtras();
+  if (view === "sharing") renderSharingExtras();
+  if (view === "family") renderFamily();
+  if (view === "add") renderHomeTip();
   // Both the home (Add) and Albums screens kick off a background back-up of
   // anything still outstanding, so it keeps moving on its own wherever the user
   // is — not only when they open Albums (which is why it could look stuck).
@@ -11633,12 +11804,15 @@ function wire() {
   el("accountMenu").addEventListener("click", (e) => e.stopPropagation());
   document.addEventListener("click", closeAccountMenu);
   el("accountMenuAccount").addEventListener("click", () => { closeAccountMenu(); navTo("account"); });
+  el("accountMenuSharing").addEventListener("click", () => { closeAccountMenu(); navTo("sharing"); });
   el("accountMenuSetup").addEventListener("click", () => { closeAccountMenu(); navTo("add"); openSetupConfig(); });
   el("accountMenuSettings").addEventListener("click", () => { closeAccountMenu(); navTo("settings"); });
   el("accountMenuActivity").addEventListener("click", () => { closeAccountMenu(); navTo("activity"); });
   el("accountMenuSwitch").addEventListener("click", () => { closeAccountMenu(); switchAccountFlow(); });
   el("accountMenuSignOut").addEventListener("click", () => { closeAccountMenu(); signOutAccount(); });
   el("accountMenuSignIn").addEventListener("click", () => { closeAccountMenu(); connectCloud(); });
+  const toSharingBtn = el("settingsToSharingBtn");
+  if (toSharingBtn) toSharingBtn.addEventListener("click", () => navTo("sharing"));
   el("accountChangePhotoBtn").addEventListener("click", () => el("avatarPicker").click());
   // In-app confirm/alert dialog buttons.
   el("uiModalOk").addEventListener("click", () => closeUiModal(true));
