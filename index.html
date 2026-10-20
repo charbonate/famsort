@@ -794,6 +794,9 @@ p { margin: 0 0 .9rem; }
 .albums-backup.is-done .libstat__item { background: rgba(255,255,255,.65); }
 .libstat__num { font-size: 1.3rem; font-weight: 800; color: var(--accent); line-height: 1.1; }
 .libstat__label { font-size: .72rem; color: var(--ink-soft); margin-top: 2px; }
+/* Home-screen pipeline variant (sourced → sorted → backed up), stands on its own. */
+.libstat--pipe { margin: 14px 0 0; }
+.libstat--pipe .libstat__num { font-size: 1.5rem; }
 
 /* Divider between the fixed "Everyone/Untagged" specials and the sortable
    person albums on the Albums index. Spans the full grid width. */
@@ -1265,6 +1268,14 @@ p { margin: 0 0 .9rem; }
         <button type="button" class="stat" id="statDupesBtn"><span class="stat__num" id="statDupes">0</span><span class="stat__label">duplicates</span></button>
       </div>
 
+      <!-- Library pipeline at a glance: everything brought in → how many got sorted
+           into a person's album → how many are safely backed up. -->
+      <div class="libstat libstat--pipe" id="libraryStats" hidden>
+        <div class="libstat__item"><span class="libstat__num" id="libStatSourced">0</span><span class="libstat__label">sourced</span></div>
+        <div class="libstat__item"><span class="libstat__num" id="libStatSorted">0</span><span class="libstat__label">sorted into albums</span></div>
+        <div class="libstat__item"><span class="libstat__num" id="libStatBackedUp">0</span><span class="libstat__label">backed up</span></div>
+      </div>
+
       <div class="tips">
         <h3>Tip</h3>
         <p>Start with 20–50 photos that include the people you want to sort by. You can keep adding more later and they'll sort themselves.</p>
@@ -1301,11 +1312,6 @@ p { margin: 0 0 .9rem; }
           </label>
         </div>
         <div class="albums-backup" id="albumsBackupSummary" hidden>
-          <div class="libstat">
-            <div class="libstat__item"><span class="libstat__num" id="libStatSourced">0</span><span class="libstat__label">sourced</span></div>
-            <div class="libstat__item"><span class="libstat__num" id="libStatSorted">0</span><span class="libstat__label">sorted into albums</span></div>
-            <div class="libstat__item"><span class="libstat__num" id="libStatBackedUp">0</span><span class="libstat__label">backed up</span></div>
-          </div>
           <div class="albums-backup__row">
             <span class="albums-backup__text" id="albumsBackupText"></span>
           </div>
@@ -8423,6 +8429,8 @@ function renderSetupUI() {
     if (tips) tips.hidden = true;
     const statRow = el("statRow");
     if (statRow) statRow.hidden = true;
+    const libStats = el("libraryStats");
+    if (libStats) libStats.hidden = true;
     return;
   }
   if (tips) tips.hidden = false;
@@ -8472,6 +8480,23 @@ function renderStats() {
   const dupBtn = el("statDupesBtn");
   if (dupBtn) dupBtn.classList.toggle("stat--alert", dupeExtras > 0);
   el("statRow").hidden = state.photos.length === 0 && people === 0;
+
+  // Library pipeline on the home screen: sourced → sorted into albums → backed up.
+  const libWrap = el("libraryStats");
+  if (libWrap) {
+    if (!state.photos.length) {
+      libWrap.hidden = true;
+    } else {
+      libWrap.hidden = false;
+      const { total, done } = albumsBackupTotals();
+      const device = state.outputMode === "device" && !!state.outputHandle;
+      const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+      const canBackup = (device || cloudOK) && state.autoBackup;
+      el("libStatSourced").textContent = state.photos.length;
+      el("libStatSorted").textContent = total;
+      el("libStatBackedUp").textContent = canBackup ? done : "\u2014";
+    }
+  }
 }
 
 function renderPeople() {
@@ -8784,24 +8809,16 @@ function albumsBackupTotals() {
   return { total, done };
 }
 
-// The one overall status + live numbers for the whole Albums screen, so the user
-// sees progress at a glance WITHOUT opening each album: how many photos are
-// sourced, how many sorted into albums, and how many are backed up. Backing up
-// happens automatically (no button) — this is a pure read-out.
+// The Albums screen's sync status at a glance: how many album photos are backed
+// up out of the total, and how many are still syncing. Backing up happens
+// automatically (no button). The sourced/sorted/backed-up totals live on the
+// home screen now — this bar is purely the pending/sync read-out.
 function renderAlbumsBackupSummary() {
   const bar = el("albumsBackupSummary");
   if (!bar) return;
-  if (!state.photos.length) { bar.hidden = true; return; }
-  bar.hidden = false;
-
-  const sourced = state.photos.length;
   const { total, done } = albumsBackupTotals();
-  const sorted = total; // distinct photos filed into at least one person's album
-  const srcEl = el("libStatSourced");
-  const sortEl = el("libStatSorted");
-  const backEl = el("libStatBackedUp");
-  if (srcEl) srcEl.textContent = sourced;
-  if (sortEl) sortEl.textContent = sorted;
+  if (!total) { bar.hidden = true; return; }
+  bar.hidden = false;
 
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
@@ -8810,10 +8827,8 @@ function renderAlbumsBackupSummary() {
   const fill = el("albumsBackupFill");
   const track = el("albumsBackupTrack");
 
-  // No backup destination (or auto-backup off): show the numbers we can, and tell
-  // the user how to turn on backups. No progress bar / "done" styling.
+  // No backup destination (or auto-backup off): nudge the user to turn it on.
   if (!hasOutput || !state.autoBackup) {
-    if (backEl) backEl.textContent = "\u2014";
     bar.classList.remove("is-done");
     if (track) track.hidden = true;
     if (txt) txt.textContent = !hasOutput
@@ -8822,7 +8837,6 @@ function renderAlbumsBackupSummary() {
     return;
   }
 
-  if (backEl) backEl.textContent = done;
   const where = device ? "this device" : "OneDrive";
   const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 100;
   const busy = forceBackupBusy || backingUpAll;
@@ -8833,8 +8847,8 @@ function renderAlbumsBackupSummary() {
   } else {
     if (txt)
       txt.textContent = busy
-        ? `Backing up automatically\u2026 ${done} of ${total} saved to ${where}`
-        : `Backing up to ${where} in the background \u2014 ${total - done} to go\u2026`;
+        ? `Syncing to ${where}\u2026 ${done} of ${total} backed up, ${total - done} to go`
+        : `${done} of ${total} backed up to ${where} \u2014 ${total - done} still syncing\u2026`;
     if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
   }
 }
