@@ -1446,8 +1446,7 @@ p { margin: 0 0 .9rem; }
           <div class="album-backup__row">
             <span class="album-backup__text" id="albumBackupText"></span>
             <button class="btn btn--primary btn--sm" id="albumBackupNow">⤒ Back up now</button>
-            <button class="btn btn--ghost btn--sm" id="albumBackupFullRes" hidden>⬆ Upload full quality</button>
-            <button class="btn btn--ghost btn--sm" id="albumBackupDedup" hidden>🧹 Clean up duplicates</button>
+            <button class="btn btn--ghost btn--sm" id="albumBackupDedup" hidden>🔍 Check for duplicates</button>
             <button class="btn btn--ghost btn--sm" id="albumBackupRepair" hidden>↻ Force re-upload all</button>
           </div>
           <div class="album-backup__track" id="albumBackupTrack" hidden>
@@ -4410,6 +4409,11 @@ function isPhotoBackedUp(p) {
   if (!p) return false;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
   if (cloudOK && p.cloudVerified === false) return false;
+  // A low-res preview is NOT a real backup. Full quality or nothing — so a photo
+  // whose only cloud copy is a small preview counts as not-yet-backed-up. The
+  // background sweep then re-pulls the full-size original by itself the moment
+  // the source is reachable, and the UI honestly shows it as not uploaded.
+  if (cloudOK && p.backupLowRes) return false;
   return isPhotoSaved(p);
 }
 
@@ -4448,12 +4452,10 @@ async function getUploadableFile(photo) {
       if (cb) return { file: asFile(cb, name), lowRes: false };
     } catch {}
   }
-  if (photo.thumb) {
-    try {
-      const b = await (await fetch(photo.thumb)).blob();
-      return { file: asFile(b, ensureImageName(name)), lowRes: true };
-    } catch {}
-  }
+  // We NEVER fall back to the stored thumbnail. A backup is the full-size
+  // original or nothing at all — uploading a low-res preview is exactly what we
+  // moved away from. Returning null here leaves the photo clearly "not uploaded"
+  // so the sweep retries in full quality by itself once the source reconnects.
   return null;
 }
 
@@ -4474,6 +4476,13 @@ function backupNowLabel() {
 // How many photos the last backup sweep couldn't upload because their full-size
 // original isn't on this device (so the banner can say WHY, not just "pending").
 let backupBlocked = 0;
+// Live duplicate-cleanup progress, published so the home/Add banner shows the
+// tidy-up with the SAME visibility as a backup (a page-wide bar, not just album
+// text). dedupedAt throttles the automatic sweep pass per album.
+let dedupeBusy = false;
+let dedupeDone = 0;
+let dedupeTotal = 0;
+const dedupedAt = new Map();
 // Cloud reconciliation state: are we mid-verify, and when did we last verify each
 // album (to throttle the background re-checks)?
 let reconcileBusy = false;
@@ -4929,9 +4938,8 @@ async function cleanupAlbumDuplicates(id) {
     }
   }
 
-  const identicalN = plan.filter((x) => x.kind === "identical").length;
-  const qualityN = plan.filter((x) => x.kind === "lowerquality").length;
   if (!plan.length) {
+    dedupedAt.set(id, Date.now());
     const extra = audit.fileCount - tracked;
     if (extra > 0) {
       setAutoBackupMsg(`OneDrive has ${audit.fileCount} files for ${tracked} photos, but none are duplicate or lower-quality copies we can safely remove — left untouched.`);
@@ -4941,19 +4949,19 @@ async function cleanupAlbumDuplicates(id) {
     if (state.activeAlbum === id) renderAlbumDetail();
     return;
   }
-  const parts = [];
-  if (identicalN) parts.push(`${identicalN} identical`);
-  if (qualityN) parts.push(`${qualityN} lower-quality`);
-  const ok = await uiConfirm(
-    `Remove ${plan.length} extra file${plan.length === 1 ? "" : "s"}? (${parts.join(" + ")})\n\n` +
-      `The best (highest-resolution) version of every photo is kept — these are only duplicate or smaller copies of photos you already have. Nothing unique is removed.`
-  );
-  if (!ok) return;
+  // No user "clear" step: removing duplicate / lower-quality copies happens
+  // automatically (the best, highest-resolution copy of every photo is always
+  // kept — nothing unique is ever removed). We only surface the PROGRESS, with
+  // the same page-wide visibility as a backup.
   forceBackupBusy = true;
+  dedupeBusy = true;
   let done = 0;
   let failed = 0;
   const total = plan.length;
+  dedupeDone = 0;
+  dedupeTotal = total;
   setAlbumBackupProgress(0, total);
+  renderHomeBackup();
   try {
     // Rename the kept higher-res copies FIRST so a recognised copy exists before
     // we remove the lower-res one.
@@ -4962,11 +4970,17 @@ async function cleanupAlbumDuplicates(id) {
       const okDel = await cloud.deleteCloudFile(f.id);
       if (okDel) done++;
       else failed++;
+      dedupeDone = done + failed;
       setAlbumBackupProgress(done + failed, total);
-      setAutoBackupMsg(`Cleaning up copies… ${done + failed}/${total}`);
+      setAutoBackupMsg(`Tidying up duplicate copies… ${done + failed}/${total}`);
+      renderHomeBackup();
     }
   } finally {
     forceBackupBusy = false;
+    dedupeBusy = false;
+    dedupeTotal = 0;
+    dedupeDone = 0;
+    dedupedAt.set(id, Date.now());
   }
   if (done) await bumpDupesCleaned(done);
   reconcileBusy = true;
@@ -4978,9 +4992,10 @@ async function cleanupAlbumDuplicates(id) {
   }
   const after = cloudAudit.get(id);
   setAutoBackupMsg(
-    `✓ Removed ${done} cop${done === 1 ? "y" : "ies"}${failed ? ` (${failed} couldn't be removed)` : ""}. ` +
+    `✓ Removed ${done} duplicate cop${done === 1 ? "y" : "ies"}${failed ? ` (${failed} couldn't be removed)` : ""}. ` +
       `OneDrive now has ${after ? after.fileCount : "?"} file${after && after.fileCount === 1 ? "" : "s"} for ${tracked} photo${tracked === 1 ? "" : "s"}.`
   );
+  renderHomeBackup();
   if (state.activeAlbum === id) renderAlbumDetail();
 }
 
@@ -5012,148 +5027,10 @@ async function maybeReconcileAlbum(id, force = false) {
   }
 }
 
-// Quality recovery: for photos whose cloud copy is only a LOW-RES preview (the
-// full-size original wasn't reachable when it was backed up), let the user point
-// us at the original files. We match each picked file back to its photo by
-// perceptual hash — image CONTENT, not filename — so a rename can't mis-assign
-// it, then replace the preview with a full-resolution upload.
-async function fixLowResBackups(id) {
-  const device = state.outputMode === "device" && !!state.outputHandle;
-  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
-  if ((!device && !cloudOK) || forceBackupBusy) return;
-  const targets = albumPhotos(id).filter((p) => p.backupLowRes && !p.isVideo);
-  if (!targets.length) {
-    setAutoBackupMsg("No low-res photos to upgrade here. ✓");
-    return;
-  }
-  const where = device ? "this device" : "OneDrive";
-  forceBackupBusy = true;
-  renderAlbumBackupBar(id, false);
-  let fixed = 0;
-  let failed = 0;
-  const stillNeed = [];
-
-  // STEP 1 — the app is the connector: pull each full-size original straight from
-  // the SOURCE the user imported from (the media store, or a connected watched
-  // folder, or the existing OneDrive copy) and re-upload it in full quality. No
-  // manual step — that's what the app is for.
-  for (let i = 0; i < targets.length; i++) {
-    const photo = targets[i];
-    setAutoBackupMsg(`Pulling full-size original ${i + 1} of ${targets.length} from your source…`);
-    state.uploadingPhotoId = photo.id;
-    setThumbStatus(photo.id, "uploading");
-    const got = await getUploadableFile(photo);
-    if (!got || got.lowRes) {
-      stillNeed.push(photo); // the original genuinely isn't reachable on this device
-      setThumbStatus(photo.id, "savedLowRes");
-      continue;
-    }
-    try {
-      if (device) {
-        const album = albumNameFor(photo.personIds);
-        if (await writeToDeviceFolder(got.file, album)) {
-          photo.deviceAlbum = album;
-          photo.backupLowRes = false;
-          await db.put("photos", photo);
-          fixed++;
-        } else failed++;
-      } else {
-        // Re-upload the full-size original into EVERY person-folder, so each
-        // person's folder matches their album and verification lines up.
-        const allOk = await uploadPhotoToAllFolders(photo, got.file, (f) => setThumbProgress(photo.id, f));
-        if (allOk) {
-          photo.backupLowRes = false;
-          photo.cloudVerified = true;
-          await db.put("photos", photo);
-          fixed++;
-        } else failed++;
-      }
-    } catch {
-      failed++;
-    }
-    setThumbStatus(photo.id, photo.backupLowRes ? "savedLowRes" : "saved");
-  }
-  state.uploadingPhotoId = null;
-
-  // STEP 2 — last resort: ONLY the ones whose original isn't on this device.
-  // Offer to point us at them (works on phone — pick a whole folder); we match by
-  // image CONTENT so the order/names don't matter.
-  if (stillNeed.length) {
-    setAutoBackupMsg(
-      `${stillNeed.length} original${stillNeed.length === 1 ? " isn't" : "s aren't"} on this device — pick ${
-        stillNeed.length === 1 ? "it" : "them"
-      } (or the whole folder) to finish, or Cancel to leave for now.`
-    );
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.multiple = true;
-    input.style.display = "none";
-    document.body.appendChild(input);
-    const files = await new Promise((resolve) => {
-      input.addEventListener("change", () => resolve(Array.from(input.files || [])), { once: true });
-      window.addEventListener("focus", () => setTimeout(() => resolve(Array.from(input.files || [])), 500), {
-        once: true,
-      });
-      input.click();
-    });
-    input.remove();
-    const remaining = stillNeed.slice();
-    for (let i = 0; i < files.length; i++) {
-      setAutoBackupMsg(`Matching ${i + 1} of ${files.length} picked original${files.length === 1 ? "" : "s"}…`);
-      let r;
-      try {
-        r = await face.hashFile(files[i]);
-      } catch {
-        continue;
-      }
-      r.name = files[i].name;
-      const match = findDuplicate(r, remaining); // content match against the low-res set
-      if (!match) continue;
-      try {
-        if (device) {
-          const album = albumNameFor(match.personIds);
-          if (await writeToDeviceFolder(files[i], album)) {
-            match.deviceAlbum = album;
-            match.backupLowRes = false;
-            await db.put("photos", match);
-            fixed++;
-          } else failed++;
-        } else {
-          const allOk = await uploadPhotoToAllFolders(match, files[i]);
-          if (allOk) {
-            match.backupLowRes = false;
-            match.cloudVerified = true;
-            await db.put("photos", match);
-            fixed++;
-          } else failed++;
-        }
-        const idx = remaining.indexOf(match);
-        if (idx >= 0) remaining.splice(idx, 1);
-      } catch {
-        failed++;
-      }
-    }
-    stillNeed.length = 0;
-    for (const p of remaining) stillNeed.push(p);
-  }
-
-  state.uploadingPhotoId = null;
-  forceBackupBusy = false;
-  await saveBackedUpKeys();
-  if (!device) {
-    scheduleCloudSync();
-    scheduleLibrarySync();
-  }
-  recomputePending();
-  renderAll();
-  let msg = fixed ? `Upgraded ${fixed} to full quality on ${where}. ✓` : "";
-  if (stillNeed.length)
-    msg += `${msg ? " " : ""}${stillNeed.length} still need their original — it isn't on this device. Reconnect the source folder you imported from (Family ⚙️) and try again.`;
-  if (failed) msg += ` ${failed} failed — try again.`;
-  if (!msg) msg = "No photos were upgraded.";
-  setAutoBackupMsg(msg);
-}
+// Low-res recovery is now fully automatic: a photo whose only cloud copy is a
+// low-res preview counts as not-backed-up (see isPhotoBackedUp), so the normal
+// background sweep re-pulls its full-size original and re-uploads it in full
+// quality by itself the moment the source is reachable — no manual button.
 
 // Upload a specific set of photos right now, with live per-photo progress so the
 // user can SEE what's saved and what's still going. Prioritises whatever list it
@@ -5283,7 +5160,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
   renderAll();
   let msg = `Backed up ${ok} to ${where} in full quality.`;
   if (needsSource)
-    msg += ` ${needsSource} still waiting — their full-size original isn't on this device. Reconnect the folder you imported from (Family ⚙️), then tap Back up again.`;
+    msg += ` ${needsSource} not uploaded yet — their full-size original isn't on this device. They'll upload themselves in full quality once you reconnect the folder you imported from (Family ⚙️).`;
   if (fail) msg += ` ${fail} failed — they'll retry automatically.`;
   setAutoBackupMsg(msg);
 }
@@ -5295,7 +5172,10 @@ function photoBackupStatus(p) {
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
   // Verified NOT in OneDrive → show it as missing, even if a stale flag says saved.
   if (cloudOK && p.cloudVerified === false) return "missing";
-  if (isPhotoBackedUp(p)) return p.backupLowRes ? "savedLowRes" : "saved";
+  // Only a low-res preview reached the cloud — not a real backup. Flag it so the
+  // grid calls it out; the sweep upgrades it to full quality by itself.
+  if (cloudOK && p.backupLowRes) return "savedLowRes";
+  if (isPhotoBackedUp(p)) return "saved";
   const device = state.outputMode === "device" && !!state.outputHandle;
   if (state.autoBackup && (device || cloudOK)) return "pending";
   return "none";
@@ -5429,27 +5309,29 @@ function renderAlbumBackupBar(id, special) {
   const where = device ? "this device" : "OneDrive";
   bar.hidden = false;
   const repair = el("albumBackupRepair");
-  const full = el("albumBackupFullRes");
   const cs = albumCloudStatus(id);
   const busy = forceBackupBusy || reconcileBusy;
   if (notBacked === 0) {
-    if (cs.lowRes > 0) {
-      text.textContent = `⚠ ${cs.lowRes} of ${photos.length} were saved as low-res previews — the full-size originals weren't on this device when they backed up. Tap below to pull them from your source in full quality.`;
-    } else if (cloudOK && cs.checked >= photos.length) {
+    if (cloudOK && cs.checked >= photos.length) {
       text.textContent = `✓ All ${photos.length} verified in ${where}`;
     } else {
       text.textContent = `✓ All ${photos.length} backed up to ${where}`;
     }
     btn.hidden = true;
   } else {
-    if (cloudOK && cs.missing > 0) {
-      text.textContent = `⚠ ${notBacked} of ${photos.length} aren't in ${where} yet — we checked their folder and the file wasn't there. Tap to upload the missing ones in full quality.`;
+    // Full quality or nothing: be explicit when the hold-up is a low-res copy
+    // whose original isn't reachable yet — it is NOT uploaded, and it will
+    // re-upload itself in full quality the moment the source is connected.
+    if (cs.lowRes > 0 && cs.lowRes >= notBacked) {
+      text.textContent = `⚠ ${cs.lowRes} of ${photos.length} aren't uploaded in full quality — only a low-res preview reached ${where}. They'll upload themselves in full quality once the source they came from is connected.`;
+    } else if (cloudOK && cs.missing > 0) {
+      text.textContent = `⚠ ${notBacked} of ${photos.length} aren't in ${where} yet — we checked their folder and the file wasn't there. They'll upload in full quality by themselves (or tap below to do it now).`;
     } else {
       text.textContent = `${notBacked} of ${photos.length} still to back up to ${where}`;
     }
     btn.hidden = false;
     btn.disabled = busy;
-    btn.textContent = busy ? "Syncing…" : cloudOK ? `⤒ Upload ${notBacked} missing` : "⤒ Back up now";
+    btn.textContent = busy ? "Syncing…" : cloudOK ? `⤒ Upload ${notBacked} now` : "⤒ Back up now";
   }
   // Last-resort hammer: force re-upload EVERY photo (ignores verification) for the
   // rare case the check itself is wrong. The normal flow only uploads real gaps.
@@ -5459,32 +5341,21 @@ function renderAlbumBackupBar(id, special) {
     repair.disabled = busy;
     repair.textContent = busy ? "Working…" : "↻ Force re-upload all";
   }
-  // Quality fix: some copies are only low-res previews because the full-size
-  // originals weren't reachable when they were backed up. Let the user point us
-  // at the originals so we can replace those with full-quality versions.
-  if (full) {
-    const canFull = (cloudOK || device) && cs.lowRes > 0;
-    full.hidden = !canFull;
-    full.disabled = forceBackupBusy;
-    full.textContent = forceBackupBusy ? "Working…" : `⬆ Pull ${cs.lowRes} from source in full quality`;
-  }
-  // Governance: compare the REAL OneDrive file count to how many photos we track.
-  // Offer a one-tap clean-up whenever there are more files than photos (duplicate
-  // or lower-quality copies) — the clean-up itself checks image content and keeps
-  // the best copy of each photo.
+  // "Check for duplicates" — a CHECK button only. Removing extra copies happens
+  // automatically (in the background sweep + right after this check), so there's
+  // no separate "clear" button: the user asks us to look, and anything safe to
+  // remove is tidied up with backup-style progress. Always available in cloud
+  // mode so the user can re-check whenever they like.
   const dedup = el("albumBackupDedup");
   if (dedup) {
     const audit = cloudAudit.get(id);
-    const identical = audit && audit.verified ? audit.exactDups.length : 0;
-    const extra = audit && audit.verified ? Math.max(0, audit.fileCount - photos.length) : 0;
-    const canDedup = cloudOK && audit && audit.verified && (identical > 0 || extra > 0);
-    if (canDedup && notBacked === 0) {
-      text.textContent = `OneDrive has ${audit.fileCount} files for ${photos.length} photos — tidy up duplicate / lower-quality copies`;
+    const extra = audit && audit.verified ? Math.max(audit.exactDups.length, audit.fileCount - photos.length) : 0;
+    if (extra > 0 && notBacked === 0 && !busy) {
+      text.textContent = `OneDrive has ${audit.fileCount} files for ${photos.length} photos — checking for duplicate / lower-quality copies to tidy up…`;
     }
-    dedup.hidden = !canDedup;
+    dedup.hidden = !cloudOK || photos.length === 0;
     dedup.disabled = busy;
-    const n = extra || identical;
-    dedup.textContent = busy ? "Working…" : `🧹 Clean up ${n} extra cop${n === 1 ? "y" : "ies"}`;
+    dedup.textContent = busy ? "Checking…" : extra > 0 ? `🔍 Check ${extra} possible duplicate${extra === 1 ? "" : "s"}` : "🔍 Check for duplicates";
   }
 }
 
@@ -9031,12 +8902,22 @@ function renderHomeBackup() {
   const nowBtn = el("homeBackupNow");
   const where = device ? "this device" : "OneDrive";
   const busy = (forceBackupBusy || backingUpAll) && backupLiveTotal > 0;
-  wrap.classList.toggle("is-busy", busy);
-  wrap.classList.toggle("is-done", !busy && done >= total);
-  if (busy) {
-    const pct = backupLiveTotal ? Math.round((backupLiveDone / backupLiveTotal) * 100) : 0;
+  wrap.classList.toggle("is-busy", busy || dedupeBusy);
+  wrap.classList.toggle("is-done", !busy && !dedupeBusy && done >= total);
+  if (dedupeBusy) {
+    // Duplicate tidy-up gets the SAME page-wide visibility as a backup.
+    const pct = dedupeTotal ? Math.round((dedupeDone / dedupeTotal) * 100) : 0;
+    if (txt) txt.innerHTML = `<span class="home-backup__spin"></span> Tidying up duplicate copies in ${where}\u2026 ${dedupeDone} of ${dedupeTotal}`;
+    if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
+    if (nowBtn) nowBtn.hidden = true;
+  } else if (busy) {
+    // ONE page-wide bar for the whole library: show the TRUE total across every
+    // album and how many remain, so it never resets to "0 of 30" when one sweep
+    // hands off to the next — it's x of the correct total, with y to go.
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    const left = Math.max(0, total - done);
     const now = backupNowLabel();
-    if (txt) txt.innerHTML = `<span class="home-backup__spin"></span> Backing up ${backupLiveDone} of ${backupLiveTotal} to ${where}\u2026${now ? ` <span class="home-backup__now">${escapeHtml(now)}</span>` : ""}`;
+    if (txt) txt.innerHTML = `<span class="home-backup__spin"></span> Backing up ${done} of ${total} to ${where}\u2026 ${left} to go${now ? ` <span class="home-backup__now">${escapeHtml(now)}</span>` : ""}`;
     if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
     if (nowBtn) nowBtn.hidden = true;
   } else if (done >= total) {
@@ -9196,7 +9077,9 @@ async function toggleFavAlbum(id) {
 function albumCloudStatus(id) {
   const photos = albumPhotos(id);
   const savedPhotos = photos.filter((p) => isPhotoBackedUp(p));
-  const lowRes = savedPhotos.filter((p) => p.backupLowRes).length;
+  // Low-res copies no longer count as "saved" (full quality or nothing), so count
+  // them across ALL photos so the bar can still call them out as not-yet-uploaded.
+  const lowRes = photos.filter((p) => p.backupLowRes).length;
   const missing = photos.filter((p) => p.cloudVerified === false).length;
   const checked = photos.filter((p) => p.cloudVerified !== undefined).length;
   // verified = we've actually read this album's cloud folders since the app
@@ -9435,16 +9318,37 @@ async function backupAllAlbums() {
       if (!isPhotoBackedUp(ph)) gaps.push(ph.id);
     }
   }
-  if (!gaps.length) { renderAlbumsBackupSummary(); return; }
+  if (!gaps.length && !cloudOK) { renderAlbumsBackupSummary(); return; }
   backingUpAll = true;
   renderAlbumsBackupSummary();
   try {
-    await forceBackupPhotos(gaps, "Backing up your albums", true);
+    if (gaps.length) await forceBackupPhotos(gaps, "Backing up your albums", true);
+    // Tidy up duplicate / lower-quality cloud copies automatically — no user
+    // "clear" button; it runs here with the same page-wide visibility as backup.
+    if (cloudOK) await autoCleanupDuplicatesSweep();
   } finally {
     backingUpAll = false;
     renderAlbumsBackupSummary();
     const av = el("view-albums");
     if (av && !av.hidden && !state.activeAlbum) renderAlbumIndex();
+  }
+}
+
+// Automatically remove duplicate / lower-quality OneDrive copies for any album we
+// already know (from a prior verify) has extras — keeping the best copy of every
+// photo. Throttled per album so it never re-scans constantly, and skipped while a
+// backup/verify is mid-flight. Gives the tidy-up the same automatic, visible
+// behaviour as the backup sweep (the user never presses "clear").
+async function autoCleanupDuplicatesSweep() {
+  if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
+  const COOLDOWN = 10 * 60 * 1000;
+  for (const p of namedPeopleHere()) {
+    if (forceBackupBusy || reconcileBusy) break;
+    if (Date.now() - (dedupedAt.get(p.id) || 0) < COOLDOWN) continue;
+    const audit = cloudAudit.get(p.id);
+    const extras = audit && audit.verified && (audit.exactDups.length > 0 || audit.fileCount > albumPhotoCount(p.id));
+    if (!extras) continue;
+    await cleanupAlbumDuplicates(p.id);
   }
 }
 
@@ -11248,11 +11152,6 @@ function wire() {
   if (repairBtn)
     repairBtn.addEventListener("click", () => {
       if (state.activeAlbum) repairAlbumBackup(state.activeAlbum);
-    });
-  const fullResBtn = el("albumBackupFullRes");
-  if (fullResBtn)
-    fullResBtn.addEventListener("click", () => {
-      if (state.activeAlbum) fixLowResBackups(state.activeAlbum);
     });
   const dedupBtn = el("albumBackupDedup");
   if (dedupBtn)
