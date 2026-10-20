@@ -111,6 +111,53 @@ p { margin: 0 0 .9rem; }
   font-size: .72rem; font-weight: 600; color: var(--accent-2);
   background: #e7f1ee; border: 1px solid #cfe3dd; padding: .25em .7em; border-radius: 999px;
 }
+.appbar__right { display: inline-flex; align-items: center; gap: 10px; }
+
+/* Top-right account avatar + menu */
+.account-btn {
+  width: 36px; height: 36px; padding: 0; border: none; flex: none;
+  border-radius: 50%; cursor: pointer; background: transparent;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.8), 0 2px 7px -1px rgba(0,0,0,.28);
+  transition: transform .12s ease, box-shadow .18s ease;
+}
+.account-btn:hover { box-shadow: 0 0 0 2px var(--accent-soft, #fde2d6), 0 3px 10px -2px rgba(0,0,0,.3); }
+.account-btn:active { transform: scale(.92); }
+.account-btn__avatar, .account-menu__avatar {
+  display: grid; place-items: center; border-radius: 50%; overflow: hidden;
+  background: var(--grad-brand); color: #fff; font-weight: 700;
+  background-size: cover; background-position: center;
+}
+.account-btn__avatar { width: 36px; height: 36px; font-size: .82rem; }
+.account-btn__avatar.has-photo, .account-menu__avatar.has-photo { color: transparent; }
+.account-btn__avatar svg { width: 56%; height: 56%; }
+.account-menu__avatar svg { width: 56%; height: 56%; }
+
+.account-menu {
+  position: absolute; top: calc(100% - 2px); right: 12px; z-index: 40;
+  width: min(282px, calc(100vw - 24px));
+  background: #fff; border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 18px 44px -14px rgba(0,0,0,.4); padding: 8px;
+  animation: menuPop .14s ease;
+}
+@keyframes menuPop { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
+.account-menu__head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 8px 11px; margin-bottom: 6px; border-bottom: 1px solid var(--line);
+}
+.account-menu__avatar { width: 44px; height: 44px; font-size: 1rem; flex: none; }
+.account-menu__id { display: flex; flex-direction: column; min-width: 0; }
+.account-menu__name { font-weight: 700; font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-menu__email { font-size: .76rem; color: var(--ink-soft, #6b6b6b); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-menu__list { display: flex; flex-direction: column; }
+.account-menu__item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: transparent; border: none; cursor: pointer; font: inherit; font-size: .9rem;
+  color: var(--ink, #2a2320); padding: 10px; border-radius: 9px;
+}
+.account-menu__item:hover { background: var(--accent-soft, #fde2d6); }
+.account-menu__item--danger { color: var(--danger, #c0392b); }
+.account-menu__item--danger:hover { background: #fde8e6; }
+.account-menu__ico { width: 20px; text-align: center; font-size: 1rem; flex: none; }
 
 /* Screens */
 .screen { max-width: 680px; margin-inline: auto; padding: 18px 16px 30px; }
@@ -822,7 +869,29 @@ p { margin: 0 0 .9rem; }
 
   <header class="appbar">
     <div class="brand"><span class="brand__mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9.3" r="3.1"/><path d="M6 18.4c0-3 2.7-4.8 6-4.8s6 1.8 6 4.8"/></svg></span><span class="brand__name">Famsort</span></div>
-    <span class="appbar__badge">Private · on-device</span>
+    <div class="appbar__right">
+      <span class="appbar__badge">Private · on-device</span>
+      <button class="account-btn" id="accountBtn" type="button" aria-label="Your account" aria-haspopup="menu" aria-expanded="false">
+        <span class="account-btn__avatar" id="accountBtnAvatar"></span>
+      </button>
+    </div>
+    <div class="account-menu" id="accountMenu" role="menu" hidden>
+      <div class="account-menu__head">
+        <span class="account-menu__avatar" id="accountMenuAvatar"></span>
+        <div class="account-menu__id">
+          <span class="account-menu__name" id="accountMenuName">Not signed in</span>
+          <span class="account-menu__email" id="accountMenuEmail"></span>
+        </div>
+      </div>
+      <div class="account-menu__list">
+        <button class="account-menu__item" id="accountMenuSignIn" type="button" hidden><span class="account-menu__ico">☁</span>Sign in</button>
+        <button class="account-menu__item" id="accountMenuPhoto" type="button"><span class="account-menu__ico">🙂</span>Change photo…</button>
+        <button class="account-menu__item" id="accountMenuSettings" type="button"><span class="account-menu__ico">⚙</span>Account &amp; settings</button>
+        <button class="account-menu__item" id="accountMenuSwitch" type="button" hidden><span class="account-menu__ico">⇄</span>Switch account</button>
+        <button class="account-menu__item account-menu__item--danger" id="accountMenuSignOut" type="button" hidden><span class="account-menu__ico">⏻</span>Sign out</button>
+      </div>
+    </div>
+    <input type="file" id="avatarPicker" accept="image/*" hidden />
   </header>
 
   <main class="screen" id="screens">
@@ -2134,8 +2203,9 @@ function setClientId(id) {
 const GRAPH = "https://graph.microsoft.com/v1.0";
 // Files.ReadWrite = own drive (read camera roll, write Famsort albums).
 // Files.ReadWrite.All = invite a co-parent to a folder AND later ingest a folder
-// they share back. Both were consented at app registration.
-const SCOPES = ["Files.ReadWrite", "Files.ReadWrite.All"];
+// they share back. User.Read = read the account's name + profile photo for the
+// top-right avatar. All consented at app registration.
+const SCOPES = ["Files.ReadWrite", "Files.ReadWrite.All", "User.Read"];
 const MAX_FILES = 300;
 
 function oneDriveConfigured() {
@@ -2509,6 +2579,31 @@ async function accountInfo() {
     const acct = currentAccount(msal);
     if (!acct) return null;
     return { username: acct.username || "", name: acct.name || acct.username || "" };
+  } catch {
+    return null;
+  }
+}
+
+// Fetch the signed-in account's profile photo as a data URL for the avatar.
+// Many personal Microsoft accounts have no photo (or don't expose it) — returns
+// null in that case and the app falls back to initials.
+async function profilePhoto() {
+  if (!oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${GRAPH}/me/photo/$value`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!blob || !blob.size) return null;
+    return await new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = () => resolve(null);
+      fr.readAsDataURL(blob);
+    });
   } catch {
     return null;
   }
@@ -2926,7 +3021,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -2993,6 +3088,14 @@ const state = {
 let autoScanning = false; // true during a background re-scan (suppresses nav + overlay)
 let autoSyncTimer = null;
 let cloudSignedIn = false; // true once OneDrive is connected this session
+
+// Top-right account avatar. msProfilePhoto = the Microsoft account's photo (if
+// any); a user-chosen Famsort photo in localStorage overrides it; accountWho is
+// the current name/email used for the initials fallback.
+const AVATAR_KEY = "famsort.avatar";
+let msProfilePhoto = null;
+let accountWho = "";
+const PERSON_GLYPH = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9.3" r="3.1"/><path d="M6 18.4c0-3 2.7-4.8 6-4.8s6 1.8 6 4.8"/></svg>';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -4879,6 +4982,7 @@ async function rebuildFromManifest() {
 async function cloudStartup() {
   await restoreCloudModel();
   await rebuildFromManifest();
+  loadAccountPhoto();
   // Re-verify every album against OneDrive now, in the background, so the cards
   // show a real "backed up" tick instead of one carried over from last launch.
   verifyAllAlbums();
@@ -5054,6 +5158,7 @@ async function connectCloud() {
     renderOutputLabel();
     renderAccountLine();
     renderSettingsExtras();
+    loadAccountPhoto();
     if (restored > 0) {
       showCloudMsg(`Connected. Restored ${restored} sorted photo${restored === 1 ? "" : "s"}.`);
     } else {
@@ -5187,34 +5292,41 @@ function renderSortModeUI() {
 }
 
 // Change the sorting rule. From settings (where photos may already be sorted),
-// offer to RE-FILE everything to match the new rule (retrospective) or keep the
-// current folders and only apply the rule to new photos.
+// confirm the switch — declining keeps the current rule and snaps the toggle
+// back. Confirming re-files everything in OneDrive to match the new rule.
 async function setSortMode(mode, fromSettings) {
   const next = mode === "single" ? "single" : "perPerson";
   if (next === state.sortMode) return;
+  const msgEl = fromSettings ? el("sortModeSettingsMsg") : el("sortingMsg");
+  const canRefile = state.outputMode === "cloud" && cloud.oneDriveConfigured() && state.photos.length > 0;
+  if (fromSettings && canRefile) {
+    const ok = window.confirm(
+      "Change how your photos are sorted?\n\n" +
+        (next === "single"
+          ? "New rule: ONE copy per photo (grouped — a photo with two people lives in one album)."
+          : "New rule: a copy in EVERY tagged person's album.") +
+        "\n\nOK = change and re-organise your existing photos in OneDrive to match.\n" +
+        "Cancel = keep your current rule (nothing changes)."
+    );
+    if (!ok) {
+      // User declined — keep the existing rule and reset the toggle to it.
+      renderSortModeUI();
+      return;
+    }
+    state.sortMode = next;
+    await saveCloudPrefs();
+    scheduleCloudSync();
+    renderSortModeUI();
+    scheduleRefile(state.photos.filter((p) => (p.personIds || []).length));
+    if (msgEl) { msgEl.textContent = "Re-organising your albums in OneDrive to match the new rule…"; msgEl.hidden = false; }
+    return;
+  }
+  // Nothing sorted yet (or not from settings) — just apply the new rule.
   state.sortMode = next;
   await saveCloudPrefs();
   scheduleCloudSync();
   renderSortModeUI();
-  const msgEl = fromSettings ? el("sortModeSettingsMsg") : el("sortingMsg");
-  const canRefile = state.outputMode === "cloud" && cloud.oneDriveConfigured() && state.photos.length > 0;
-  if (fromSettings && canRefile) {
-    const retro = window.confirm(
-      "Re-file your existing photos to match the new sorting rule now?\n\n" +
-        "OK = re-organise everything in OneDrive to match the new rule.\n" +
-        "Cancel = keep the current folders; only new photos use the new rule."
-    );
-    if (retro) {
-      scheduleRefile(state.photos.filter((p) => (p.personIds || []).length));
-      if (msgEl) { msgEl.textContent = "Re-filing your albums in OneDrive to match the new rule…"; msgEl.hidden = false; }
-    } else if (msgEl) {
-      msgEl.textContent = "Saved. Existing folders are unchanged; new photos use the new rule.";
-      msgEl.hidden = false;
-    }
-  } else if (msgEl) {
-    msgEl.textContent = "Saved.";
-    msgEl.hidden = false;
-  }
+  if (msgEl) { msgEl.textContent = "Saved."; msgEl.hidden = false; }
 }
 
 // Show "Signed in as …" wherever the account is surfaced, and the sign-in button
@@ -5243,6 +5355,131 @@ async function renderAccountLine() {
   if (sw) sw.hidden = !info;
   const out = el("accountSignOutBtn");
   if (out) out.hidden = !info;
+  // Keep the top-right avatar + menu in sync with the account.
+  accountWho = who;
+  renderAccountMenu(info);
+  renderAccountAvatar();
+}
+
+/* ---------------------------------------------- top-right account menu */
+
+// The initials shown when there's no photo (e.g. "Jo" from jo.smith@…).
+function accountInitials(who) {
+  const s = String(who || "").trim();
+  if (!s) return "";
+  const namePart = s.includes("@") ? s.split("@")[0] : s;
+  const words = namePart.split(/[\s._-]+/).filter(Boolean);
+  const chars = words.length >= 2 ? words[0][0] + words[1][0] : namePart.slice(0, 2);
+  return chars.toUpperCase();
+}
+
+// The avatar to show: the user's own Famsort photo wins, else the Microsoft
+// account photo, else null (→ initials / person glyph).
+function customAvatar() {
+  try { return localStorage.getItem(AVATAR_KEY) || null; } catch { return null; }
+}
+function avatarUrl() {
+  return customAvatar() || msProfilePhoto || null;
+}
+
+function paintAvatar(elm) {
+  if (!elm) return;
+  const url = avatarUrl();
+  if (url) {
+    elm.classList.add("has-photo");
+    elm.style.backgroundImage = `url("${url}")`;
+    elm.innerHTML = "";
+    return;
+  }
+  elm.classList.remove("has-photo");
+  elm.style.backgroundImage = "";
+  const initials = accountInitials(accountWho);
+  if (initials) elm.textContent = initials;
+  else elm.innerHTML = PERSON_GLYPH;
+}
+
+function renderAccountAvatar() {
+  paintAvatar(el("accountBtnAvatar"));
+  paintAvatar(el("accountMenuAvatar"));
+}
+
+// Fill the menu's name/email and show the right actions for signed-in vs out.
+function renderAccountMenu(info) {
+  const signedIn = !!info;
+  const nameEl = el("accountMenuName");
+  if (nameEl) nameEl.textContent = signedIn ? (info.name || info.username) : "Not signed in";
+  const emailEl = el("accountMenuEmail");
+  if (emailEl) {
+    const hasDistinctEmail = signedIn && info.username && info.username !== info.name;
+    emailEl.textContent = hasDistinctEmail ? info.username : (signedIn ? "" : "Sign in to sync across your devices");
+  }
+  const show = (id, on) => { const x = el(id); if (x) x.hidden = !on; };
+  show("accountMenuSignIn", !signedIn);
+  show("accountMenuSwitch", signedIn);
+  show("accountMenuSignOut", signedIn);
+}
+
+// Load the Microsoft account photo (once per account) unless the user set their
+// own. Safe to call repeatedly — it won't refetch for the same account.
+let photoLoadedFor = null;
+async function loadAccountPhoto() {
+  if (customAvatar()) return;
+  if (!cloud.oneDriveConfigured()) return;
+  const info = await cloud.accountInfo().catch(() => null);
+  const key = info ? (info.username || info.name) : null;
+  if (!key || photoLoadedFor === key) return;
+  photoLoadedFor = key;
+  try {
+    const url = await cloud.profilePhoto();
+    if (url) { msProfilePhoto = url; renderAccountAvatar(); }
+  } catch { /* no photo available — initials fallback is fine */ }
+}
+
+function closeAccountMenu() {
+  const menu = el("accountMenu");
+  if (menu) menu.hidden = true;
+  const btn = el("accountBtn");
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+function toggleAccountMenu() {
+  const menu = el("accountMenu");
+  if (!menu) return;
+  const opening = menu.hidden;
+  menu.hidden = !opening;
+  const btn = el("accountBtn");
+  if (btn) btn.setAttribute("aria-expanded", String(opening));
+  if (opening) renderAccountLine(); // refresh name/email/avatar on open
+}
+
+// Let the user set their own Famsort photo (stored on this device only — it does
+// NOT change their Microsoft account). Downscaled to a small square to stay tiny.
+async function changeAvatarFromPicker(file) {
+  if (!file || !/^image\//.test(file.type)) return;
+  try {
+    const dataUrl = await blobToDataURL(file);
+    const small = await downscaleSquare(dataUrl, 160);
+    localStorage.setItem(AVATAR_KEY, small);
+    renderAccountAvatar();
+  } catch { /* ignore a bad image pick */ }
+}
+
+function downscaleSquare(dataUrl, edge) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.naturalWidth, img.naturalHeight) || edge;
+      const sx = (img.naturalWidth - side) / 2;
+      const sy = (img.naturalHeight - side) / 2;
+      const c = document.createElement("canvas");
+      c.width = c.height = edge;
+      const ctx = c.getContext("2d");
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, edge, edge);
+      try { resolve(c.toDataURL("image/jpeg", 0.85)); } catch { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 }
 
 // Sign out of this device's Famsort session (the cloud account = the login).
@@ -5254,6 +5491,8 @@ async function signOutAccount() {
   try {
     await cloud.signOut();
     cloudSignedIn = false;
+    msProfilePhoto = null;
+    photoLoadedFor = null;
     show("Signed out. Sign in again to pick up your albums on this device.");
   } catch {
     show("Couldn't sign out cleanly — try again.");
@@ -5270,9 +5509,12 @@ async function switchAccountFlow() {
   const info = await cloud.switchAccount(show);
   if (!info) return;
   cloudSignedIn = true;
+  msProfilePhoto = null;
+  photoLoadedFor = null;
   show(`Switched to ${info.username || info.name}. Bringing in their albums…`);
   await restoreCloudModel();
   await rebuildFromManifest();
+  loadAccountPhoto();
   renderAccountLine();
   renderSources();
   renderOutputLabel();
@@ -8638,6 +8880,21 @@ function wire() {
   el("accountSignInBtn").addEventListener("click", connectCloud);
   el("accountSwitchBtn").addEventListener("click", switchAccountFlow);
   el("accountSignOutBtn").addEventListener("click", signOutAccount);
+  // Top-right account avatar menu (like normal apps).
+  el("accountBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleAccountMenu(); });
+  el("accountMenu").addEventListener("click", (e) => e.stopPropagation());
+  document.addEventListener("click", closeAccountMenu);
+  el("accountMenuPhoto").addEventListener("click", () => el("avatarPicker").click());
+  el("accountMenuSettings").addEventListener("click", () => { closeAccountMenu(); navTo("settings"); });
+  el("accountMenuSwitch").addEventListener("click", () => { closeAccountMenu(); switchAccountFlow(); });
+  el("accountMenuSignOut").addEventListener("click", () => { closeAccountMenu(); signOutAccount(); });
+  el("accountMenuSignIn").addEventListener("click", () => { closeAccountMenu(); connectCloud(); });
+  el("avatarPicker").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    changeAvatarFromPicker(f);
+    e.target.value = "";
+  });
+  renderAccountAvatar();
   el("inviteAlbum").addEventListener("change", renderInviteAccess);
   el("inviteSendBtn").addEventListener("click", sendInvite);
   el("pickOutputBtn").addEventListener("click", chooseCloudOutput);
