@@ -760,6 +760,36 @@ p { margin: 0 0 .9rem; }
 .folder-row__open:hover { border-color: var(--accent); background: var(--cream-2); }
 .folder-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folder-row__go { color: var(--ink-soft); font-weight: 700; }
+/* Per-row rename (✎) and the "New folder" toolbar in the folder picker. */
+.folder-row__rename { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center;
+  font-size: .95rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; cursor: pointer; color: var(--ink-soft); }
+.folder-row__rename:hover { border-color: var(--accent); background: var(--cream-2); color: var(--ink); }
+.folder-toolbar { display: flex; justify-content: flex-start; margin: 0 0 10px; }
+
+/* Text input + "Don't ask me again" row inside the shared confirm/prompt modal. */
+.ui-modal__input { width: 100%; box-sizing: border-box; font: inherit; font-size: .95rem;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; margin: 0 0 16px; background: #fff; }
+.ui-modal__input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(90,76,209,.15); }
+.ui-modal__dontask { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; font-size: .88rem; color: var(--ink-soft); cursor: pointer; }
+.ui-modal__dontask input { width: 16px; height: 16px; flex: none; }
+
+/* Cancel (✕) on the scanning/sorting progress card. */
+.processing__cancel { flex: 0 0 auto; width: 28px; height: 28px; display: grid; place-items: center; order: 3;
+  font-size: .85rem; line-height: 1; border: 1px solid var(--line); border-radius: 50%; background: #fff; color: var(--ink-soft); cursor: pointer; }
+.processing__cancel:hover { border-color: var(--accent); color: var(--accent); background: var(--cream-2); }
+
+/* Opt-in toggle row (e.g. "Also back up untagged photos"). */
+.toggle-row { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0; cursor: pointer; }
+.toggle-row input { width: 18px; height: 18px; flex: none; margin-top: 2px; }
+.toggle-row__text { display: flex; flex-direction: column; gap: 2px; }
+.toggle-row__text strong { font-size: .92rem; }
+.toggle-row__hint { font-size: .8rem; color: var(--ink-soft); line-height: 1.4; }
+
+/* Filename of the photo currently uploading, shown in the backup banner. */
+.home-backup__now { color: var(--ink-soft); font-weight: 600; }
+/* Loading state on the "Open in OneDrive" button while the tab spins up. */
+.album-path__open.is-loading { opacity: .75; cursor: progress; }
+
 
 /* Album membership block inside the lightbox */
 .photo-albums { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
@@ -1311,6 +1341,11 @@ p { margin: 0 0 .9rem; }
             <p class="output-opt__desc">A photo is filed <strong>once</strong>, under its main person's folder (a child first, otherwise the first person tagged). No duplicates, but a person's album won't show photos filed under someone else.</p>
           </div>
 
+          <label class="toggle-row" id="untaggedBackupRow">
+            <input type="checkbox" id="backupUntagged" />
+            <span class="toggle-row__text"><strong>Also back up untagged photos</strong><span class="toggle-row__hint">Off by default — photos with no one tagged stay on this device. Tag someone in them and they'll back up automatically.</span></span>
+          </label>
+
           <div class="btn-row btn-row--split">
             <button class="btn btn--ghost" id="backToOutputBtn">← Back</button>
             <span class="btn-row__spacer"></span>
@@ -1602,6 +1637,7 @@ p { margin: 0 0 .9rem; }
        Shows a tick and lingers briefly once the sort finishes. -->
   <div class="processing" id="processing" hidden>
     <div class="processing__card">
+      <button class="processing__cancel" id="procCancel" type="button" title="Stop scanning" aria-label="Stop scanning">✕</button>
       <div class="spinner spinner--sm" id="procSpinner"></div>
       <div class="processing__check" id="procCheck" hidden>✓</div>
       <div class="processing__body">
@@ -1701,6 +1737,7 @@ p { margin: 0 0 .9rem; }
     <div class="modal__card">
       <h3 id="folderModalTitle">Choose folders</h3>
       <div class="folder-crumbs" id="folderCrumbs"></div>
+      <div class="folder-toolbar"><button class="btn btn--ghost btn--sm" id="folderNewBtn" type="button">＋ New folder</button></div>
       <div class="folder-list" id="folderList"></div>
       <p class="modal__hint" id="folderModalHint"></p>
       <div class="btn-row btn-row--split">
@@ -1746,6 +1783,8 @@ p { margin: 0 0 .9rem; }
     <div class="ui-modal__backdrop" id="uiModalBackdrop"></div>
     <div class="ui-modal__card" role="alertdialog" aria-modal="true" aria-labelledby="uiModalText">
       <p class="ui-modal__text" id="uiModalText"></p>
+      <input type="text" class="ui-modal__input" id="uiModalInput" hidden />
+      <label class="ui-modal__dontask" id="uiModalDontAskRow" hidden><input type="checkbox" id="uiModalDontAskCb" /> <span>Don't ask me again</span></label>
       <div class="ui-modal__actions">
         <button class="btn btn--ghost" id="uiModalCancel" type="button">Cancel</button>
         <button class="btn btn--primary" id="uiModalOk" type="button">OK</button>
@@ -3334,6 +3373,34 @@ async function listChildFolders(parentId) {
   return folders;
 }
 
+// Create a new sub-folder under parentId (or the drive root when omitted), for
+// the folder-picker's "New folder" button. Name collisions are auto-renamed by
+// OneDrive ("Holiday" → "Holiday 1"). Returns {id, name} or null on failure.
+async function createFolder(parentId, name) {
+  const token = await getTokenSilent();
+  const safe = String(name || "").replace(/[\\/:*?"<>|]/g, "_").trim();
+  if (!token || !safe) return null;
+  const base = parentId ? `${GRAPH}/me/drive/items/${parentId}/children` : `${GRAPH}/me/drive/root/children`;
+  try {
+    const res = await fetch(base, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: safe, folder: {}, "@microsoft.graph.conflictBehavior": "rename" }),
+    });
+    if (!res.ok) return null;
+    const it = await res.json();
+    return { id: it.id, name: it.name };
+  } catch {
+    return null;
+  }
+}
+
+// Rename a folder (by item id) in the folder picker. Reuses the generic item
+// rename. Returns true on success.
+async function renameFolder(itemId, newName) {
+  return renameCloudFile(itemId, newName);
+}
+
 // Resolve the camera-roll special folder (id + name) so it can be offered as a
 // default, pre-selected source.
 async function cameraRollFolder() {
@@ -3594,7 +3661,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, createFolder, renameFolder, cameraRollFolder, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -3646,7 +3713,9 @@ const state = {
   albumSort: "count", // album index order: "count" (most photos) | "name"
   albumPhotoSort: "added_new", // photo order inside an open album: added_new|added_old|date_new|date_old|name
   favAlbums: [], // album ids pinned to the top of the Albums screen
+  specialCovers: {}, // chosen cover thumbnails for the special albums: { "__all__": thumb, "__untagged__": thumb }
   autoBackup: true, // continuously sort new photos and back organised copies to OneDrive
+  backupUntagged: false, // by default DON'T back up untagged photos — they only upload once someone is tagged in them
   backedUpKeys: new Set(), // files already uploaded, so we never back up twice
   keptDistinct: new Set(), // photo ids the user confirmed are NOT duplicates (stop flagging)
   dupesCleaned: 0, // running count of duplicate copies removed (home-screen read-out)
@@ -3845,6 +3914,30 @@ async function* walkImages(dirHandle) {
 // and the progress counter jumps around (e.g. "300 of 622" bouncing back and
 // forth) while the shared overlay flag hides the progress bar.
 let scanBusy = false;
+// Set true when the user taps the ✕ on the scan overlay to stop a running scan.
+// The processing loops check it and bail out cleanly, keeping whatever was
+// already sorted. Reset at the start of every fresh scan.
+let scanCancelRequested = false;
+const SCAN_CANCEL_NOASK = "famsort.scanCancelNoAsk";
+
+// Ask to stop the running face scan (with a "don't ask again" option), then flag
+// the loops to bail. Photos already sorted are kept; the rest can be scanned
+// later. Does nothing when no scan is running.
+async function requestCancelScan() {
+  if (!scanBusy || scanCancelRequested) return;
+  const skipAsk = localStorage.getItem(SCAN_CANCEL_NOASK) === "1";
+  if (!skipAsk) {
+    const ok = await uiConfirm(
+      "Stop looking for faces? Photos already sorted are kept — you can scan the rest any time.",
+      { okLabel: "Stop scanning", cancelLabel: "Keep going", danger: true, dontAsk: true }
+    );
+    if (uiModalDontAsk) localStorage.setItem(SCAN_CANCEL_NOASK, "1");
+    if (!ok) return;
+  }
+  scanCancelRequested = true;
+  const t = el("processingText");
+  if (t) t.textContent = "Stopping…";
+}
 
 async function withScanLock(fn, silent = false) {
   if (scanBusy) return false; // a scan is already running — don't overlap it
@@ -3875,6 +3968,7 @@ async function collectFresh(handle, requireGranted = false, runningTotal = 0) {
   const fresh = [];
   try {
     for await (const entry of walkImages(handle)) {
+      if (scanCancelRequested) break; // user asked to stop — bail out of the walk
       let file;
       try {
         file = await entry.getFile();
@@ -3957,6 +4051,8 @@ async function loadAutoBackup() {
   // Default ON — the app is "set up once and forget": auto-sort, auto-dedup and
   // auto-backup run unless the user deliberately turns them off in Settings.
   state.autoBackup = m ? !!m.on : true;
+  const bu = await db.get("meta", "backupUntagged");
+  state.backupUntagged = bu ? !!bu.on : false; // default OFF — untagged photos stay on-device until tagged
   const b = await db.get("meta", "backedUpKeys");
   state.backedUpKeys = new Set(b?.list || []);
   const kd = await db.get("meta", "keptDistinct");
@@ -3965,10 +4061,27 @@ async function loadAutoBackup() {
   state.dupesCleaned = Number(dc?.count) || 0;
   const toggle = el("autoBackup");
   if (toggle) toggle.checked = state.autoBackup;
+  const untoggle = el("backupUntagged");
+  if (untoggle) untoggle.checked = state.backupUntagged;
 }
 
 async function saveAutoBackup() {
   await db.put("meta", { id: "autoBackup", on: state.autoBackup });
+}
+
+// Turn "back up untagged photos too" on/off. Default OFF — untagged photos stay
+// on-device until someone is tagged in them. Turning it ON kicks an immediate
+// backup of the untagged photos so the user sees it take effect.
+async function setBackupUntagged(on) {
+  state.backupUntagged = !!on;
+  await db.put("meta", { id: "backupUntagged", on: state.backupUntagged });
+  const cb = el("backupUntagged");
+  if (cb) cb.checked = state.backupUntagged;
+  scheduleCloudSync();
+  if (state.backupUntagged) {
+    const ids = state.photos.filter(isUntaggedPhoto).map((p) => p.id);
+    if (ids.length) forceBackupPhotos(ids, "untagged photos");
+  }
 }
 
 async function saveBackedUpKeys() {
@@ -4103,6 +4216,21 @@ function albumNameFor(personIds) {
   const named = personIds.map((id) => state.people.find((p) => p.id === id)).filter((p) => p && !p.ignored);
   const target = named.find((p) => p.isChild) || named[0];
   return target ? target.name : "Unsorted";
+}
+
+// True when a photo has at least one NAMED (non-ignored) person tagged.
+function hasNamedPerson(personIds) {
+  return (personIds || []).some((id) => {
+    const p = state.people.find((x) => x.id === id);
+    return p && !p.ignored;
+  });
+}
+
+// Whether a photo should be AUTO-backed-up. Untagged photos are held back by
+// default (they only upload once the user tags someone in them), unless the user
+// has opted in to backing up untagged photos too.
+function autoBackupEligible(personIds) {
+  return state.backupUntagged || hasNamedPerson(personIds);
 }
 
 // Choose the OneDrive sub-folder for a new photo: the chosen OUTPUT root, then
@@ -4334,6 +4462,15 @@ let forceBackupBusy = false;
 // banner can show "Backing up N of M" in real time (0/0 when idle).
 let backupLiveDone = 0;
 let backupLiveTotal = 0;
+// Filenames currently uploading, so the progress UIs can name the exact photo(s)
+// in flight — the user can see WHICH photo it's on (and which one is stuck).
+let backupInFlight = new Set();
+function backupNowLabel() {
+  const names = [...backupInFlight];
+  if (!names.length) return "";
+  if (names.length === 1) return names[0];
+  return `${names[0]} +${names.length - 1} more`;
+}
 // How many photos the last backup sweep couldn't upload because their full-size
 // original isn't on this device (so the banner can say WHY, not just "pending").
 let backupBlocked = 0;
@@ -5057,14 +5194,18 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
     done++;
     backupLiveDone = done;
     setAlbumBackupProgress(done, total);
-    setAutoBackupMsg(`Backing up ${done} of ${total} to ${where}…`);
+    const now = backupNowLabel();
+    setAutoBackupMsg(`Backing up ${done} of ${total} to ${where}…${now ? ` — ${now}` : ""}`);
     renderHomeBackup();
   };
 
   // Back up ONE photo (never throws — it tallies its own result).
   const backupOne = async (photo) => {
     state.uploadingPhotoId = photo.id;
+    backupInFlight.add(photo.name || "photo");
     setThumbStatus(photo.id, "uploading");
+    setAutoBackupMsg(`Backing up ${done} of ${total} to ${where} — ${backupNowLabel()}`);
+    renderHomeBackup();
     const got = await getUploadableFile(photo);
     if (!got || got.lowRes) {
       // FULL QUALITY ONLY. We never store a low-res preview as the "backup": if
@@ -5072,6 +5213,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
       // photo waiting and tell the user WHY (so they can reconnect the source they
       // imported from) instead of quietly uploading a smaller copy.
       needsSource++;
+      backupInFlight.delete(photo.name || "photo");
       setThumbStatus(photo.id, "pending");
       bump();
       return;
@@ -5105,6 +5247,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
     } catch {
       fail++;
     }
+    backupInFlight.delete(photo.name || "photo");
     setThumbStatus(photo.id, isPhotoBackedUp(photo) ? "saved" : "missing");
     bump();
   };
@@ -5124,7 +5267,8 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
 
   state.uploadingPhotoId = null;
   setAlbumBackupProgress(total, total);
-  backupLiveTotal = 0;
+  backupLiveTotal = 0
+  backupInFlight.clear();;
   backupLiveDone = 0;
   // Remember how many couldn't upload because their full-size original isn't on
   // THIS device — so the home banner can explain the hold-up instead of looking
@@ -5528,7 +5672,7 @@ function buildCloudModel() {
     })),
     deletedPeople: state.deletedPeople || {}, // tombstones so deletions propagate
     backedUpKeys: [...state.backedUpKeys],
-    settings: { autoBackup: state.autoBackup },
+    settings: { autoBackup: state.autoBackup, backupUntagged: !!state.backupUntagged },
     // Account-level config so every device signed into this OneDrive uses the
     // SAME output + sorting + cloud sources + album prefs (device-only folders
     // stay local).
@@ -5539,6 +5683,7 @@ function buildCloudModel() {
       favAlbums: state.favAlbums || [],
       kidsOnly: !!state.kidsOnly,
       setupDone: !!state.setupDone,
+      specialCovers: state.specialCovers || {}, // chosen covers for Everyone/Untagged
       deviceSources, // on-device source folders, per device, so each device sees them all
     },
   };
@@ -5662,6 +5807,15 @@ async function restoreCloudModel(silent = false) {
   // other device on the same account (the fix for "laptop and phone got jumbled
   // because each had its own local selections"). The cloud is the source of
   // truth for output + sorting + cloud sources; device-only folders stay local.
+  if (model.settings && typeof model.settings === "object" && typeof model.settings.backupUntagged === "boolean") {
+    if (model.settings.backupUntagged !== state.backupUntagged) {
+      state.backupUntagged = model.settings.backupUntagged;
+      await db.put("meta", { id: "backupUntagged", on: state.backupUntagged });
+      const cb = el("backupUntagged");
+      if (cb) cb.checked = state.backupUntagged;
+      changed = true;
+    }
+  }
   if (model.config && typeof model.config === "object") {
     const c = model.config;
     let cfgChanged = false;
@@ -5684,6 +5838,12 @@ async function restoreCloudModel(silent = false) {
     }
     if (typeof c.kidsOnly === "boolean" && c.kidsOnly !== state.kidsOnly) {
       state.kidsOnly = c.kidsOnly; albumPrefsChanged = true;
+    }
+    // Chosen covers for the special albums (Everyone / Untagged), synced so all
+    // devices show the same picture.
+    if (c.specialCovers && typeof c.specialCovers === "object") {
+      const same = JSON.stringify(c.specialCovers) === JSON.stringify(state.specialCovers || {});
+      if (!same) { state.specialCovers = { ...(state.specialCovers || {}), ...c.specialCovers }; await saveSpecialCovers(); albumPrefsChanged = true; }
     }
     // Once setup is finished on ANY device, it's finished for the account \u2014 so a
     // second device doesn't make the user re-run the first-time steps.
@@ -6181,6 +6341,7 @@ async function loadAlbumPrefs() {
   }
   if (Array.isArray(p.fav)) state.favAlbums = p.fav;
   if (typeof p.kidsOnly === "boolean") state.kidsOnly = p.kidsOnly;
+  if (p.specialCovers && typeof p.specialCovers === "object") state.specialCovers = p.specialCovers;
 }
 
 async function saveAlbumPrefs() {
@@ -6190,7 +6351,13 @@ async function saveAlbumPrefs() {
     photoSort: state.albumPhotoSort,
     fav: state.favAlbums,
     kidsOnly: state.kidsOnly,
+    specialCovers: state.specialCovers || {},
   });
+}
+
+// Persist just the special-album covers (same store as the other album prefs).
+async function saveSpecialCovers() {
+  await saveAlbumPrefs();
 }
 
 // The device output folder handle is structured-cloneable, so it persists across
@@ -7202,6 +7369,9 @@ async function openFolderBrowser(mode) {
       ? "Open a folder, then press “Use this folder”. Sorted albums are written inside it."
       : "Tick the folders to pull photos from. Open a folder to see its sub-folders.";
   el("folderConfirm").textContent = mode === "output" ? "Use this folder" : "Done";
+  // Creating a new folder only makes sense when choosing an OUTPUT location.
+  const newBtn = el("folderNewBtn");
+  if (newBtn) newBtn.hidden = mode !== "output";
   el("folderModal").hidden = false;
   await renderFolderBrowser();
 }
@@ -7256,14 +7426,42 @@ async function renderFolderBrowser() {
     }
     const open = document.createElement("button");
     open.className = "folder-row__open";
-    open.innerHTML = `<span class="folder-row__icon">📁</span><span class="folder-row__name">${f.name}</span><span class="folder-row__go">›</span>`;
+    open.innerHTML = `<span class="folder-row__icon">📁</span><span class="folder-row__name">${escapeHtml(f.name)}</span><span class="folder-row__go">›</span>`;
     open.addEventListener("click", async () => {
       folderStack.push({ id: f.id, name: f.name });
       await renderFolderBrowser();
     });
     row.appendChild(open);
+    // Rename this folder in place (OneDrive) — handy when organising output.
+    const ren = document.createElement("button");
+    ren.className = "folder-row__rename";
+    ren.type = "button";
+    ren.title = `Rename “${f.name}”`;
+    ren.setAttribute("aria-label", `Rename ${f.name}`);
+    ren.textContent = "✎";
+    ren.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const name = await uiPrompt("Rename this folder", { value: f.name, okLabel: "Rename", placeholder: "Folder name" });
+      if (!name || name === f.name) return;
+      ren.disabled = true;
+      const okr = await cloud.renameFolder(f.id, name);
+      if (okr) await renderFolderBrowser();
+      else { ren.disabled = false; await uiAlert("Couldn't rename that folder. Try again.", { okLabel: "OK" }); }
+    });
+    row.appendChild(ren);
     listEl.appendChild(row);
   }
+}
+
+// "New folder" in the cloud picker: create a sub-folder in the folder we're
+// currently viewing, then refresh so it appears (and can be opened / used).
+async function createFolderHere() {
+  const name = await uiPrompt("Name the new folder", { okLabel: "Create", placeholder: "e.g. Family photos" });
+  if (!name) return;
+  const parent = folderStack[folderStack.length - 1];
+  const created = await cloud.createFolder(parent.id, name);
+  if (!created) { await uiAlert("Couldn't create that folder. Try again.", { okLabel: "OK" }); return; }
+  await renderFolderBrowser();
 }
 
 async function confirmFolderBrowser() {
@@ -7318,6 +7516,7 @@ let progressDoneTimer = null;
 // Reset the pop-up to its "in progress" look and show it.
 function startProgressUI() {
   clearTimeout(progressDoneTimer);
+  scanCancelRequested = false; // fresh scan — clear any prior cancel flag
   const p = el("processing");
   p.classList.remove("processing--done");
   el("procSpinner").hidden = false;
@@ -7378,6 +7577,7 @@ async function processFiles(fileList, opts = {}) {
   };
 
   for (let i = 0; i < files.length; i++) {
+    if (scanCancelRequested) break; // user tapped ✕ on the overlay — stop here
     const isVid = files[i].type.startsWith("video/") || (isVideoName(files[i].name) && !isImageName(files[i].name));
     el("processingText").textContent = isVid ? "Scanning video…" : "Looking for faces…";
     el("procCount").textContent = `${i + 1} of ${files.length}`;
@@ -7479,7 +7679,7 @@ async function processFiles(fileList, opts = {}) {
     const wantsBackup = faceOnly
       ? state.autoBackup && deviceOut
       : state.autoBackup && (cloud.oneDriveConfigured() || deviceOut);
-    if (wantsBackup) {
+    if (wantsBackup && autoBackupEligible([...personIds])) {
       toBackup.push({ file: files[i], personIds: [...personIds], photoId });
     }
 
@@ -7493,9 +7693,15 @@ async function processFiles(fileList, opts = {}) {
   await flush(); // final partial batch
 
   if (!autoScanning) {
-    const parts = [`Sorted ${added} photo${added === 1 ? "" : "s"}`];
-    if (dupes) parts.push(`${dupes} duplicate${dupes === 1 ? "" : "s"} skipped`);
-    showProgressDone(parts.join(" · "));
+    if (scanCancelRequested) {
+      const parts = [`Stopped — sorted ${added} photo${added === 1 ? "" : "s"}`];
+      if (dupes) parts.push(`${dupes} duplicate${dupes === 1 ? "" : "s"} skipped`);
+      showProgressDone(parts.join(" · "));
+    } else {
+      const parts = [`Sorted ${added} photo${added === 1 ? "" : "s"}`];
+      if (dupes) parts.push(`${dupes} duplicate${dupes === 1 ? "" : "s"} skipped`);
+      showProgressDone(parts.join(" · "));
+    }
   }
 
   // Stats on the Add screen (recomputed live — see renderStats).
@@ -8829,7 +9035,8 @@ function renderHomeBackup() {
   wrap.classList.toggle("is-done", !busy && done >= total);
   if (busy) {
     const pct = backupLiveTotal ? Math.round((backupLiveDone / backupLiveTotal) * 100) : 0;
-    if (txt) txt.innerHTML = `<span class="home-backup__spin"></span> Backing up ${backupLiveDone} of ${backupLiveTotal} to ${where}\u2026`;
+    const now = backupNowLabel();
+    if (txt) txt.innerHTML = `<span class="home-backup__spin"></span> Backing up ${backupLiveDone} of ${backupLiveTotal} to ${where}\u2026${now ? ` <span class="home-backup__now">${escapeHtml(now)}</span>` : ""}`;
     if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
     if (nowBtn) nowBtn.hidden = true;
   } else if (done >= total) {
@@ -8929,6 +9136,10 @@ function albumPhotoCount(id) {
 // first pending face as a fallback.
 function albumCover(id, person) {
   if (id === AWAITING) return state.pendingClusters[0]?.faces[0]?.thumb || "";
+  // A cover the user explicitly picked for a special album (Everyone / Untagged).
+  if ((id === ALL_ALBUM || id === UNTAGGED) && state.specialCovers && state.specialCovers[id]) {
+    return state.specialCovers[id];
+  }
   // A cover the user explicitly picked wins (whole photo, synced across devices).
   if (person && person.coverThumb) return person.coverThumb;
   const photos = albumPhotos(id);
@@ -9341,30 +9552,34 @@ function renderAlbumPath(id, special) {
     let webUrl = null;
     cloud.getFolderWebUrl(folder).then((u) => { webUrl = u; }).catch(() => {});
     open.addEventListener("click", async () => {
+      // Immediate visual proof the tap registered — on mobile the new tab can
+      // sit blank for several seconds while OneDrive loads, which looked like
+      // nothing had happened.
+      const was = open.textContent;
+      open.classList.add("is-loading");
+      open.textContent = "Opening OneDrive…";
+      const restore = () => { open.classList.remove("is-loading"); open.textContent = was; open.disabled = false; };
       if (webUrl) {
         window.open(webUrl, "_blank", "noopener");
+        setTimeout(restore, 2600);
         return;
       }
       open.disabled = true;
-      const was = open.textContent;
-      open.textContent = "Opening…";
       try {
         const url = await cloud.getFolderWebUrl(folder);
         if (url) {
           window.open(url, "_blank", "noopener");
         } else {
           open.textContent = "Folder not in OneDrive yet";
-          setTimeout(() => (open.textContent = was), 2600);
+          setTimeout(restore, 2600);
           return;
         }
       } catch {
         open.textContent = "Couldn't open OneDrive";
-        setTimeout(() => (open.textContent = was), 2600);
+        setTimeout(restore, 2600);
         return;
-      } finally {
-        open.disabled = false;
       }
-      open.textContent = was;
+      restore();
     });
     nav.appendChild(open);
   }
@@ -9649,6 +9864,20 @@ async function showLightboxPhoto() {
       cover.addEventListener("click", () => setAlbumCover(person.id, photo));
       actions.appendChild(cover);
     }
+  }
+
+  // Special albums (Everyone / Untagged) have no person record — allow picking
+  // their cover photo too, stored per-album and synced across devices.
+  if (!lightboxPoolView && (state.activeAlbum === ALL_ALBUM || state.activeAlbum === UNTAGGED)) {
+    const albumId = state.activeAlbum;
+    const label = albumId === UNTAGGED ? "Untagged" : "Everyone";
+    const isCover = (state.specialCovers && state.specialCovers[albumId]) === photo.thumb;
+    const cover = document.createElement("button");
+    cover.className = "btn btn--ghost";
+    cover.textContent = isCover ? `★ ${label} cover` : `☆ Set as ${label} cover`;
+    cover.disabled = isCover;
+    cover.addEventListener("click", () => setSpecialCover(albumId, photo));
+    actions.appendChild(cover);
   }
 
   // Back up THIS photo to OneDrive/device right now, so you don't have to wait
@@ -10377,7 +10606,18 @@ async function setAlbumCover(personId, photo) {
   // crop that can cut the person off when they're to one side / small.
   person.coverPos = faceCenterPos(personId, photo.id);
   await savePerson(person);
+ 
+
+// Set the cover for a SPECIAL album (Everyone / Untagged), which has no person
+// record to hang it on. Stored per-album and synced across devices.
+async function setSpecialCover(albumId, photo) {
+  if (!photo || (albumId !== ALL_ALBUM && albumId !== UNTAGGED)) return;
+  state.specialCovers = { ...(state.specialCovers || {}), [albumId]: photo.thumb };
+  await saveSpecialCovers();
   scheduleCloudSync();
+  renderAll();
+  showLightboxPhoto(photo.id);
+} scheduleCloudSync();
   renderAll();
   // Re-open the photo so the button flips to the "★ …'s cover" state.
   showLightboxPhoto(photo.id);
@@ -10715,6 +10955,8 @@ function navTo(view) {
 // In-app confirm/alert dialog — replaces the browser's window.confirm so every
 // prompt and warning looks like part of Famsort. Returns a Promise<boolean>.
 let uiModalResolve = null;
+// After a confirm resolves, whether the "Don't ask me again" box was ticked.
+let uiModalDontAsk = false;
 function uiConfirm(message, opts = {}) {
   const modal = el("uiModal");
   const text = el("uiModalText");
@@ -10728,17 +10970,44 @@ function uiConfirm(message, opts = {}) {
   ok.classList.toggle("btn--danger", !!opts.danger);
   ok.classList.toggle("btn--primary", !opts.danger);
   cancel.hidden = opts.alert === true; // alert mode = single OK button
+  // Optional "Don't ask me again" checkbox (e.g. the cancel-scan confirm).
+  const askRow = el("uiModalDontAskRow");
+  const askCb = el("uiModalDontAskCb");
+  if (askRow && askCb) {
+    askRow.hidden = !opts.dontAsk;
+    askCb.checked = false;
+  }
+  uiModalDontAsk = false;
+  // Optional text input (prompt mode) — pre-filled + focused.
+  const input = el("uiModalInput");
+  if (input) {
+    input.hidden = !opts.input;
+    if (opts.input) {
+      input.value = opts.value || "";
+      input.placeholder = opts.placeholder || "";
+    }
+  }
   modal.hidden = false;
   requestAnimationFrame(() => modal.classList.add("is-open"));
-  ok.focus();
+  if (opts.input && input) { input.focus(); input.select(); } else ok.focus();
   return new Promise((resolve) => { uiModalResolve = resolve; });
 }
 function uiAlert(message, opts = {}) {
   return uiConfirm(message, { ...opts, alert: true });
 }
+// Ask for a short line of text. Resolves to the trimmed string, or null if the
+// user cancels / leaves it blank.
+function uiPrompt(message, opts = {}) {
+  return uiConfirm(message, { ...opts, input: true }).then((ok) => {
+    if (!ok) return null;
+    const v = (el("uiModalInput")?.value || "").trim();
+    return v || null;
+  });
+}
 function closeUiModal(result) {
   const modal = el("uiModal");
   if (modal) { modal.classList.remove("is-open"); modal.hidden = true; }
+  uiModalDontAsk = !!el("uiModalDontAskCb")?.checked;
   const r = uiModalResolve;
   uiModalResolve = null;
   if (r) r(result);
@@ -10812,6 +11081,13 @@ function wire() {
   el("activityClear").addEventListener("click", clearActivity);
   el("folderCancel").addEventListener("click", () => (el("folderModal").hidden = true));
   el("folderConfirm").addEventListener("click", confirmFolderBrowser);
+  el("folderNewBtn").addEventListener("click", createFolderHere);
+  const procCancelBtn = el("procCancel");
+  if (procCancelBtn) procCancelBtn.addEventListener("click", requestCancelScan);
+  const backupUntaggedCb = el("backupUntagged");
+  if (backupUntaggedCb) backupUntaggedCb.addEventListener("change", () => setBackupUntagged(backupUntaggedCb.checked));
+  const uiInput = el("uiModalInput");
+  if (uiInput) uiInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); closeUiModal(true); } });
   if (!supportsFolders) el("addDeviceBtn").disabled = true;
   if (!window.isSecureContext) el("addCloudBtn").disabled = true;
 
