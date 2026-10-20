@@ -17,11 +17,11 @@
 :root {
   --cream: #fbf7f0;
   --cream-2: #f4ece0;
-  --ink: #241f1b;
-  --ink-soft: #5b534c;
-  --accent: #f26a3f;
-  --accent-dark: #c8461f;
-  --accent-soft: #fde2d6;
+  --ink: #221c30;
+  --ink-soft: #5c5470;
+  --accent: #5a4cd1;
+  --accent-dark: #4433b0;
+  --accent-soft: #e9e5fb;
   --accent-2: #2f8f7f;
   --accent-2-dark: #22685b;
   --accent-2-soft: #d9efe9;
@@ -33,14 +33,14 @@
   --warn-soft: #fff3df;
   --danger: #c0392b;
   --card: #ffffff;
-  --line: #ecdfce;
+  --line: #ece2d4;
   --radius: 16px;
   --radius-sm: 10px;
-  --grad-brand: linear-gradient(135deg, #ff8a5c 0%, #f26a3f 42%, #2f8f7f 100%);
-  --grad-primary: linear-gradient(135deg, #f8824f, #e4511f);
-  --shadow: 0 10px 30px -14px rgba(50, 35, 20, 0.28);
-  --shadow-sm: 0 4px 14px -6px rgba(50, 35, 20, 0.18);
-  --shadow-accent: 0 8px 20px -8px rgba(226, 85, 47, 0.5);
+  --grad-brand: linear-gradient(135deg, #8a78f0 0%, #5a4cd1 46%, #2f8f7f 100%);
+  --grad-primary: linear-gradient(135deg, #6f5fe6, #4a39bf);
+  --shadow: 0 10px 30px -14px rgba(40, 32, 60, 0.3);
+  --shadow-sm: 0 4px 14px -6px rgba(40, 32, 60, 0.2);
+  --shadow-accent: 0 8px 20px -8px rgba(90, 76, 209, 0.5);
   --font-sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   --font-serif: "Fraunces", Georgia, serif;
   --tabbar-h: 64px;
@@ -56,7 +56,7 @@ body {
   color: var(--ink);
   background: var(--cream);
   background-image:
-    radial-gradient(1100px 520px at 108% -8%, rgba(242, 106, 63, 0.10), transparent 60%),
+    radial-gradient(1100px 520px at 108% -8%, rgba(90, 76, 209, 0.10), transparent 60%),
     radial-gradient(900px 480px at -10% 4%, rgba(47, 143, 127, 0.09), transparent 58%);
   background-attachment: fixed;
   line-height: 1.55;
@@ -94,7 +94,7 @@ p { margin: 0 0 .9rem; }
   width: 27px; height: 27px; border-radius: 9px; flex: none;
   display: grid; place-items: center;
   background: var(--grad-brand);
-  box-shadow: 0 4px 10px -3px rgba(226, 85, 47, .6), inset 0 1px 0 rgba(255, 255, 255, .4);
+  box-shadow: 0 4px 10px -3px rgba(90, 76, 209, .55), inset 0 1px 0 rgba(255, 255, 255, .4);
 }
 .brand__mark svg { width: 60%; height: 60%; display: block; }
 .brand__name { font-family: var(--font-serif); font-weight: 700; font-size: 1.15rem; }
@@ -188,7 +188,7 @@ p { margin: 0 0 .9rem; }
 .btn:active { transform: scale(.97); }
 .btn--primary { background: var(--grad-primary); color: #fff; border-color: transparent;
   box-shadow: var(--shadow-accent); }
-.btn--primary:hover { filter: brightness(1.04); box-shadow: 0 10px 24px -8px rgba(226, 85, 47, 0.6); }
+.btn--primary:hover { filter: brightness(1.04); box-shadow: 0 10px 24px -8px rgba(90, 76, 209, 0.55); }
 .btn--ghost { background: #fff; color: var(--ink); border-color: var(--line); }
 .btn--danger { background: #fff; color: var(--danger); border-color: #eccac4; }
 .btn--small { padding: .45em .9em; font-size: .85rem; }
@@ -334,7 +334,7 @@ p { margin: 0 0 .9rem; }
 .album-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
   cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; display: flex; flex-direction: column; }
 .album-card:hover, .album-card:focus-visible { transform: translateY(-3px);
-  box-shadow: 0 12px 26px -10px rgba(226,85,47,.32); border-color: var(--accent-soft); outline: none; }
+  box-shadow: 0 12px 26px -10px rgba(90,76,209,.3); border-color: var(--accent-soft); outline: none; }
 .album-card--special { border-color: var(--accent-soft, #f3cfcc); }
 .album-card--special .album-card__cover {
   background: linear-gradient(145deg, var(--accent-soft), var(--accent-2-soft)); }
@@ -5094,15 +5094,19 @@ function buildCloudModel() {
       descriptors: p.descriptors || [],
       negatives: p.negatives || [],
       thumb: p.thumb || "",
+      coverThumb: p.coverThumb || "",
     })),
     backedUpKeys: [...state.backedUpKeys],
     settings: { autoBackup: state.autoBackup },
     // Account-level config so every device signed into this OneDrive uses the
-    // SAME output + sorting + cloud sources (device-only folders stay local).
+    // SAME output + sorting + cloud sources + album prefs (device-only folders
+    // stay local).
     config: {
       outputRoot: state.outputRoot || "Famsort",
       sortMode: state.sortMode === "single" ? "single" : "perPerson",
       cloudSources: state.cloudSources || [],
+      favAlbums: state.favAlbums || [],
+      kidsOnly: !!state.kidsOnly,
     },
   };
 }
@@ -5126,7 +5130,7 @@ function scheduleCloudSync() {
 // Pull the identity model from OneDrive and merge it in. This is what makes a new
 // phone "just work": sign in, your people come back, and your camera roll re-sorts
 // into the same albums. Safe to call repeatedly — it merges, never clobbers.
-async function restoreCloudModel() {
+async function restoreCloudModel(silent = false) {
   if (!cloud.oneDriveConfigured()) return;
   let model;
   try {
@@ -5150,6 +5154,7 @@ async function restoreCloudModel() {
         descriptors: cp.descriptors || [],
         negatives: cp.negatives || [],
         thumb: cp.thumb || "",
+        coverThumb: cp.coverThumb || "",
       };
       state.people.push(local);
       changed = true;
@@ -5159,6 +5164,8 @@ async function restoreCloudModel() {
       local.descriptors = sample([...(local.descriptors || []), ...(cp.descriptors || [])], 12);
       local.negatives = sample([...(local.negatives || []), ...(cp.negatives || [])], 20);
       if (!local.thumb && cp.thumb) local.thumb = cp.thumb;
+      // A cover picked on any device wins everywhere (account-level choice).
+      if (cp.coverThumb && local.coverThumb !== cp.coverThumb) { local.coverThumb = cp.coverThumb; changed = true; }
       if (local.descriptors.length + local.negatives.length !== before) changed = true;
     }
     await db.put("people", local);
@@ -5183,6 +5190,15 @@ async function restoreCloudModel() {
       const same = JSON.stringify(c.cloudSources) === JSON.stringify(state.cloudSources || []);
       if (!same) { state.cloudSources = c.cloudSources; cfgChanged = true; }
     }
+    let albumPrefsChanged = false;
+    if (Array.isArray(c.favAlbums)) {
+      const same = JSON.stringify(c.favAlbums) === JSON.stringify(state.favAlbums || []);
+      if (!same) { state.favAlbums = c.favAlbums; albumPrefsChanged = true; }
+    }
+    if (typeof c.kidsOnly === "boolean" && c.kidsOnly !== state.kidsOnly) {
+      state.kidsOnly = c.kidsOnly; albumPrefsChanged = true;
+    }
+    if (albumPrefsChanged) { await saveAlbumPrefs(); changed = true; }
     if (cfgChanged) {
       await saveCloudPrefs();
       renderSources();
@@ -5197,7 +5213,7 @@ async function restoreCloudModel() {
     for (const p of namedPeople()) await assignMatchingUnassigned(p);
     recomputePending();
     renderAll();
-    showCloudMsg("Welcome back — your people and albums were restored from OneDrive.");
+    if (!silent) showCloudMsg("Welcome back — your people and albums were restored from OneDrive.");
   }
 }
 
@@ -5297,6 +5313,23 @@ async function cloudStartup() {
   // Re-verify every album against OneDrive now, in the background, so the cards
   // show a real "backed up" tick instead of one carried over from last launch.
   verifyAllAlbums();
+}
+
+// Throttled background re-sync when the app regains focus: silently pulls the
+// latest people model + library manifest so this device converges with whatever
+// changed on another device on the same account. No "welcome back" pop-up.
+let lastCatchUp = 0;
+async function cloudCatchUp() {
+  if (!cloud.oneDriveConfigured()) return;
+  if (Date.now() - lastCatchUp < 20000) return; // at most once every 20s
+  lastCatchUp = Date.now();
+  try {
+    if (!(await cloud.hasCloudAccount())) return;
+    await restoreCloudModel(true); // silent
+    await rebuildFromManifest();
+  } catch {
+    /* offline — try again next time the app is focused */
+  }
 }
 
 // On open/restart, walk every person album and re-check its OneDrive folders so
@@ -6763,6 +6796,11 @@ async function processFiles(fileList, opts = {}) {
 
   renderAll();
 
+  // Keep every device on this account in step: push the people model and the
+  // library manifest so photo / people / duplicate counts match everywhere —
+  // even when the output is app-only or a device folder (not just cloud backup).
+  if (added) { scheduleCloudSync(); scheduleLibrarySync(); }
+
   // Auto-backup organised copies of the new originals (if enabled + connected).
   if (toBackup.length) backupPhotos(toBackup);
 
@@ -8036,6 +8074,8 @@ function albumPhotoCount(id) {
 // first pending face as a fallback.
 function albumCover(id, person) {
   if (id === AWAITING) return state.pendingClusters[0]?.faces[0]?.thumb || "";
+  // A cover the user explicitly picked wins (whole photo, synced across devices).
+  if (person && person.coverThumb) return person.coverThumb;
   const photos = albumPhotos(id);
   if (photos.length) return photos[photos.length - 1].thumb;
   return person ? person.thumb || "" : "";
@@ -8050,6 +8090,7 @@ async function toggleFavAlbum(id) {
     ? state.favAlbums.filter((x) => x !== id)
     : [...state.favAlbums, id];
   await saveAlbumPrefs();
+  scheduleCloudSync(); // favourites are account-level — mirror to every device
   renderAlbums();
 }
 
@@ -8549,11 +8590,10 @@ async function showLightboxPhoto() {
       rm.addEventListener("click", () => removePhotoFromPerson(photoId, person.id));
       actions.appendChild(rm);
 
-      // Choose this person's FACE from the photo as their album cover (shown on
-      // the People grid). Using their face crop — not the whole frame — keeps it
-      // unambiguous even when several people share the photo.
-      const theirFace = state.faces.find((f) => f.photoId === photo.id && f.personId === person.id);
-      const coverCandidate = (theirFace && theirFace.thumb) || photo.thumb;
+      // Use the WHOLE photo as this person's album cover — shown cropped-to-fill
+      // and centred (never stretched), so the cover is the full picture rather
+      // than a tight face crop.
+      const coverCandidate = photo.thumb;
       const isCover = person.coverThumb === coverCandidate;
       const cover = document.createElement("button");
       cover.className = "btn btn--ghost";
@@ -9278,15 +9318,15 @@ async function findFacesInPhoto(photo, btn) {
   }
 }
 
-// Set this photo as the person's album cover (the thumbnail shown on the
-// People grid). Uses THIS person's face crop from the photo so group shots give
-// an unambiguous cover; falls back to the whole frame if no face is stored.
+// Set this photo as the person's album cover — the WHOLE photo (shown cropped-
+// to-fill and centred on the People grid / album card), not a tight face crop.
+// Covers are account-level, so mirror the change to every signed-in device.
 async function setAlbumCover(personId, photo) {
   const person = state.people.find((p) => p.id === personId);
   if (!person || !photo) return;
-  const theirFace = state.faces.find((f) => f.photoId === photo.id && f.personId === personId);
-  person.coverThumb = (theirFace && theirFace.thumb) || photo.thumb;
+  person.coverThumb = photo.thumb;
   await db.put("people", person);
+  scheduleCloudSync();
   renderAll();
   // Re-open the photo so the button flips to the "★ …'s cover" state.
   showLightboxPhoto(photo.id);
@@ -9822,12 +9862,17 @@ function wire() {
   const autoToggle = el("autoBackup");
   if (autoToggle) autoToggle.addEventListener("change", (e) => setAutoBackup(e.target.checked));
 
-  // Catch up on new photos (device AND cloud) whenever the user returns.
+  // Catch up on new photos (device AND cloud) whenever the user returns, and
+  // re-pull the account model + library manifest so changes made on another
+  // device (new photos, renames, covers, favourites) also show up here.
   window.addEventListener("focus", () => {
     if (state.autoBackup) autoSweep(true);
+    cloudCatchUp();
   });
   document.addEventListener("visibilitychange", () => {
-    if (state.autoBackup && document.visibilityState === "visible") autoSweep(true);
+    if (document.visibilityState !== "visible") return;
+    if (state.autoBackup) autoSweep(true);
+    cloudCatchUp();
   });
   el("lightboxClose").addEventListener("click", closeLightbox);
   el("lightboxPrev").addEventListener("click", () => lightboxStep(-1));
