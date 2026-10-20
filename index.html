@@ -3480,6 +3480,32 @@ async function importCameraRoll(onStatus, onFiles) {
   return importFromFolders([], onStatus, onFiles);
 }
 
+// Build a lightweight index of the ORIGINAL items in the given source folders
+// (id + name + size) WITHOUT downloading any pixels. Lets the app reconnect
+// photos that lost their source pointer to their full-size originals, so they
+// can be backed up in full quality. An empty list defaults to the camera roll.
+async function indexSourceItems(folderIds, onStatus) {
+  const token = await getTokenSilent();
+  if (!token) return null;
+  let ids = (folderIds || []).filter(Boolean);
+  if (!ids.length) {
+    const cr = await cameraRollFolder();
+    if (cr) ids = [cr.id];
+  }
+  if (!ids.length) return [];
+  onStatus?.("Looking up your originals in the cloud…");
+  const items = [];
+  try {
+    for (const fid of ids) {
+      if (items.length >= MAX_FILES) break;
+      await collectMediaItems(fid, token, items);
+    }
+  } catch {
+    return null;
+  }
+  return items.map((it) => ({ id: it.id, name: it.name || "", size: it.size || 0 }));
+}
+
 // Sign in, then import the camera roll (the original one-shot flow).
 async function connectOneDrive(onStatus, onFiles) {
   if (!(await signIn(onStatus))) return;
@@ -3568,7 +3594,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -4210,10 +4236,19 @@ async function backupPhotos(list) {
       } else {
         const photo = state.photos.find((p) => p.id === photoId);
         if (photo) {
+          // Always upload the full-size ORIGINAL pulled from the linked source,
+          // never the smaller preview we scanned with. If the original isn't
+          // reachable right now, skip and let the background sweep retry — we
+          // never silently upload a low-res copy.
+          const up = await getUploadableFile(photo);
+          if (!up || up.lowRes) {
+            fail++;
+            continue;
+          }
           // A copy in EVERY tagged person's folder — tracks each landing spot so any
           // device can fetch the original and re-file-on-tag knows where copies are.
-          const allOk = await uploadPhotoToAllFolders(photo, file);
-          photo.backupLowRes = false; // auto-backup uses the live original = full quality
+          const allOk = await uploadPhotoToAllFolders(photo, up.file);
+          photo.backupLowRes = false; // full-size original
           photo.cloudVerified = allOk; // true only when every person-folder got it
           await db.put("photos", photo);
         }
@@ -4269,6 +4304,16 @@ async function getUploadableFile(photo) {
     const orig = await findOriginalFile(photo);
     if (orig) return { file: orig, lowRes: false };
   } catch {}
+  // The ORIGINAL in the linked source (e.g. OneDrive camera roll). This is the
+  // true full-quality file and is preferred over any backup-copy pointer, so a
+  // photo can always be backed up in full quality as long as the source account
+  // is connected — which is the whole point of the app.
+  if (cloud.oneDriveConfigured() && photo.sourceId) {
+    try {
+      const sb = await withTimeout(cloud.downloadCloudFile(photo.sourceId), 30000);
+      if (sb) return { file: asFile(sb, name), lowRes: false };
+    } catch {}
+  }
   if (cloud.oneDriveConfigured() && photo.cloudId) {
     try {
       const cb = await withTimeout(cloud.downloadCloudFile(photo.cloudId), 30000);
@@ -5679,6 +5724,7 @@ function buildLibraryManifest() {
       dims: p.dims || { w: 0, h: 0 },
       hash: p.hash,
       thumb: p.thumb,
+      sourceId: p.sourceId || null, // original in the linked source, so every device can back up full quality
       cloudId: p.cloudId || null,
       backupId: p.backupId || null,
       backupFolder: p.backupFolder || null,
@@ -5763,6 +5809,7 @@ async function rebuildFromManifest() {
         isVideo: !!e.isVideo,
         duration: e.duration || 0,
         dims: e.dims || { w: 0, h: 0 },
+        sourceId: e.sourceId || null,
         cloudId: e.cloudId || null,
         backupId: e.backupId || null,
         backupFolder: e.backupFolder || null,
@@ -5775,6 +5822,7 @@ async function rebuildFromManifest() {
       // album membership and cloud pointers so both devices converge.
       local.personIds = e.personIds || [];
       local.manualIds = e.manualIds || [];
+      if (e.sourceId && !local.sourceId) local.sourceId = e.sourceId;
       if (e.cloudId) local.cloudId = e.cloudId;
       if (e.backupId) local.backupId = e.backupId;
       if (e.backupFolder) local.backupFolder = e.backupFolder;
@@ -7355,11 +7403,22 @@ async function processFiles(fileList, opts = {}) {
       dupes++;
       const newArea = (result.width || 0) * (result.height || 0);
       const oldArea = dup.dims ? dup.dims.w * dup.dims.h : 0;
+      let dupChanged = false;
       if (newArea > oldArea) {
         dup.thumb = result.photoThumb;
         dup.dims = { w: result.width || 0, h: result.height || 0 };
-        await db.put("photos", dup);
+        dupChanged = true;
       }
+      // Reconnect an existing photo to its ORIGINAL in the linked source if we
+      // never recorded it (older imports lost this link) — so a re-import of the
+      // OneDrive source heals photos that were stuck on "needs source" and they
+      // can finally back up in full quality.
+      const srcId = files[i] && files[i].cloudId;
+      if (srcId && !dup.sourceId) {
+        dup.sourceId = srcId;
+        dupChanged = true;
+      }
+      if (dupChanged) await db.put("photos", dup);
       continue;
     }
 
@@ -7403,6 +7462,7 @@ async function processFiles(fileList, opts = {}) {
       addedAt: Date.now(), // when it was imported into Famsort (for sorting)
       updatedAt: Date.now(), // last change to albums/pointers — drives last-write-wins sync
       fileModified: files[i] && files[i].lastModified ? files[i].lastModified : 0, // original file's own date
+      sourceId: (files[i] && files[i].cloudId) || null, // OneDrive item id of the ORIGINAL in the linked source — lets ANY device pull full quality to back up
     };
     state.photos.push(photoRec);
     batchPhotos.push(photoRec);
@@ -9113,11 +9173,48 @@ function renderAlbumsBackupSummary() {
 // open each album. Runs automatically: on startup, after sign-in, and whenever
 // the user opens the Albums screen (when auto-backup is on).
 let backingUpAll = false;
+// Reconnect photos that lost their link to the ORIGINAL in the linked cloud
+// source (older imports never recorded it) by matching on filename, so they can
+// be backed up in full quality instead of being stuck on "needs source". Runs at
+// most once per session and only when there are orphaned photos + a cloud source.
+let relinkTried = false;
+async function relinkOrphanSources() {
+  if (relinkTried) return 0;
+  if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return 0;
+  const orphans = state.photos.filter((p) => !p.sourceId && p.name);
+  if (!orphans.length) { relinkTried = true; return 0; }
+  relinkTried = true;
+  const ids = (state.cloudSources || []).map((s) => s.id);
+  let index = null;
+  try {
+    index = await cloud.indexSourceItems(ids, (m) => setAutoBackupMsg(m));
+  } catch {}
+  if (!index || !index.length) return 0;
+  const byName = new Map();
+  for (const it of index) {
+    const k = (it.name || "").toLowerCase();
+    if (!k) continue;
+    if (!byName.has(k)) byName.set(k, it); // first wins (camera-roll names are unique)
+  }
+  const changed = [];
+  for (const p of orphans) {
+    const hit = byName.get((p.name || "").toLowerCase());
+    if (hit) { p.sourceId = hit.id; changed.push(p); }
+  }
+  if (changed.length) {
+    await db.bulkPut("photos", changed);
+    scheduleLibrarySync(); // share the recovered source ids with other devices
+  }
+  return changed.length;
+}
 async function backupAllAlbums() {
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
   if ((!device && !cloudOK) || !state.autoBackup) return;
   if (backingUpAll || forceBackupBusy) return;
+  // Heal any photos that lost their source link first, so the sweep can pull
+  // their full-size originals rather than blocking on "needs source".
+  if (cloudOK) { try { await relinkOrphanSources(); } catch {} }
   const seen = new Set();
   const gaps = [];
   for (const p of namedPeopleHere()) {
