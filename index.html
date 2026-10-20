@@ -90,6 +90,8 @@ em { font-style: italic; color: var(--accent-dark); }
 p { margin: 0 0 .9rem; }
 
 .brand { display: inline-flex; align-items: center; gap: .5em; }
+#appBrand { cursor: pointer; border-radius: 12px; }
+#appBrand:focus-visible { outline: 2px solid rgba(255,255,255,.7); outline-offset: 3px; }
 .brand__mark {
   width: 34px; height: 34px; border-radius: 11px; flex: none;
   display: grid; place-items: center;
@@ -337,7 +339,7 @@ p { margin: 0 0 .9rem; }
 .albums-cloud::before { content: "☁"; }
 
 /* Album cards (the box grid) */
-.album-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.album-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; align-items: start; }
 @media (min-width: 520px) { .album-cards { grid-template-columns: repeat(3, 1fr); } }
 .album-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
   cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; display: flex; flex-direction: column; }
@@ -1162,7 +1164,7 @@ p { margin: 0 0 .9rem; }
   </div>
 
   <header class="appbar">
-    <div class="brand"><span class="brand__mark"><svg viewBox="0 0 80 80" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"><rect x="14" y="26" width="38" height="38" rx="8" transform="rotate(-13 33 45)"/><rect x="28" y="16" width="38" height="38" rx="8" transform="rotate(7 47 35)" fill="#fff"/></g><circle cx="47" cy="31" r="6" fill="#5a4cd1"/><path d="M36 51c0-7.5 5-11.5 11-11.5s11 4 11 11.5" fill="#5a4cd1"/></svg></span><span class="brand__name"><span class="brand__fam">Fam</span>Sort</span></div>
+    <div class="brand" id="appBrand" role="button" tabindex="0" aria-label="Go to home screen"><span class="brand__mark"><svg viewBox="0 0 80 80" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"><rect x="14" y="26" width="38" height="38" rx="8" transform="rotate(-13 33 45)"/><rect x="28" y="16" width="38" height="38" rx="8" transform="rotate(7 47 35)" fill="#fff"/></g><circle cx="47" cy="31" r="6" fill="#5a4cd1"/><path d="M36 51c0-7.5 5-11.5 11-11.5s11 4 11 11.5" fill="#5a4cd1"/></svg></span><span class="brand__name"><span class="brand__fam">Fam</span>Sort</span></div>
     <div class="appbar__right">
       <span class="appbar__badge">Private · on-device</span>
       <button class="account-btn" id="accountBtn" type="button" aria-label="Your account" aria-haspopup="menu" aria-expanded="false">
@@ -1377,11 +1379,12 @@ p { margin: 0 0 .9rem; }
            (card style with a › chevron); the last two are read-only progress
            read-outs (flat, muted, no chevron) so it's clear what you can click. -->
       <div class="stat-row" id="statRow" hidden>
-        <button type="button" class="stat stat--link" id="statPhotosBtn"><span class="stat__num" id="statPhotos">0</span><span class="stat__label">photos sourced</span></button>
-        <button type="button" class="stat stat--link" id="statPeopleBtn"><span class="stat__num" id="statPeople">0</span><span class="stat__label">people found</span></button>
-        <button type="button" class="stat stat--link" id="statDupesBtn"><span class="stat__num" id="statDupes">0</span><span class="stat__label">duplicates to clean</span></button>
-        <div class="stat stat--static" id="statCleanedTile"><span class="stat__num" id="statCleaned">0</span><span class="stat__label">duplicates cleaned</span></div>
-        <div class="stat stat--static" id="statBackedUpTile"><span class="stat__num" id="statBackedUp">0</span><span class="stat__label">backed up</span></div>
+        <button type="button" class="stat stat--link" id="statPhotosBtn"><span class="stat__num" id="statPhotos">0</span><span class="stat__label">Photos sourced</span></button>
+        <button type="button" class="stat stat--link" id="statPeopleBtn"><span class="stat__num" id="statPeople">0</span><span class="stat__label">People found</span></button>
+        <button type="button" class="stat stat--link" id="statDupesBtn"><span class="stat__num" id="statDupes">0</span><span class="stat__label">Duplicates to clean</span></button>
+        <div class="stat stat--static" id="statCleanedTile"><span class="stat__num" id="statCleaned">0</span><span class="stat__label">Duplicates cleaned</span></div>
+        <div class="stat stat--static" id="statSortedTile"><span class="stat__num" id="statSorted">0</span><span class="stat__label">Sorted into albums</span></div>
+        <div class="stat stat--static" id="statBackedUpTile"><span class="stat__num" id="statBackedUp">0</span><span class="stat__label" id="statBackedUpLabel">Backed up</span></div>
       </div>
 
       <!-- Live backup banner: always makes it clear whether a backup is running
@@ -3769,6 +3772,7 @@ const state = {
   watched: [], // {id, name, handle} folders to auto-scan
   processedKeys: new Set(), // "name|size|lastModified" of files already ingested
   kidsOnly: false, // Albums screen filter driven by the "this is my child" flag
+  rescanSkipVideos: false, // when on, re-scans skip video files (device preference, not synced)
   albumSort: "count", // album index order: "count" (most photos) | "name" | "custom" (drag)
   albumPhotoSort: "added_new", // photo order inside an open album: added_new|added_old|date_new|date_old|name
   favAlbums: [], // album ids pinned to the top of the Albums screen
@@ -6379,6 +6383,7 @@ async function loadAlbumPrefs() {
   if (Array.isArray(p.albumOrder)) state.albumOrder = p.albumOrder;
   if (typeof p.albumOrderAt === "number") state.albumOrderAt = p.albumOrderAt;
   if (typeof p.kidsOnly === "boolean") state.kidsOnly = p.kidsOnly;
+  if (typeof p.rescanSkipVideos === "boolean") state.rescanSkipVideos = p.rescanSkipVideos;
   if (p.specialCovers && typeof p.specialCovers === "object") state.specialCovers = p.specialCovers;
 }
 
@@ -6392,6 +6397,7 @@ async function saveAlbumPrefs() {
     albumOrder: state.albumOrder || [],
     albumOrderAt: state.albumOrderAt || 0,
     kidsOnly: state.kidsOnly,
+    rescanSkipVideos: state.rescanSkipVideos || false,
     specialCovers: state.specialCovers || {},
   });
 }
@@ -8498,7 +8504,7 @@ function isUntaggedPhoto(photo) {
 function rescanSelectedPhotoIds() {
   const box = el("rescanOptions");
   const ids = new Set();
-  box.querySelectorAll("input[type=checkbox]:checked").forEach((cb) => {
+  box.querySelectorAll("input[type=checkbox][data-scope]:checked").forEach((cb) => {
     const scope = cb.dataset.scope;
     if (scope === "all") {
       state.photos.forEach((p) => ids.add(p.id));
@@ -8509,6 +8515,11 @@ function rescanSelectedPhotoIds() {
       state.photos.filter((p) => (p.personIds || []).includes(pid)).forEach((p) => ids.add(p.id));
     }
   });
+  // Optional filter: drop videos from the chosen set when "Skip videos" is ticked.
+  const skipVid = el("rescanSkipVideos");
+  if (skipVid && skipVid.checked) {
+    for (const p of state.photos) if (p.isVideo && ids.has(p.id)) ids.delete(p.id);
+  }
   return ids;
 }
 
@@ -8558,6 +8569,35 @@ function openRescanModal() {
       addOpt("person:" + p.id, p.name, `${count}`, false);
     }
   }
+  // Let the user leave videos out of a re-scan. Only worth offering when there
+  // ARE videos; the choice is remembered (and also honoured by the Untagged
+  // album's own re-scan button).
+  const vidCount = state.photos.filter((p) => p.isVideo).length;
+  if (vidCount) {
+    const head = document.createElement("p");
+    head.className = "modal__or";
+    head.textContent = "— options —";
+    box.appendChild(head);
+    const row = document.createElement("label");
+    row.className = "check rescan-opt";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.id = "rescanSkipVideos";
+    cb.checked = !!state.rescanSkipVideos;
+    cb.addEventListener("change", () => {
+      state.rescanSkipVideos = cb.checked;
+      saveAlbumPrefs();
+      updateRescanCount();
+    });
+    const name = document.createElement("span");
+    name.className = "rescan-opt__label";
+    name.textContent = "Skip videos";
+    const cnt = document.createElement("span");
+    cnt.className = "rescan-opt__count";
+    cnt.textContent = `${vidCount}`;
+    row.append(cb, name, cnt);
+    box.appendChild(row);
+  }
   updateRescanCount();
   el("rescanModal").hidden = false;
 }
@@ -8573,7 +8613,9 @@ async function startRescan() {
 // pulls the original full-res file, not the thumbnail) so faces missed on the
 // first pass get picked up and sorted into albums.
 async function rescanUntaggedAlbum() {
-  const ids = new Set(state.photos.filter(isUntaggedPhoto).map((p) => p.id));
+  let untagged = state.photos.filter(isUntaggedPhoto);
+  if (state.rescanSkipVideos) untagged = untagged.filter((p) => !p.isVideo);
+  const ids = new Set(untagged.map((p) => p.id));
   if (!ids.size) {
     await uiAlert("There are no untagged photos to re-scan right now.", { okLabel: "OK" });
     return;
@@ -8646,6 +8688,13 @@ async function redetectFaces(photoIds) {
             const res = await withTimeout(face.analyzeVideoFile(original), 60000);
             faces = res.faces || [];
             hiRes++;
+          } else if (photo.thumb) {
+            // The original video isn't on this device (e.g. pulled from a shared
+            // album, or stored only on another phone). Still scan the stored
+            // preview frame with the thorough detector so obvious faces in the
+            // poster frame aren't missed entirely.
+            faces = await withTimeout(face.analyzeImage(photo.thumb, { thorough: true }), 30000);
+            lowRes++;
           }
         } else {
           // Use the EXACT same engine as the per-photo "Find faces in this
@@ -9360,14 +9409,17 @@ function renderStats() {
   const dupBtn = el("statDupesBtn");
   if (dupBtn) dupBtn.classList.toggle("stat--alert", dupeExtras > 0);
 
-  // Read-only progress read-outs: how many duplicates we've already cleaned, and
-  // how many album photos are safely backed up.
+  // Read-only progress read-outs: how many duplicates we've already cleaned,
+  // how many album photos are sorted into albums, and how many are backed up.
   el("statCleaned").textContent = state.dupesCleaned || 0;
-  const { done } = albumsBackupTotals();
+  const { total, done } = albumsBackupTotals();
+  el("statSorted").textContent = total;
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
   const canBackup = (device || cloudOK) && state.autoBackup;
   el("statBackedUp").textContent = canBackup ? done : "\u2014";
+  const backedLabel = el("statBackedUpLabel");
+  if (backedLabel) backedLabel.textContent = `Backed up to ${device ? "this device" : "OneDrive"}`;
 
   el("statRow").hidden = state.photos.length === 0 && people === 0;
   renderHomeBackup();
@@ -11127,7 +11179,11 @@ async function setAlbumCover(personId, photo) {
   // crop that can cut the person off when they're to one side / small.
   person.coverPos = faceCenterPos(personId, photo.id);
   await savePerson(person);
- 
+  scheduleCloudSync();
+  renderAll();
+  // Re-open the photo so the button flips to the "★ …'s cover" state.
+  showLightboxPhoto(photo.id);
+}
 
 // Set the cover for a SPECIAL album (Everyone / Untagged), which has no person
 // record to hang it on. Stored per-album and synced across devices.
@@ -11137,10 +11193,6 @@ async function setSpecialCover(albumId, photo) {
   await saveSpecialCovers();
   scheduleCloudSync();
   renderAll();
-  showLightboxPhoto(photo.id);
-} scheduleCloudSync();
-  renderAll();
-  // Re-open the photo so the button flips to the "★ …'s cover" state.
   showLightboxPhoto(photo.id);
 }
 
@@ -11567,6 +11619,15 @@ function wire() {
   // Full-quality re-scan from the Untagged album.
   const albumRescan = el("albumRescanBtn");
   if (albumRescan) albumRescan.addEventListener("click", rescanUntaggedAlbum);
+  // The app logo doubles as a "home" button — tap it to return to the main
+  // (Add) screen from anywhere, like a website's masthead.
+  const appBrand = el("appBrand");
+  if (appBrand) {
+    appBrand.addEventListener("click", () => navTo("add"));
+    appBrand.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navTo("add"); }
+    });
+  }
   // Top-right account avatar menu (like normal apps).
   el("accountBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleAccountMenu(); });
   el("accountMenu").addEventListener("click", (e) => e.stopPropagation());
