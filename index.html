@@ -259,13 +259,20 @@ p { margin: 0 0 .9rem; }
 .linkbtn:hover { color: var(--accent); }
 
 /* Stats */
-.stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin: 6px 0 18px; }
-.stat { background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 8px; text-align: center; font-family: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .05s; }
-.stat:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(36,31,27,.08); }
-.stat:active { transform: translateY(1px); }
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; margin: 6px 0 18px; }
+.stat { position: relative; border-radius: var(--radius-sm); padding: 14px 8px; text-align: center; font-family: inherit; }
+/* Tappable shortcut tiles: raised card, hover lift, pointer + a › chevron. */
+.stat--link { background: #fff; border: 1px solid var(--line); cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .05s; }
+.stat--link:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(36,31,27,.08); }
+.stat--link:active { transform: translateY(1px); }
+.stat--link::after { content: "\203A"; position: absolute; top: 6px; right: 8px; font-size: .9rem; line-height: 1; color: var(--accent); opacity: .55; }
+/* Read-only progress read-outs: flat, muted, no border highlight, no chevron. */
+.stat--static { background: var(--cream-2); border: 1px solid transparent; cursor: default; }
+.stat--static .stat__num { color: var(--ink-soft); }
 .stat--alert { border-color: #eccac4; background: #fff7f5; }
 .stat--alert .stat__num { color: var(--danger); }
-.stat__num { display: block; font-family: var(--font-serif); font-weight: 700; font-size: 1.5rem; color: var(--accent-dark); }
+.stat--alert.stat--link::after { color: var(--danger); opacity: .7; }
+.stat__num { display: block; font-family: var(--font-serif); font-weight: 700; font-size: 1.5rem; color: var(--accent-dark); line-height: 1.1; }
 .stat__label { font-size: .78rem; color: var(--ink-soft); }
 
 .tips { background: var(--cream-2); border-radius: var(--radius-sm); padding: 14px 16px; }
@@ -813,7 +820,7 @@ p { margin: 0 0 .9rem; }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  display: grid; grid-template-columns: repeat(2, 1fr);
   background: rgba(255, 255, 255, .92); backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
   box-shadow: 0 -6px 20px -14px rgba(50, 35, 20, .35);
@@ -865,6 +872,10 @@ p { margin: 0 0 .9rem; }
 .brand__mark--lg { width: 60px; height: 60px; border-radius: 18px; }
 .signed-out-gate__title { margin: 10px 0 8px; font-size: 1.35rem; }
 .signed-out-gate__sub { color: var(--ink-soft); margin-bottom: 18px; }
+.signed-out-gate__options { display: grid; gap: 12px; text-align: left; margin-bottom: 16px; }
+.signed-out-gate__opt { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; background: #fff; }
+.signed-out-gate__opt .btn { width: 100%; }
+.signed-out-gate__story { font-size: .86rem; color: var(--ink-soft); margin: 10px 0 0; }
 .signed-out-gate__actions { display: flex; justify-content: center; margin-bottom: 10px; }
 .signed-out-gate__actions .btn { min-width: 220px; }
 .signed-out-gate__fine { font-size: .82rem; color: var(--ink-soft); margin-bottom: 16px; }
@@ -1120,11 +1131,17 @@ p { margin: 0 0 .9rem; }
       <div class="card-plain signed-out-gate" id="signedOutGate" hidden>
         <div class="signed-out-gate__brand"><span class="brand__mark brand__mark--lg"><svg viewBox="0 0 80 80" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"><rect x="14" y="26" width="38" height="38" rx="8" transform="rotate(-13 33 45)"/><rect x="28" y="16" width="38" height="38" rx="8" transform="rotate(7 47 35)" fill="#fff"/></g><circle cx="47" cy="31" r="6" fill="#5a4cd1"/><path d="M36 51c0-7.5 5-11.5 11-11.5s11 4 11 11.5" fill="#5a4cd1"/></svg></span></div>
         <h2 class="signed-out-gate__title">Sort your photos by the people you love</h2>
-        <p class="signed-out-gate__sub">Sign in with your Microsoft account to set up Famsort and keep your people and albums in sync across every device. Your photos are sorted <strong>on your device</strong> — nothing is uploaded for face-finding.</p>
-        <div class="signed-out-gate__actions">
-          <button class="btn btn--primary" id="gateSignInBtn" type="button">Sign in or get started</button>
+        <p class="signed-out-gate__sub">Famsort sorts your photos into an album for each person — <strong>on your device</strong>, nothing uploaded for face-finding. Your people, albums and settings follow you to every device you sign in on.</p>
+        <div class="signed-out-gate__options">
+          <div class="signed-out-gate__opt">
+            <button class="btn btn--primary" id="gateGetStartedBtn" type="button">Get started</button>
+            <p class="signed-out-gate__story">New to Famsort? Sign in with your Microsoft account and we'll set you up — point us at your photo folders and watch the albums build themselves.</p>
+          </div>
+          <div class="signed-out-gate__opt">
+            <button class="btn btn--ghost" id="gateSignInBtn" type="button">Sign back in</button>
+            <p class="signed-out-gate__story">Already set up on another device? Sign in with the <strong>same Microsoft account</strong> and we'll bring back all your people, albums and settings right where you left off.</p>
+          </div>
         </div>
-        <p class="signed-out-gate__fine">New here? The same button sets you up. Existing user? It brings back everything you left off with.</p>
         <button class="linkbtn signed-out-gate__device" id="gateDeviceBtn" type="button">Set up on this device only, without an account</button>
       </div>
 
@@ -1262,18 +1279,15 @@ p { margin: 0 0 .9rem; }
         </div>
       </div>
 
+      <!-- One at-a-glance stat row. The first three are TAPPABLE shortcuts
+           (card style with a › chevron); the last two are read-only progress
+           read-outs (flat, muted, no chevron) so it's clear what you can click. -->
       <div class="stat-row" id="statRow" hidden>
-        <button type="button" class="stat" id="statPhotosBtn"><span class="stat__num" id="statPhotos">0</span><span class="stat__label">photos</span></button>
-        <button type="button" class="stat" id="statPeopleBtn"><span class="stat__num" id="statPeople">0</span><span class="stat__label">people found</span></button>
-        <button type="button" class="stat" id="statDupesBtn"><span class="stat__num" id="statDupes">0</span><span class="stat__label">duplicates</span></button>
-      </div>
-
-      <!-- Library pipeline at a glance: everything brought in → how many got sorted
-           into a person's album → how many are safely backed up. -->
-      <div class="libstat libstat--pipe" id="libraryStats" hidden>
-        <div class="libstat__item"><span class="libstat__num" id="libStatSourced">0</span><span class="libstat__label">sourced</span></div>
-        <div class="libstat__item"><span class="libstat__num" id="libStatSorted">0</span><span class="libstat__label">sorted into albums</span></div>
-        <div class="libstat__item"><span class="libstat__num" id="libStatBackedUp">0</span><span class="libstat__label">backed up</span></div>
+        <button type="button" class="stat stat--link" id="statPhotosBtn"><span class="stat__num" id="statPhotos">0</span><span class="stat__label">photos sourced</span></button>
+        <button type="button" class="stat stat--link" id="statPeopleBtn"><span class="stat__num" id="statPeople">0</span><span class="stat__label">people found</span></button>
+        <button type="button" class="stat stat--link" id="statDupesBtn"><span class="stat__num" id="statDupes">0</span><span class="stat__label">duplicates to clean</span></button>
+        <div class="stat stat--static" id="statCleanedTile"><span class="stat__num" id="statCleaned">0</span><span class="stat__label">duplicates cleaned</span></div>
+        <div class="stat stat--static" id="statBackedUpTile"><span class="stat__num" id="statBackedUp">0</span><span class="stat__label">backed up</span></div>
       </div>
 
       <div class="tips">
@@ -1282,24 +1296,9 @@ p { margin: 0 0 .9rem; }
       </div>
     </section>
 
-    <!-- PEOPLE SCREEN -->
-    <section class="view" id="view-people" data-view="people" hidden>
-      <h2 class="view__title">Who's who?</h2>
-      <p class="view__sub">We grouped the faces we found. Tag the people you know — tap <strong>Ignore</strong> for anyone you don't want sorted.</p>
-
-      <section class="to-name" id="toNamePanel" hidden>
-        <h3 class="people-subhead people-subhead--hot" id="toNameHead">Faces to tag</h3>
-        <p class="to-name__sub">New faces we found — tag them first so their photos sort into albums.</p>
-        <div class="people-grid" id="peopleGrid"></div>
-      </section>
-
-      <h3 class="people-subhead" id="namedHead" hidden>Your people</h3>
-      <div class="people-grid" id="namedGrid"></div>
-
-      <div class="empty" id="peopleEmpty" hidden>
-        <p>No new people to name right now.</p>
-      </div>
-    </section>
+    <!-- PEOPLE SCREEN merged into ALBUMS: the "faces to tag" queue now lives at
+         the top of the Albums index, and each person's album replaces the old
+         "Your people" cards. -->
 
     <!-- ALBUMS SCREEN -->
     <section class="view" id="view-albums" data-view="albums" hidden>
@@ -1311,6 +1310,15 @@ p { margin: 0 0 .9rem; }
             <input type="checkbox" id="kidsOnly" /> Just my kids
           </label>
         </div>
+
+        <!-- Faces still waiting to be tagged come first, in their own highlighted
+             panel — that's the action to take. (Moved from the old People tab.) -->
+        <section class="to-name" id="toNamePanel" hidden>
+          <h3 class="people-subhead people-subhead--hot" id="toNameHead">Faces to tag</h3>
+          <p class="to-name__sub">New faces we found — tag them first so their photos sort into albums.</p>
+          <div class="people-grid" id="peopleGrid"></div>
+        </section>
+
         <div class="albums-backup" id="albumsBackupSummary" hidden>
           <div class="albums-backup__row">
             <span class="albums-backup__text" id="albumsBackupText"></span>
@@ -1532,9 +1540,6 @@ p { margin: 0 0 .9rem; }
   <nav class="tabbar">
     <button class="tabbar__btn is-active" data-nav="add">
       <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8.5v7M8.5 12h7"/></svg></span>Add
-    </button>
-    <button class="tabbar__btn" data-nav="people">
-      <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8.5" r="3"/><path d="M3.8 19c0-2.9 2.4-4.6 5.2-4.6s5.2 1.7 5.2 4.6"/><path d="M16.3 5.8a2.8 2.8 0 0 1 0 5.4"/><path d="M17.5 14.6c2 .5 3.4 2 3.4 4.4"/></svg></span>People
     </button>
     <button class="tabbar__btn" data-nav="albums">
       <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2.6"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 16.5l3.8-3.3 3 2.5L15 11l4.5 4.2"/></svg></span>Albums
@@ -3567,6 +3572,7 @@ const state = {
   autoBackup: true, // continuously sort new photos and back organised copies to OneDrive
   backedUpKeys: new Set(), // files already uploaded, so we never back up twice
   keptDistinct: new Set(), // photo ids the user confirmed are NOT duplicates (stop flagging)
+  dupesCleaned: 0, // running count of duplicate copies removed (home-screen read-out)
   cloudSources: [], // chosen OneDrive source folders [{id, name}] ([] = camera roll default)
   outputRoot: "Famsort", // OneDrive folder path where sorted per-person albums are written
   sortMode: "perPerson", // how multi-person photos are filed: "perPerson" = a copy in EVERY tagged person's folder (albums never miss a photo, duplicates across folders); "single" = one copy in the primary person's folder only (no duplicates)
@@ -3838,6 +3844,8 @@ async function loadAutoBackup() {
   state.backedUpKeys = new Set(b?.list || []);
   const kd = await db.get("meta", "keptDistinct");
   state.keptDistinct = new Set(kd?.list || []);
+  const dc = await db.get("meta", "dupesCleaned");
+  state.dupesCleaned = Number(dc?.count) || 0;
   const toggle = el("autoBackup");
   if (toggle) toggle.checked = state.autoBackup;
 }
@@ -3852,6 +3860,18 @@ async function saveBackedUpKeys() {
 
 async function saveKeptDistinct() {
   await db.put("meta", { id: "keptDistinct", list: [...state.keptDistinct] });
+}
+
+async function saveDupesCleaned() {
+  await db.put("meta", { id: "dupesCleaned", count: state.dupesCleaned || 0 });
+}
+
+// Bump the "duplicates cleaned" tally and persist it, then refresh the stat tiles.
+async function bumpDupesCleaned(n) {
+  if (!n) return;
+  state.dupesCleaned = (state.dupesCleaned || 0) + n;
+  await saveDupesCleaned();
+  renderStats();
 }
 
 // Turn the setting on/off: persist it, (re)start the watch loop, update status.
@@ -4668,6 +4688,7 @@ async function cleanupAlbumDuplicates(id) {
   } finally {
     forceBackupBusy = false;
   }
+  if (done) await bumpDupesCleaned(done);
   reconcileBusy = true;
   try {
     await reconcileAlbumCloud(id);
@@ -5820,12 +5841,15 @@ function showScanMsg(text) {
 }
 
 /* ---------------------------------------------------------- cloud sources */
-async function connectCloud() {
+async function connectCloud(opts) {
+  const returning = !!(opts && opts.returning === true);
   const btn = el("addCloudBtn");
   if (btn) btn.disabled = true;
   showAuthOverlay(
-    "Opening secure sign-in\u2026",
-    "A Microsoft sign-in window will appear \u2014 complete it to continue."
+    returning ? "Welcome back \u2014 opening secure sign-in\u2026" : "Opening secure sign-in\u2026",
+    returning
+      ? "A Microsoft sign-in window will appear \u2014 complete it to bring back your people and albums."
+      : "A Microsoft sign-in window will appear \u2014 complete it to continue."
   );
   try {
     const ok = await cloud.signIn(showCloudMsg);
@@ -6259,6 +6283,7 @@ async function clearLocalData() {
   state.pendingClusters = [];
   state.activeAlbum = null;
   state.keptDistinct = new Set();
+  state.dupesCleaned = 0;
   state.backedUpKeys = new Set();
   state.processedKeys = new Set();
   state.deletedPeople = {};
@@ -6267,6 +6292,7 @@ async function clearLocalData() {
   await saveProcessedKeys();
   await saveBackedUpKeys();
   await saveKeptDistinct();
+  await saveDupesCleaned();
   await saveTombstones();
 }
 
@@ -7234,11 +7260,11 @@ async function processFiles(fileList, opts = {}) {
   // Auto-backup organised copies of the new originals (if enabled + connected).
   if (toBackup.length) backupPhotos(toBackup);
 
-  // Nudge the user to the People screen if there are faces to name — but never
-  // yank them around during a background auto-scan.
+  // Nudge the user to the Albums screen if there are faces to tag — but never
+  // yank them around during a background auto-scan. (The faces-to-tag queue lives
+  // at the top of Albums now.)
   if (!autoScanning) {
-    if (state.pendingClusters.length) navTo("people");
-    else if (namedPeopleHere().length) navTo("albums");
+    if (state.pendingClusters.length || namedPeopleHere().length) navTo("albums");
   }
 }
 
@@ -7488,6 +7514,7 @@ function renderDupModal() {
 
 async function removeDuplicatePhoto(groupIndex, photoId) {
   await deletePhotoRecord(photoId);
+  await bumpDupesCleaned(1);
   const g = dupGroups[groupIndex];
   if (g) dupGroups[groupIndex] = g.filter((p) => p.id !== photoId);
   if (dupGroups[groupIndex] && dupGroups[groupIndex].length < 2) dupGroups.splice(groupIndex, 1);
@@ -7512,6 +7539,7 @@ async function removeAllDuplicates() {
   if (!toRemove.length) return;
   if (!(await uiConfirm(`Remove ${toRemove.length} duplicate cop${toRemove.length === 1 ? "y" : "ies"}? The best-quality copy of each is kept. Your original files are not touched.`, { okLabel: "Remove" }))) return;
   for (const id of toRemove) await deletePhotoRecord(id);
+  await bumpDupesCleaned(toRemove.length);
   dupGroups = [];
   recomputePending();
   renderDupModal();
@@ -7873,8 +7901,8 @@ async function resetIgnored() {
   recomputePending();
   renderAll();
   scheduleCloudSync(); // push the cleaned model so other devices stop hiding faces too
-  setAutoBackupMsg(`Restored ${released.length} skipped face${released.length === 1 ? "" : "s"}. Check the People tab to name them.`);
-  if (state.pendingClusters.length) navTo("people");
+  setAutoBackupMsg(`Restored ${released.length} skipped face${released.length === 1 ? "" : "s"}. Check the Albums tab to tag them.`);
+  if (state.pendingClusters.length) navTo("albums");
 }
 
 // Plain-language readout of what's actually in the database, so we can tell
@@ -8129,10 +8157,10 @@ async function redetectFaces(photoIds) {
     const lowNote = lowRes ? ` ${lowRes} could only use the small preview (turn on OneDrive backup in Family ⚙️ so the originals are available next time).` : "";
     setAutoBackupMsg(
       found
-        ? `Re-scan found ${found} face${found === 1 ? "" : "s"}.${hiNote}${lowNote} Check the People tab to tag them.`
+        ? `Re-scan found ${found} face${found === 1 ? "" : "s"}.${hiNote}${lowNote} Check the Albums tab to tag them.`
         : `Re-scan found no faces.${hiNote}${lowNote}${ssdNote}`.trim()
     );
-    if (state.pendingClusters.length) navTo("people");
+    if (state.pendingClusters.length) navTo("albums");
   } finally {
     if (ownLock) scanBusy = false;
   }
@@ -8401,7 +8429,6 @@ function sample(arr, n) {
 
 /* ------------------------------------------------------------- render */
 function renderAll() {
-  renderPeople();
   renderAlbums();
   renderStats();
   renderSetupUI();
@@ -8429,8 +8456,6 @@ function renderSetupUI() {
     if (tips) tips.hidden = true;
     const statRow = el("statRow");
     if (statRow) statRow.hidden = true;
-    const libStats = el("libraryStats");
-    if (libStats) libStats.hidden = true;
     return;
   }
   if (tips) tips.hidden = false;
@@ -8468,9 +8493,10 @@ function openSetupConfig() {
   wizard?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// The three Add-screen tiles are live counts of the whole library and double as
-// shortcuts: photos → Everyone album, people → People screen, duplicates →
-// the duplicate review. They update on every render, not just after an import.
+// Home-screen stat tiles. The first three are live shortcuts (photos → Everyone
+// album, people → Albums, duplicates → the duplicate review); the last two are
+// read-only progress read-outs (duplicates cleaned, photos backed up). They
+// update on every render, not just after an import.
 function renderStats() {
   const people = state.pendingClusters.length + namedPeopleHere().length;
   const dupeExtras = countDuplicateExtras();
@@ -8479,73 +8505,28 @@ function renderStats() {
   el("statDupes").textContent = dupeExtras;
   const dupBtn = el("statDupesBtn");
   if (dupBtn) dupBtn.classList.toggle("stat--alert", dupeExtras > 0);
-  el("statRow").hidden = state.photos.length === 0 && people === 0;
 
-  // Library pipeline on the home screen: sourced → sorted into albums → backed up.
-  const libWrap = el("libraryStats");
-  if (libWrap) {
-    if (!state.photos.length) {
-      libWrap.hidden = true;
-    } else {
-      libWrap.hidden = false;
-      const { total, done } = albumsBackupTotals();
-      const device = state.outputMode === "device" && !!state.outputHandle;
-      const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
-      const canBackup = (device || cloudOK) && state.autoBackup;
-      el("libStatSourced").textContent = state.photos.length;
-      el("libStatSorted").textContent = total;
-      el("libStatBackedUp").textContent = canBackup ? done : "\u2014";
-    }
-  }
+  // Read-only progress read-outs: how many duplicates we've already cleaned, and
+  // how many album photos are safely backed up.
+  el("statCleaned").textContent = state.dupesCleaned || 0;
+  const { done } = albumsBackupTotals();
+  const device = state.outputMode === "device" && !!state.outputHandle;
+  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  const canBackup = (device || cloudOK) && state.autoBackup;
+  el("statBackedUp").textContent = canBackup ? done : "\u2014";
+
+  el("statRow").hidden = state.photos.length === 0 && people === 0;
 }
 
-function renderPeople() {
-  // Faces still waiting to be named come FIRST and in their own highlighted
-  // panel — that's the action the user needs to take. Named people sit below.
+// The "faces to tag" queue — the one piece of the old People screen we kept.
+// It now renders at the top of the Albums index (see renderAlbumIndex). Named
+// people are shown as their own albums below, so there's no separate list.
+function renderTagQueue() {
+  const panel = el("toNamePanel");
   const grid = el("peopleGrid");
-  el("toNamePanel").hidden = state.pendingClusters.length === 0;
+  if (!panel || !grid) return;
+  panel.hidden = state.pendingClusters.length === 0;
   renderClusterCards(grid);
-
-  // Named people. People synced from another device with no local photos yet are
-  // held back (see namedPeopleHere) so they don't look like broken empty albums.
-  const named = namedPeopleHere();
-  const namedGrid = el("namedGrid");
-  namedGrid.innerHTML = "";
-  el("namedHead").hidden = named.length === 0;
-  for (const p of named) {
-    const count = state.photos.filter((ph) => ph.personIds.includes(p.id)).length;
-    const rel = relationshipLabel(p);
-    const coverPos = albumCoverPos(p.id, p);
-    const card = document.createElement("div");
-    card.className = "person-card";
-    card.innerHTML = `
-      <button class="person-card__face person-card__face--btn" data-nav="${p.id}" aria-label="Open ${p.name}'s album">
-        <img src="${p.coverThumb || p.thumb}" alt="${p.name}"${coverPos ? ` style="object-position:${coverPos}"` : ""} />
-      </button>
-      <div class="person-card__body">
-        <div class="person-card__name">${p.name}${p.isChild ? ' <span class="badge-kid">child</span>' : ""}</div>
-        ${rel ? `<div class="person-card__rel">${rel}</div>` : ""}
-        <div class="person-card__count">${count} photo${count === 1 ? "" : "s"}</div>
-        <div class="person-card__actions">
-          <button class="btn btn--primary btn--small" data-nav="${p.id}">Open</button>
-          <button class="btn btn--ghost btn--small" data-edit="${p.id}">Edit</button>
-        </div>
-      </div>`;
-    namedGrid.appendChild(card);
-  }
-  namedGrid.querySelectorAll("[data-nav]").forEach((b) =>
-    b.addEventListener("click", () => {
-      state.activeAlbum = b.dataset.nav;
-      state.albumFrom = "people"; // so "Back" returns to the People tab
-      renderAlbums();
-      navTo("albums");
-    })
-  );
-  namedGrid.querySelectorAll("[data-edit]").forEach((b) =>
-    b.addEventListener("click", () => openPersonEdit(b.dataset.edit))
-  );
-
-  el("peopleEmpty").hidden = state.pendingClusters.length > 0 || named.length > 0;
 }
 
 // Render the "faces waiting to be named" cards into a grid element. Shared by
@@ -8711,19 +8692,12 @@ function closeAlbum() {
   renderAlbums();
 }
 
-// Back out of an open album. If we arrived here by tapping a person on the
-// People tab, go back there; otherwise return to the Albums index.
+// Back out of an open album, returning to the Albums index.
 function albumBack() {
-  const from = state.albumFrom;
   state.activeAlbum = null;
   state.albumFrom = "albums";
   lastRenderedAlbum = null; // reopening re-verifies against OneDrive
-  if (from === "people") {
-    renderAlbums();
-    navTo("people");
-  } else {
-    renderAlbums();
-  }
+  renderAlbums();
 }
 
 // Albums screen = a two-level view: an index of album cards, or one open album.
@@ -8742,6 +8716,10 @@ function renderAlbums() {
 }
 
 function renderAlbumIndex() {
+  // The faces-to-tag queue sits at the very top (moved here from the old People
+  // tab) — tagging new people works exactly as it did before.
+  renderTagQueue();
+
   const people = namedPeopleHere();
   const cards = el("albumCards");
   cards.innerHTML = "";
@@ -8769,10 +8747,10 @@ function renderAlbumIndex() {
   // Favourites float to the top, keeping their order otherwise.
   roster.sort((a, b) => Number(isFavAlbum(b.id)) - Number(isFavAlbum(a.id)));
 
-  // Special albums always lead: Everyone, Untagged, Awaiting tag.
+  // Special albums always lead: Everyone, then Untagged (if any). "Awaiting tag"
+  // is no longer a card — the faces-to-tag queue is shown above instead.
   const specials = [{ id: ALL_ALBUM, name: "Everyone", special: true }];
   if (albumPhotoCount(UNTAGGED)) specials.push({ id: UNTAGGED, name: "Untagged", special: true });
-  if (state.pendingClusters.length) specials.push({ id: AWAITING, name: "Awaiting tag", special: true });
 
   // The specials sit in their own section at the top, then a divider, then the
   // sortable person albums below — so the fixed views (Everyone/Untagged) are
@@ -10408,9 +10386,12 @@ function wire() {
   el("accountSignInBtn").addEventListener("click", connectCloud);
   el("accountSwitchBtn").addEventListener("click", switchAccountFlow);
   el("accountSignOutBtn").addEventListener("click", signOutAccount);
-  // Signed-out welcome gate.
+  // Signed-out welcome gate: two stories \u2014 new users \"Get started\", returning
+  // users \"Sign back in\" (same Microsoft sign-in, different framing + copy).
+  const gateGetStarted = el("gateGetStartedBtn");
+  if (gateGetStarted) gateGetStarted.addEventListener("click", () => connectCloud({ returning: false }));
   const gateSignIn = el("gateSignInBtn");
-  if (gateSignIn) gateSignIn.addEventListener("click", connectCloud);
+  if (gateSignIn) gateSignIn.addEventListener("click", () => connectCloud({ returning: true }));
   const gateDevice = el("gateDeviceBtn");
   if (gateDevice) gateDevice.addEventListener("click", () => {
     skipAuthGate = true;
@@ -10507,7 +10488,11 @@ function wire() {
     renderAlbums();
     navTo("albums");
   });
-  el("statPeopleBtn").addEventListener("click", () => navTo("people"));
+  el("statPeopleBtn").addEventListener("click", () => {
+    state.activeAlbum = null;
+    renderAlbums();
+    navTo("albums");
+  });
   el("statDupesBtn").addEventListener("click", openDupModal);
   el("dupClose").addEventListener("click", closeDupModal);
   el("dupRemoveAll").addEventListener("click", removeAllDuplicates);
