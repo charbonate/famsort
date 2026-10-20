@@ -8995,16 +8995,26 @@ function openPersonEdit(personId) {
   editingPersonId = personId;
   editingContactIcon = null;
   editingRelationship = p.relationship || "";
-  // Show the best available face for this person (their face from the chosen
-  // cover photo, else the largest/clearest crop) rather than the first-tagged
-  // one. Persist it as their avatar too — but never override a photo the user
-  // linked from a contact (iconLocked).
+  // The icon next to the name should MATCH the album's cover. If a cover photo
+  // is set, show it (focused on the person's face via object-position, exactly
+  // like the album card). Otherwise show the best available face crop — their
+  // largest/clearest tagged face rather than the first-tagged one. Also persist
+  // that nice face as the avatar used elsewhere, but never override a photo the
+  // user linked from a contact (iconLocked).
+  const faceImg = el("personEditFace");
   const niceFace = bestFaceThumbFor(personId);
   if (niceFace && !p.iconLocked && p.thumb !== niceFace) {
     p.thumb = niceFace;
     savePerson(p).then(scheduleCloudSync);
   }
-  el("personEditFace").src = niceFace || p.thumb || "";
+  const cover = albumCover(personId, p);
+  if (p.coverThumb) {
+    faceImg.src = p.coverThumb;
+    faceImg.style.objectPosition = albumCoverPos(personId, p) || "50% 50%";
+  } else {
+    faceImg.src = niceFace || cover || p.thumb || "";
+    faceImg.style.objectPosition = "50% 50%";
+  }
   el("personEditName").value = p.name;
   const custom = el("relCustom");
   if (custom) custom.value = RELATIONSHIPS.includes(editingRelationship) ? "" : editingRelationship;
@@ -11391,13 +11401,15 @@ async function findFacesInVideo(photo, btn) {
   try {
     await face.loadModels();
     // Sample frames THROUGH the real video, so we need the original file. Use the
-    // copy stored on this device, else stream it back from OneDrive on demand.
+    // same robust fetch as backup: the copy on this device, the ORIGINAL in the
+    // linked OneDrive source, or a backed-up copy — whichever we can reach.
     let blob = null;
-    const media = await db.get("media", photo.id);
-    if (media && media.blob) blob = media.blob;
-    if (!blob && photo.cloudId) blob = await cloud.downloadCloudFile(photo.cloudId);
+    try {
+      const up = await getUploadableFile(photo);
+      if (up && up.file) blob = up.file;
+    } catch {}
     if (!blob) {
-      if (btn) btn.textContent = "Video not on this device";
+      if (btn) btn.textContent = "Can't reach this video";
       return;
     }
     // maxFrames: 40 → up to ~1 frame/second for clips up to 40s, far denser than
