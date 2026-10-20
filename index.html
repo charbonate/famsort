@@ -663,6 +663,8 @@ p { margin: 0 0 .9rem; }
 .shared-item__mgr { margin: 8px 0 6px; font-size: .82rem; color: var(--accent-2-dark, #22685b); font-weight: 600; }
 .shared-item__mgr--none { color: var(--ink-soft, #6b6b6b); font-weight: 500; }
 .shared-item__request .field-row { margin: 6px 0; }
+.shared-item__pull { margin-top: 10px; }
+.shared-item__pull-msg { margin: 6px 0 0; font-size: .8rem; color: var(--ink-soft, #6b6b6b); }
 
 /* Cloud sources → output → sort wizard */
 .wizard { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
@@ -1296,7 +1298,7 @@ p { margin: 0 0 .9rem; }
         <h3>Albums shared with you</h3>
         <p>Albums a co-parent has shared with you show up here. If they've made you a <strong>manager</strong>, you can request to add other viewers or editors — the album's owner approves each request from their device.</p>
         <div class="shared-list" id="sharedList"></div>
-        <p class="card-plain__fine">Requesting to add someone needs <strong>edit access</strong> to the shared album. Sorting the shared photos into your own albums is coming next.</p>
+        <p class="card-plain__fine">Use <strong>Add photos to my Famsort</strong> on any shared album to pull its photos in and sort them into your own albums. Requesting to add someone else needs <strong>edit access</strong> to the shared album.</p>
       </div>
 
       <div class="card-plain">
@@ -2992,6 +2994,74 @@ async function writeSharedAccessConfig(driveId, itemId, config) {
   if (!res.ok) throw new Error(`Save failed (${res.status})`);
   return res.json();
 }
+
+// List the photo/video files inside a SHARED folder (someone else's drive),
+// recursing into sub-folders up to a safe depth. Returns an array of
+// { id, name, size, driveId, width, height } or null on failure. Skips our own
+// _famsort-access.json housekeeping file. Used by the shared-album pull-in so a
+// co-parent can sort the other parent's photos into their own Famsort albums.
+async function listSharedFolderPhotos(driveId, itemId, maxDepth = 3) {
+  if (!oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token || !driveId || !itemId) return null;
+  const out = [];
+  const isMedia = (it) => {
+    if (!it.file) return false;
+    const mime = (it.file.mimeType || "").toLowerCase();
+    if (mime.startsWith("image/") || mime.startsWith("video/")) return true;
+    return /\.(jpe?g|png|gif|bmp|webp|heic|heif|tiff?|mp4|mov|m4v|3gp|avi|mkv|webm)$/i.test(it.name || "");
+  };
+  async function walk(id, depth) {
+    let next = `${GRAPH}/drives/${driveId}/items/${id}/children?$select=id,name,size,file,folder,image&$top=200`;
+    try {
+      while (next) {
+        const page = await graphGet(next, token);
+        for (const it of page.value || []) {
+          if (it.folder && depth < maxDepth) {
+            await walk(it.id, depth + 1);
+          } else if (isMedia(it) && it.name !== ACCESS_FILE) {
+            out.push({
+              id: it.id,
+              name: it.name,
+              size: it.size || 0,
+              driveId,
+              width: (it.image && it.image.width) || 0,
+              height: (it.image && it.image.height) || 0,
+            });
+          }
+        }
+        next = page["@odata.nextLink"];
+      }
+    } catch (e) {
+      if (String(e && e.message).includes("404")) return;
+      throw e;
+    }
+  }
+  try {
+    await walk(itemId, 0);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+// Download one file from a SHARED folder as a Blob (needs at least view access).
+// Returns null if unavailable. Used to pull shared photos into the on-device
+// face-detection / sorting pipeline.
+async function downloadSharedFile(driveId, itemId) {
+  if (!oneDriveConfigured() || !driveId || !itemId) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${GRAPH}/drives/${driveId}/items/${itemId}/content`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return await res.blob();
+  } catch {
+    return null;
+  }
+}
 async function signIn(onStatus) {
   if (!getClientId()) {
     onStatus?.(
@@ -3261,7 +3331,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -5829,6 +5899,15 @@ async function renderSharedAlbums() {
         <span class="shared-item__name">${escapeHtml(s.name)}</span>
         ${s.sharedBy ? `<span class="shared-item__by">shared by ${escapeHtml(s.sharedBy)}</span>` : ""}
       </div>`;
+    // Pull-in: download this album's photos and run them through face detection
+    // and sorting into YOUR own Famsort albums. Needs only view access.
+    const pull = document.createElement("div");
+    pull.className = "shared-item__pull";
+    pull.innerHTML = `
+      <button class="btn btn--primary btn--sm" type="button" data-pull>Add photos to my Famsort</button>
+      <p class="msg shared-item__pull-msg" data-pull-msg hidden></p>`;
+    pull.querySelector("[data-pull]").addEventListener("click", (e) => pullSharedAlbum(s, e.currentTarget, pull.querySelector("[data-pull-msg]")));
+    card.appendChild(pull);
     if (cap === "read" || cap === "write") {
       const form = document.createElement("div");
       form.className = "shared-item__request";
@@ -5884,6 +5963,51 @@ async function requestAddToShared(s, cap, form) {
     if (inp) inp.value = "";
   } catch {
     show("Couldn't send — you may only have view access to this album. Ask the owner to give you edit access, then try again.");
+  }
+}
+
+// Pull a shared album's photos into THIS user's Famsort: download each file from
+// the other parent's drive, then run it through the same on-device face
+// detection + sorting pipeline as a manual import. Only needs view access.
+// Downloads and processes in small chunks so memory stays bounded and results
+// appear live.
+let pullingShared = false;
+async function pullSharedAlbum(s, btn, msg) {
+  if (pullingShared) return;
+  const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  pullingShared = true;
+  const label = btn ? btn.textContent : "";
+  if (btn) btn.disabled = true;
+  try {
+    show("Looking for photos in this album…");
+    const files = await cloud.listSharedFolderPhotos(s.driveId, s.itemId);
+    if (files === null) { show("Couldn't open this album — make sure you're still signed in and have access."); return; }
+    if (!files.length) { show("No photos or videos found in this album yet."); return; }
+    show(`Found ${files.length} item${files.length === 1 ? "" : "s"}. Downloading…`);
+    const CHUNK = 12;
+    let pulled = 0;
+    let failed = 0;
+    for (let i = 0; i < files.length; i += CHUNK) {
+      const slice = files.slice(i, i + CHUNK);
+      const got = [];
+      for (const f of slice) {
+        const blob = await cloud.downloadSharedFile(f.driveId, f.id);
+        if (!blob) { failed++; continue; }
+        got.push(new File([blob], f.name || `photo-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" }));
+      }
+      pulled += got.length;
+      show(`Sorting ${Math.min(i + CHUNK, files.length)} of ${files.length}…`);
+      if (got.length) await handleFiles(got); // face-detect + sort into your albums
+    }
+    const bits = [`Added ${pulled} photo${pulled === 1 ? "" : "s"} from “${s.name}”.`];
+    if (failed) bits.push(`${failed} couldn't be downloaded.`);
+    bits.push("Check People and Albums to confirm faces.");
+    show(bits.join(" "));
+  } catch {
+    show("Something went wrong pulling this album. Please try again.");
+  } finally {
+    pullingShared = false;
+    if (btn) { btn.disabled = false; btn.textContent = label; }
   }
 }
 
