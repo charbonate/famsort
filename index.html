@@ -5464,6 +5464,10 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
           await db.put("photos", photo);
           state.backedUpKeys.add(`${got.file.name}|${got.file.size}|${got.file.lastModified || 0}`);
           ok++;
+          // Checkpoint the account-level manifest every so often DURING a long run,
+          // so if the browser is closed mid-backup the progress so far is already
+          // durable for every other device (not stuck behind the end-of-run sync).
+          if (ok % 25 === 0) { librarySyncPending = true; flushLibrarySync(); }
         } else {
           await db.put("photos", photo);
           fail++;
@@ -5968,19 +5972,28 @@ function buildCloudModel() {
 }
 
 let cloudSyncTimer = null;
+let cloudSyncPending = false; // a model change is waiting to be uploaded
 // Debounced, silent, best-effort upload of the identity model after any change,
 // so the cloud copy stays current without hammering the network. Only runs when
 // already signed in; quietly retries on the next change if offline.
 function scheduleCloudSync() {
   if (!cloud.oneDriveConfigured()) return;
+  cloudSyncPending = true;
   clearTimeout(cloudSyncTimer);
-  cloudSyncTimer = setTimeout(async () => {
-    try {
-      if (await cloud.hasCloudAccount()) await cloud.saveCloudModel(buildCloudModel());
-    } catch {
-      /* offline — the next change will try again */
-    }
-  }, 4000);
+  cloudSyncTimer = setTimeout(() => flushCloudModel(), 4000);
+}
+// Upload the identity model NOW if a change is pending (used by the debounce and
+// by the on-close/background flush, so a pending edit is never lost when the
+// user closes the tab without signing out).
+async function flushCloudModel() {
+  clearTimeout(cloudSyncTimer);
+  if (!cloudSyncPending || !cloud.oneDriveConfigured()) return;
+  cloudSyncPending = false;
+  try {
+    if (await cloud.hasCloudAccount()) await cloud.saveCloudModel(buildCloudModel());
+  } catch {
+    cloudSyncPending = true; // offline — the next change or flush will try again
+  }
 }
 
 // Pull the identity model from OneDrive and merge it in. This is what makes a new
@@ -6207,18 +6220,39 @@ function buildLibraryManifest() {
 }
 
 let librarySyncTimer = null;
+let librarySyncPending = false; // a sorted-output change is waiting to be uploaded
 // Debounced, silent upload of the sorted-output manifest after photos or tags
 // change. Separate (slower) timer from the people model, since it's larger.
 function scheduleLibrarySync() {
   if (!cloud.oneDriveConfigured()) return;
+  librarySyncPending = true;
   clearTimeout(librarySyncTimer);
-  librarySyncTimer = setTimeout(async () => {
-    try {
-      if (await cloud.hasCloudAccount()) await cloud.saveCloudLibrary(buildLibraryManifest());
-    } catch {
-      /* offline — the next change will try again */
-    }
-  }, 6000);
+  librarySyncTimer = setTimeout(() => flushLibrarySync(), 6000);
+}
+// Upload the sorted-output manifest NOW if a change is pending. This manifest is
+// the account-level record of which photos are backed up and where their cloud
+// copies live, so flushing it on close/background is what stops OTHER devices
+// re-reporting "N photos still need backing up" after a big backup run.
+async function flushLibrarySync() {
+  clearTimeout(librarySyncTimer);
+  if (!librarySyncPending || !cloud.oneDriveConfigured()) return;
+  librarySyncPending = false;
+  try {
+    if (await cloud.hasCloudAccount()) await cloud.saveCloudLibrary(buildLibraryManifest());
+  } catch {
+    librarySyncPending = true; // offline — the next change or flush will try again
+  }
+}
+
+// Push BOTH pending syncs to the cloud immediately. Called when the app is
+// backgrounded or closed (visibilitychange→hidden / pagehide) so account-level
+// state is durable even when the user closes the browser without signing out —
+// the exact case where a device that uploaded a batch would otherwise leave a
+// stale manifest and make another device think those photos aren't backed up.
+function flushPendingSyncs() {
+  if (!cloud.oneDriveConfigured()) return;
+  if (cloudSyncPending) flushCloudModel();
+  if (librarySyncPending) flushLibrarySync();
 }
 
 // Rebuild albums straight from the OneDrive manifest (the "build from the output
@@ -13028,10 +13062,19 @@ function wire() {
     cloudCatchUp();
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible") return;
+    if (document.visibilityState !== "visible") {
+      // The tab is being hidden/backgrounded (on mobile this is the last reliable
+      // moment before the browser may suspend or close it). Push any pending
+      // account-level state NOW so closing without signing out never leaves a
+      // stale manifest that makes another device re-flag backed-up photos.
+      flushPendingSyncs();
+      return;
+    }
     if (state.autoBackup) autoSweep(true);
     cloudCatchUp();
   });
+  // Belt-and-braces for desktop tab close / navigation away.
+  window.addEventListener("pagehide", () => flushPendingSyncs());
   el("lightboxClose").addEventListener("click", closeLightbox);
   el("lightboxPrev").addEventListener("click", () => lightboxStep(-1));
   el("lightboxNext").addEventListener("click", () => lightboxStep(1));
