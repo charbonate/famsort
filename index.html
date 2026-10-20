@@ -1047,6 +1047,125 @@ p { margin: 0 0 .9rem; }
    without scrolling the whole list first. */
 .btn-row--top { position: sticky; top: -2px; z-index: 3; justify-content: flex-end; margin: 0 0 10px; padding: 6px 0; background: #fff; }
 .btn-row--top:empty { display: none; }
+
+/* ===================================================================== *
+ *  DISCOVER: memories · timeline · slideshow · year-in-review · ask      *
+ * ===================================================================== */
+
+/* Header row with a title + an action button (e.g. Family tree edit). */
+.view__head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.view__head-row .view__title { margin: 0; }
+.fam-edit-btn.is-on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Home-screen memories teaser. */
+.home-mem {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  margin-top: 16px; padding: 16px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: linear-gradient(135deg, #fff, var(--accent-soft));
+  box-shadow: var(--shadow-sm); font: inherit; color: inherit;
+}
+.home-mem__kicker { font-size: 12px; font-weight: 700; letter-spacing: .02em; color: var(--accent-dark); }
+.home-mem__title { display: block; font-size: 18px; margin-top: 2px; }
+.home-mem__sub { display: block; font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+.home-mem__strip { display: flex; gap: 6px; margin: 12px 0 4px; overflow: hidden; }
+.home-mem__thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; flex: 0 0 auto; }
+.home-mem__go { display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--accent-dark); }
+
+/* Ask Famsort. */
+.ask { margin: 4px 0 18px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-sm); }
+.ask__label { display: block; font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+.ask__row { display: flex; gap: 8px; }
+.ask__input { flex: 1; min-width: 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--radius-sm); font: inherit; background: var(--cream); }
+.ask__input:focus { outline: none; border-color: var(--accent); background: #fff; }
+.ask__go { flex: 0 0 auto; }
+.ask__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.ask__chip { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--cream); font: inherit; font-size: 12px; cursor: pointer; color: var(--ink-soft); }
+.ask__chip:hover { border-color: var(--accent); color: var(--accent-dark); }
+.ask__msg { margin: 12px 0 0; font-size: 14px; color: var(--ink); }
+.ask-results { margin-top: 12px; }
+.ask-results__head { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.ask-results__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.ask-results__grid .thumb { aspect-ratio: 1; padding: 0; border: 0; border-radius: 10px; overflow: hidden; cursor: pointer; background: var(--cream-2); }
+.ask-results__grid .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* On this day strip. */
+.mem-otd { margin: 6px 0 20px; }
+.mem-otd__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.mem-otd__title { margin: 0; font-size: 17px; }
+.mem-otd__grid { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+.mem-otd__cell { position: relative; flex: 0 0 auto; width: 110px; height: 140px; border: 0; padding: 0; border-radius: 12px; overflow: hidden; cursor: pointer; background: var(--cream-2); box-shadow: var(--shadow-sm); }
+.mem-otd__cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mem-otd__year { position: absolute; left: 6px; bottom: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; font-weight: 700; }
+
+/* Memory cards grid. */
+.mem-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.mem-card { position: relative; display: block; text-align: left; border: 0; padding: 0; border-radius: var(--radius); overflow: hidden; cursor: pointer; background: var(--card); box-shadow: var(--shadow-sm); font: inherit; color: inherit; }
+.mem-card__cover { display: block; aspect-ratio: 4 / 3; background: var(--cream-2); }
+.mem-card__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mem-card__badge { position: absolute; top: 8px; left: 8px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.92); font-size: 16px; box-shadow: var(--shadow-sm); }
+.mem-card__body { display: block; padding: 10px 12px 12px; }
+.mem-card__title { display: block; font-weight: 700; font-size: 14px; }
+.mem-card__sub { display: block; font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+
+/* Album timeline year headings (full-width row inside the photo grid). */
+.album-grid__year { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 8px; margin: 10px 2px 2px; padding-top: 6px; border-top: 1px solid var(--line); }
+.album-grid__year span { font-weight: 800; font-size: 18px; }
+.album-grid__year small { color: var(--ink-soft); font-size: 12px; }
+#albumGrid .album-grid__year:first-child { border-top: 0; margin-top: 0; }
+
+/* Family tree inline editing. */
+.fam-card--edit { display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; }
+.fam-card__rel-edit { width: 100%; max-width: 140px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 12px; background: var(--cream); }
+.fam-card__rel-edit:focus { outline: none; border-color: var(--accent); background: #fff; }
+.famtree--editing .famtier__row { align-items: stretch; }
+
+/* Photo details sheet. */
+.pdet { position: fixed; inset: 0; z-index: 110; display: grid; place-items: center; background: rgba(36,31,27,.55); padding: 24px; }
+.pdet__card { background: #fff; border-radius: var(--radius); width: 100%; max-width: 380px; box-shadow: var(--shadow); overflow: hidden; }
+.pdet__head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.pdet__title { margin: 0; font-size: 17px; }
+.pdet__close { border: 0; background: none; font-size: 18px; cursor: pointer; color: var(--ink-soft); line-height: 1; }
+.pdet__body { margin: 0; padding: 8px 18px 18px; max-height: 70vh; max-height: 70dvh; overflow-y: auto; }
+.pdet__row { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.pdet__row:last-child { border-bottom: 0; }
+.pdet__row dt { color: var(--ink-soft); font-size: 13px; margin: 0; flex: 0 0 auto; }
+.pdet__row dd { margin: 0; font-size: 13px; font-weight: 600; text-align: right; word-break: break-word; }
+
+/* Year in review. */
+.yrev { position: fixed; inset: 0; z-index: 110; display: grid; place-items: center; background: rgba(36,31,27,.6); padding: 24px; }
+.yrev__card { background: #fff; border-radius: var(--radius); width: 100%; max-width: 420px; box-shadow: var(--shadow); overflow: hidden; }
+.yrev__head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; background: var(--grad-brand); color: #fff; }
+.yrev__title { margin: 0; font-size: 18px; }
+.yrev__close { border: 0; background: none; font-size: 18px; cursor: pointer; color: #fff; line-height: 1; }
+.yrev__body { padding: 18px; }
+.yrev__stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 10px; }
+.yrev__stat { text-align: center; padding: 12px 6px; border-radius: var(--radius-sm); background: var(--accent-soft); }
+.yrev__num { display: block; font-size: 24px; font-weight: 800; color: var(--accent-dark); }
+.yrev__lab { display: block; font-size: 11px; color: var(--ink-soft); }
+.yrev__people { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.yrev__person { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 60px; }
+.yrev__person img, .yrev__noface { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; background: var(--cream-2); font-weight: 700; color: var(--ink-soft); }
+.yrev__pn { font-size: 11px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
+.yrev__pc { font-size: 11px; color: var(--ink-soft); }
+.yrev__foot { padding: 0 18px 18px; }
+.yrev__foot .btn { width: 100%; }
+
+/* Full-screen slideshow. */
+.slideshow { position: fixed; inset: 0; z-index: 120; display: flex; flex-direction: column; background: #0c0a12; }
+.slideshow__bar { display: flex; align-items: center; gap: 12px; padding: 14px 18px; color: #fff; }
+.slideshow__title { font-weight: 700; font-size: 15px; }
+.slideshow__count { font-size: 13px; color: rgba(255,255,255,.7); }
+.slideshow__close { margin-left: auto; border: 0; background: none; color: #fff; font-size: 20px; cursor: pointer; line-height: 1; }
+.slideshow__stage { position: relative; flex: 1; display: grid; place-items: center; min-height: 0; padding: 0 8px; }
+.slideshow__img { max-width: 100%; max-height: 100%; object-fit: contain; opacity: 0; transition: opacity .6s ease; }
+.slideshow__img.is-shown { opacity: 1; }
+.slideshow__nav { position: absolute; top: 50%; transform: translateY(-50%); border: 0; background: rgba(255,255,255,.14); color: #fff; width: 44px; height: 44px; border-radius: 50%; font-size: 26px; cursor: pointer; display: grid; place-items: center; }
+.slideshow__nav--prev { left: 12px; }
+.slideshow__nav--next { right: 12px; }
+.slideshow__foot { display: flex; align-items: center; gap: 14px; padding: 14px 18px calc(14px + env(safe-area-inset-bottom)); color: #fff; }
+.slideshow__play { border: 0; background: rgba(255,255,255,.14); color: #fff; width: 42px; height: 42px; border-radius: 50%; font-size: 18px; cursor: pointer; flex: 0 0 auto; }
+.slideshow__caption { font-size: 13px; color: rgba(255,255,255,.85); }
+
 .modal__face { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; margin-bottom: 10px; background: var(--cream-2); }
 .modal__card input[type="text"] { width: 100%; padding: .7em .9em; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 1rem; font-family: inherit; margin-bottom: 12px; }
 .modal__card input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,115,74,.18); }
@@ -1209,6 +1328,7 @@ p { margin: 0 0 .9rem; }
       <div class="account-menu__list">
         <button class="account-menu__item" id="accountMenuSignIn" type="button" hidden><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></span>Sign in</button>
         <button class="account-menu__item" id="accountMenuAccount" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5c0-3.3 2.9-5.2 6.5-5.2s6.5 1.9 6.5 5.2"/></svg></span>Your account</button>
+        <button class="account-menu__item" id="accountMenuMemories" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L5.3 8.3l5-.7z"/></svg></span>Memories &amp; Ask</button>
         <button class="account-menu__item" id="accountMenuSharing" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.1"/><path d="M3.6 19c0-2.9 2.4-4.7 5.4-4.7 1 0 2 .22 2.8.6"/><path d="M18 13v6M15 16h6"/></svg></span>Invite &amp; sharing</button>
         <button class="account-menu__item" id="accountMenuSetup" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M4 12h16M4 17h7"/><circle cx="18" cy="7" r="2"/><circle cx="14" cy="17" r="2"/></svg></span>Setup &amp; sources</button>
         <button class="account-menu__item" id="accountMenuSettings" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.2 14.9a1.5 1.5 0 0 0 .3 1.7 2 2 0 1 1-2.8 2.8 1.5 1.5 0 0 0-2.55 1.06 2 2 0 1 1-4 0A1.5 1.5 0 0 0 7.6 19.5a1.5 1.5 0 0 0-1.7.3 2 2 0 1 1-2.8-2.8 1.5 1.5 0 0 0 .3-1.7A1.5 1.5 0 0 0 2 13.9a2 2 0 1 1 0-4 1.5 1.5 0 0 0 1.4-1.4 1.5 1.5 0 0 0-.3-1.7 2 2 0 1 1 2.8-2.8 1.5 1.5 0 0 0 1.7.3h.1A1.5 1.5 0 0 0 9.9 3a2 2 0 1 1 4 0 1.5 1.5 0 0 0 .9 1.4 1.5 1.5 0 0 0 1.7-.3 2 2 0 1 1 2.8 2.8 1.5 1.5 0 0 0-.3 1.7v.1a1.5 1.5 0 0 0 1.4.9 2 2 0 1 1 0 4 1.5 1.5 0 0 0-1.4.9z"/></svg></span>Settings</button>
@@ -1429,6 +1549,16 @@ p { margin: 0 0 .9rem; }
         <h3 id="tipsTitle">Tip</h3>
         <p id="tipsBody">Point Famsort at your whole camera-roll folder &mdash; it sorts everything it finds, so there's no need to pick photos one by one.</p>
       </div>
+
+      <button class="home-mem" id="homeMemories" type="button" hidden>
+        <div class="home-mem__text">
+          <span class="home-mem__kicker">✨ Memories</span>
+          <strong class="home-mem__title" id="homeMemoriesTitle">Your memories</strong>
+          <span class="home-mem__sub" id="homeMemoriesSub">On this day, year-in-review, slideshows and Ask Famsort</span>
+        </div>
+        <div class="home-mem__strip" id="homeMemoriesStrip"></div>
+        <span class="home-mem__go" id="homeMemoriesOpen">Open memories ›</span>
+      </button>
     </section>
 
     <!-- PEOPLE SCREEN merged into ALBUMS: the "faces to tag" queue now lives at
@@ -1481,6 +1611,8 @@ p { margin: 0 0 .9rem; }
         <div class="albumdet-head">
           <button class="linkbtn" id="albumBack">‹ All albums</button>
           <div class="albumdet-head__actions">
+            <button class="iconbtn" id="albumSlideshowBtn" aria-label="Play a slideshow" title="Play a slideshow" hidden>▶</button>
+            <button class="iconbtn" id="albumTimelineBtn" aria-label="Timeline — watch them grow by year" title="Timeline — by year" hidden>📅</button>
             <button class="iconbtn" id="albumEditBtn" aria-label="Edit this person" hidden>✎</button>
             <button class="iconbtn" id="albumMergeBtn" aria-label="Merge this album into another" title="Merge into another album" hidden>⇄</button>
             <button class="iconbtn" id="albumFavBtn" aria-label="Favourite this album">☆</button>
@@ -1547,11 +1679,48 @@ p { margin: 0 0 .9rem; }
 
     <!-- FAMILY SCREEN (a family tree built from each person's relationship-to-you) -->
     <section class="view" id="view-family" data-view="family" hidden>
-      <h2 class="view__title">Your family</h2>
-      <p class="view__intro">The people in your albums, laid out by how they're related to you. Set a person's relationship from their album's <strong>Edit</strong> button and they'll take their place here. Tap anyone to open their album.</p>
+      <div class="view__head-row">
+        <h2 class="view__title">Your family</h2>
+        <button class="btn btn--ghost btn--sm fam-edit-btn" id="famEditBtn" type="button">✎ Edit tree</button>
+      </div>
+      <p class="view__intro">The people in your albums, laid out by how they're related to you. Tap <strong>Edit tree</strong> to set or change how anyone's related &mdash; they'll move into the right generation. Tap a person to open their album.</p>
       <div class="famtree" id="famTree"></div>
       <div class="empty" id="famEmpty" hidden>
-        <p>No relationships set yet. Open an album, tap <strong>Edit</strong>, and choose how that person is related to you &mdash; they'll appear in your family tree.</p>
+        <p>No relationships set yet. Tap <strong>Edit tree</strong> and choose how each person is related to you &mdash; they'll appear in your family tree.</p>
+      </div>
+    </section>
+
+    <!-- MEMORIES SCREEN (on this day · memories · year-in-review · Ask Famsort) -->
+    <section class="view" id="view-memories" data-view="memories" hidden>
+      <h2 class="view__title">Memories</h2>
+      <p class="view__intro">Rediscover your photos &mdash; on this day, year by year, and whole slideshows. Everything here is worked out on your device.</p>
+
+      <div class="ask">
+        <label class="ask__label" for="askInput">✨ Ask Famsort</label>
+        <div class="ask__row">
+          <input class="ask__input" id="askInput" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. build me a slideshow of Mia from 2019" />
+          <button class="btn btn--primary ask__go" id="askGoBtn" type="button">Ask</button>
+        </div>
+        <div class="ask__chips">
+          <button class="ask__chip" type="button" data-ask-chip="Show me photos on this day">On this day</button>
+          <button class="ask__chip" type="button" data-ask-chip="Build me a slideshow">Build a slideshow</button>
+          <button class="ask__chip" type="button" data-ask-chip="Year in review 2024">Year in review</button>
+        </div>
+        <p class="ask__msg" id="askMsg" hidden></p>
+        <div class="ask-results" id="askResults" hidden></div>
+      </div>
+
+      <div class="mem-otd" id="memOnThisDay" hidden>
+        <div class="mem-otd__head">
+          <h3 class="mem-otd__title">✨ On this day</h3>
+          <button class="btn btn--ghost btn--sm" id="memOnThisDayPlay" type="button">▶ Play</button>
+        </div>
+        <div class="mem-otd__grid" id="memOnThisDayGrid"></div>
+      </div>
+
+      <div class="mem-grid" id="memGrid"></div>
+      <div class="empty" id="memEmpty" hidden>
+        <p>Your memories will appear here once you've sorted some dated photos. Point Famsort at your camera roll to get started.</p>
       </div>
     </section>
 
@@ -1865,6 +2034,49 @@ p { margin: 0 0 .9rem; }
     <div class="lightbox__strip" id="lightboxStrip" hidden></div>
     <div class="lightbox__tag" id="lightboxTag"></div>
     <div class="lightbox__actions" id="lightboxActions"></div>
+  </div>
+
+  <!-- Photo details sheet -->
+  <div class="pdet" id="photoDetailsModal" hidden>
+    <div class="pdet__card">
+      <div class="pdet__head">
+        <h3 class="pdet__title">Photo details</h3>
+        <button class="pdet__close" id="photoDetailsClose" aria-label="Close">✕</button>
+      </div>
+      <dl class="pdet__body" id="photoDetailsBody"></dl>
+    </div>
+  </div>
+
+  <!-- Year in review -->
+  <div class="yrev" id="yearReviewModal" hidden>
+    <div class="yrev__card">
+      <div class="yrev__head">
+        <h3 class="yrev__title" id="yearReviewTitle">Year in review</h3>
+        <button class="yrev__close" id="yearReviewClose" aria-label="Close">✕</button>
+      </div>
+      <div class="yrev__body" id="yearReviewBody"></div>
+      <div class="yrev__foot">
+        <button class="btn btn--primary" id="yearReviewPlay" type="button">▶ Play slideshow</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full-screen slideshow -->
+  <div class="slideshow" id="slideshow" hidden>
+    <div class="slideshow__bar">
+      <span class="slideshow__title" id="slideTitle">Slideshow</span>
+      <span class="slideshow__count" id="slideCount"></span>
+      <button class="slideshow__close" id="slideClose" aria-label="Close">✕</button>
+    </div>
+    <div class="slideshow__stage">
+      <button class="slideshow__nav slideshow__nav--prev" id="slidePrev" aria-label="Previous">‹</button>
+      <img class="slideshow__img" id="slideImg" alt="" />
+      <button class="slideshow__nav slideshow__nav--next" id="slideNext" aria-label="Next">›</button>
+    </div>
+    <div class="slideshow__foot">
+      <button class="slideshow__play" id="slidePlay" aria-label="Play or pause">⏸</button>
+      <span class="slideshow__caption" id="slideCaption"></span>
+    </div>
   </div>
 
   <!-- In-app confirm/alert dialog (replaces the browser's window.confirm so every
@@ -6892,6 +7104,11 @@ function renderFamily() {
   const wrap = el("famTree");
   const empty = el("famEmpty");
   if (!wrap) return;
+  const editBtn = el("famEditBtn");
+  if (editBtn) {
+    editBtn.textContent = famEditMode ? "✓ Done" : "✎ Edit tree";
+    editBtn.classList.toggle("is-on", famEditMode);
+  }
   const people = namedPeopleHere();
   const buckets = new Map(FAMILY_TIERS.map((t) => [t.key, []]));
   const unplaced = [];
@@ -6902,6 +7119,7 @@ function renderFamily() {
   }
   const placed = FAMILY_TIERS.reduce((n, t) => n + buckets.get(t.key).length, 0);
   wrap.innerHTML = "";
+  wrap.classList.toggle("famtree--editing", famEditMode);
   if (!placed && !unplaced.length) {
     wrap.hidden = true;
     if (empty) empty.hidden = false;
@@ -6913,11 +7131,28 @@ function renderFamily() {
   const card = (p) => {
     const cover = albumCover(p.id, p);
     const rel = p.relationship === "Me" ? "You" : (p.relationship || "");
+    const avatar = `<span class="fam-card__avatar">${cover ? `<img src="${cover}" alt="" />` : "\uD83D\uDC64"}</span>`;
+    if (famEditMode) {
+      // Editable: a relationship picker rearranges this person into the right
+      // generation of the tree without opening their album.
+      const wrapEl = document.createElement("div");
+      wrapEl.className = "fam-card fam-card--edit";
+      const opts = ['<option value="">— not set —</option>']
+        .concat(RELATIONSHIPS.map((r) => `<option value="${escapeHtml(r)}"${r === p.relationship ? " selected" : ""}>${r === "Me" ? "You" : escapeHtml(r)}</option>`))
+        .join("");
+      wrapEl.innerHTML =
+        avatar +
+        `<span class="fam-card__name">${escapeHtml(p.name)}</span>` +
+        `<select class="fam-card__rel-edit" aria-label="How ${escapeHtml(p.name)} is related">${opts}</select>`;
+      const sel = wrapEl.querySelector("select");
+      sel.addEventListener("change", () => setPersonRelationship(p.id, sel.value));
+      return wrapEl;
+    }
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "fam-card";
     btn.innerHTML =
-      `<span class="fam-card__avatar">${cover ? `<img src="${cover}" alt="" />` : "\uD83D\uDC64"}</span>` +
+      avatar +
       `<span class="fam-card__name">${escapeHtml(p.name)}</span>` +
       (rel ? `<span class="fam-card__rel">${escapeHtml(rel)}</span>` : "");
     btn.addEventListener("click", () => { navTo("albums"); openAlbum(p.id); });
@@ -6949,8 +7184,31 @@ function renderFamily() {
   for (const t of FAMILY_TIERS) addTier(t.title, buckets.get(t.key));
   addTier("Not placed yet", unplaced, {
     unplaced: true,
-    hint: "Open an album, tap Edit and choose how they're related to add them to the tree.",
+    hint: famEditMode
+      ? "Pick a relationship below to drop each person into the right spot."
+      : "Tap “Edit tree”, then choose how each person is related to place them.",
   });
+}
+
+// Family-tree edit mode: a quick toggle that turns every card into a
+// relationship picker so the whole tree can be rearranged in place.
+let famEditMode = false;
+function toggleFamilyEdit() {
+  famEditMode = !famEditMode;
+  renderFamily();
+}
+
+// Set (or clear) a person's relationship straight from the family tree, then
+// re-sort the tree and persist/sync like the person editor does.
+function setPersonRelationship(personId, rel) {
+  const p = state.people.find((x) => x.id === personId);
+  if (!p) return;
+  p.relationship = rel || "";
+  p.isChild = isChildRelationship(rel);
+  p.updatedAt = Date.now();
+  savePerson(p);
+  scheduleCloudSync();
+  renderFamily();
 }
 
 // Co-parent (inbound) side: list albums shared WITH this account. For albums
@@ -9872,6 +10130,8 @@ function albumDisplayName(id) {
 function openAlbum(id) {
   state.activeAlbum = id;
   state.albumFrom = "albums"; // opened from the Albums index
+  // Timeline is a per-visit toggle; it only stays on when a memory card opened
+  // the album in timeline mode (openPersonTimeline sets it just before this).
   renderAlbums();
   const v = el("view-albums");
   if (v) v.scrollTop = 0;
@@ -9881,6 +10141,7 @@ function openAlbum(id) {
 function closeAlbum() {
   state.activeAlbum = null;
   state.albumFrom = "albums";
+  albumTimelineOn = false;
   lastRenderedAlbum = null; // reopening re-verifies against OneDrive
   renderAlbums();
 }
@@ -9889,6 +10150,7 @@ function closeAlbum() {
 function albumBack() {
   state.activeAlbum = null;
   state.albumFrom = "albums";
+  albumTimelineOn = false;
   lastRenderedAlbum = null; // reopening re-verifies against OneDrive
   renderAlbums();
 }
@@ -10446,40 +10708,44 @@ function renderAlbumDetail() {
   const orderedIds = photos.map((p) => p.id);
   // Which photo is this album's cover, so we can badge it ("★ Cover photo").
   const coverThumb = person ? albumCover(id, person) : null;
-  let coverMarked = false;
-  for (const ph of photos) {
-    const cell = document.createElement("div");
-    cell.className = "thumb";
-    cell.dataset.pid = ph.id;
-    const img = document.createElement("img");
-    img.src = ph.thumb;
-    img.alt = ph.name;
-    img.loading = "lazy";
-    img.addEventListener("click", () => openLightbox(ph.id, false, orderedIds));
-    cell.appendChild(img);
-    // Mark the cover photo so the user can tell which one it is at a glance.
-    if (coverThumb && !coverMarked && ph.thumb === coverThumb) {
-      coverMarked = true;
-      cell.classList.add("thumb--cover");
-      const cov = document.createElement("span");
-      cov.className = "thumb__cover";
-      cov.innerHTML = '<span class="thumb__cover-star">\u2605</span> Cover photo';
-      cell.appendChild(cov);
+  const coverState = { marked: false };
+
+  // Timeline + slideshow header actions. Timeline ("watch them grow") groups a
+  // person's photos by year; only offered on real person albums. Slideshow is
+  // offered whenever there's at least one photo.
+  const timelineBtn = el("albumTimelineBtn");
+  if (timelineBtn) {
+    timelineBtn.hidden = special || !person;
+    timelineBtn.classList.toggle("is-on", albumTimelineOn && !special && !!person);
+  }
+  const slideBtn = el("albumSlideshowBtn");
+  if (slideBtn) slideBtn.hidden = !photos.length;
+
+  if (albumTimelineOn && !special && person) {
+    // Oldest → newest, grouped by year, so you literally watch them grow up the
+    // page with a heading before each year's run.
+    const chrono = photos.slice().sort((a, b) => photoTakenAt(a) - photoTakenAt(b));
+    const byYear = new Map();
+    for (const ph of chrono) {
+      const y = photoYear(ph) || "Undated";
+      if (!byYear.has(y)) byYear.set(y, []);
+      byYear.get(y).push(ph);
     }
-    if (ph.isVideo) {
-      const play = document.createElement("span");
-      play.className = "thumb__play";
-      play.textContent = ph.duration ? `▶ ${fmtDur(ph.duration)}` : "▶";
-      cell.appendChild(play);
+    const years = [...byYear.keys()].sort((a, b) => {
+      if (a === "Undated") return 1;
+      if (b === "Undated") return -1;
+      return Number(a) - Number(b);
+    });
+    for (const y of years) {
+      const list = byYear.get(y);
+      const head = document.createElement("div");
+      head.className = "album-grid__year";
+      head.innerHTML = `<span>${y === "Undated" ? "Undated" : y}</span><small>${list.length} photo${list.length === 1 ? "" : "s"}</small>`;
+      grid.appendChild(head);
+      for (const ph of list) grid.appendChild(buildAlbumThumb(ph, orderedIds, coverThumb, coverState));
     }
-    const status = photoBackupStatus(ph);
-    if (status !== "none") {
-      const badge = document.createElement("span");
-      badge.className = "thumb__status";
-      applyThumbStatus(badge, status);
-      cell.appendChild(badge);
-    }
-    grid.appendChild(cell);
+  } else {
+    for (const ph of photos) grid.appendChild(buildAlbumThumb(ph, orderedIds, coverThumb, coverState));
   }
 
   // Kick off a verify against the real OneDrive folders. When the album was just
@@ -10620,6 +10886,13 @@ async function showLightboxPhoto() {
   done.textContent = "Done";
   done.addEventListener("click", closeLightbox);
   actions.appendChild(done);
+
+  // "Details" — dates (taken/added/updated), dimensions, back-up state, people.
+  const details = document.createElement("button");
+  details.className = "btn btn--ghost";
+  details.textContent = "ⓘ Details";
+  details.addEventListener("click", () => openPhotoDetails(photo));
+  actions.appendChild(details);
 
   // Inside a specific person's album (not when opened from the naming pool):
   // allow removing the photo from that album.
@@ -11819,6 +12092,563 @@ function renderHomeTip() {
   homeTipIndex = (homeTipIndex + 1) % HOME_TIPS.length;
 }
 
+/* ===================================================================== *
+ *  DISCOVER: dates · memories · timelines · slideshow · year-in-review  *
+ *  ask-famsort. All local, privacy-first (no network, no backend LLM).  *
+ * ===================================================================== */
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July",
+  "August", "September", "October", "November", "December"];
+
+// Best available "when this happened" time for a photo: the original file's own
+// modified date (our closest proxy for when it was taken, since no EXIF date is
+// captured at import), else when it was added to Famsort.
+function photoTakenAt(p) {
+  return (p && (p.fileModified || p.addedAt)) || 0;
+}
+function photoYear(p) {
+  const t = photoTakenAt(p);
+  return t ? new Date(t).getFullYear() : 0;
+}
+function fmtDate(ts) {
+  if (!ts) return "Unknown";
+  const d = new Date(ts);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+function fmtDateTime(ts) {
+  if (!ts) return "Unknown";
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${fmtDate(ts)}, ${hh}:${mm}`;
+}
+
+/* --------------------------------------------------------- photo details */
+
+// A read-only "about this photo" sheet surfaced from the lightbox: every date
+// we can honestly show, dimensions, back-up state and who's tagged.
+function openPhotoDetails(photo) {
+  const modal = el("photoDetailsModal");
+  const body = el("photoDetailsBody");
+  if (!modal || !body || !photo) return;
+  const people = (photo.personIds || [])
+    .map((id) => state.people.find((p) => p.id === id))
+    .filter(Boolean)
+    .map((p) => (p.relationship === "Me" ? "You" : p.name));
+  const rows = [];
+  const isVid = photoIsVideo(photo);
+  rows.push(["Type", isVid ? (photo.duration ? `Video · ${fmtDur(photo.duration)}` : "Video") : "Photo"]);
+  if (photo.dims && photo.dims.w) rows.push(["Dimensions", `${photo.dims.w} × ${photo.dims.h}`]);
+  rows.push(["Photo date", photo.fileModified ? fmtDateTime(photo.fileModified) : "Not recorded"]);
+  rows.push(["Added to Famsort", photo.addedAt ? fmtDateTime(photo.addedAt) : "Unknown"]);
+  if (photo.updatedAt) rows.push(["Last updated", fmtDateTime(photo.updatedAt)]);
+  rows.push(["Backed up", isPhotoSaved(photo) ? (state.outputMode === "device" ? "Yes · this device" : "Yes · OneDrive") : "Not yet"]);
+  if (people.length) rows.push(["People", people.join(", ")]);
+  rows.push(["File name", photo.name || "—"]);
+  body.innerHTML = rows
+    .map(([k, v]) => `<div class="pdet__row"><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(String(v))}</dd></div>`)
+    .join("");
+  modal.hidden = false;
+}
+function closePhotoDetails() {
+  const modal = el("photoDetailsModal");
+  if (modal) modal.hidden = true;
+}
+
+/* ----------------------------------------------------- album thumb helper */
+
+// Build one photo cell for an album grid (shared by the flat and timeline
+// layouts). `coverState` is a tiny {marked} box so only the first matching
+// cover photo gets the ★ badge across either layout.
+function buildAlbumThumb(ph, orderedIds, coverThumb, coverState) {
+  const cell = document.createElement("div");
+  cell.className = "thumb";
+  cell.dataset.pid = ph.id;
+  const img = document.createElement("img");
+  img.src = ph.thumb;
+  img.alt = ph.name;
+  img.loading = "lazy";
+  img.addEventListener("click", () => openLightbox(ph.id, false, orderedIds));
+  cell.appendChild(img);
+  if (coverThumb && coverState && !coverState.marked && ph.thumb === coverThumb) {
+    coverState.marked = true;
+    cell.classList.add("thumb--cover");
+    const cov = document.createElement("span");
+    cov.className = "thumb__cover";
+    cov.innerHTML = '<span class="thumb__cover-star">\u2605</span> Cover photo';
+    cell.appendChild(cov);
+  }
+  if (photoIsVideo(ph)) {
+    const play = document.createElement("span");
+    play.className = "thumb__play";
+    play.textContent = ph.duration ? `▶ ${fmtDur(ph.duration)}` : "▶";
+    cell.appendChild(play);
+  }
+  const status = photoBackupStatus(ph);
+  if (status !== "none") {
+    const badge = document.createElement("span");
+    badge.className = "thumb__status";
+    applyThumbStatus(badge, status);
+    cell.appendChild(badge);
+  }
+  return cell;
+}
+
+/* -------------------------------------------------------- album timeline */
+
+let albumTimelineOn = false;
+function toggleAlbumTimeline() {
+  albumTimelineOn = !albumTimelineOn;
+  renderAlbumDetail();
+}
+
+/* -------------------------------------------------------------- memories */
+
+// All photos that carry a usable date, newest-dated last — the raw material for
+// every memory collection.
+function datedPhotos() {
+  return state.photos.filter((p) => photoTakenAt(p));
+}
+
+// "On this day": photos from the same calendar day (month + date) in earlier
+// years, grouped newest year first.
+function onThisDayPhotos() {
+  const now = new Date();
+  const m = now.getMonth();
+  const d = now.getDate();
+  const todayStart = new Date(now.getFullYear(), m, d).getTime();
+  return datedPhotos()
+    .filter((p) => {
+      const dt = new Date(photoTakenAt(p));
+      return dt.getMonth() === m && dt.getDate() === d && dt.getTime() < todayStart;
+    })
+    .sort((a, b) => photoTakenAt(b) - photoTakenAt(a));
+}
+
+// Build the ordered list of memory cards shown on the Memories screen.
+function buildMemories() {
+  const mems = [];
+  const all = datedPhotos();
+
+  // 1) On this day.
+  const otd = onThisDayPhotos();
+  if (otd.length) {
+    const yrs = new Set(otd.map((p) => photoYear(p)));
+    mems.push({
+      id: "otd",
+      kind: "slideshow",
+      title: "On this day",
+      subtitle: `${otd.length} photo${otd.length === 1 ? "" : "s"} from ${yrs.size} year${yrs.size === 1 ? "" : "s"} ago`,
+      badge: "✨",
+      cover: otd[0].thumb,
+      ids: otd.map((p) => p.id),
+    });
+  }
+
+  // 2) Year in review — one card per year that has photos, newest first.
+  const byYear = new Map();
+  for (const p of all) {
+    const y = photoYear(p);
+    if (!y) continue;
+    if (!byYear.has(y)) byYear.set(y, []);
+    byYear.get(y).push(p);
+  }
+  const years = [...byYear.keys()].sort((a, b) => b - a);
+  for (const y of years) {
+    const list = byYear.get(y);
+    if (list.length < 3) continue; // skip thin years
+    list.sort((a, b) => photoTakenAt(a) - photoTakenAt(b));
+    mems.push({
+      id: `year-${y}`,
+      kind: "year",
+      year: y,
+      title: `${y} in review`,
+      subtitle: `${list.length} photo${list.length === 1 ? "" : "s"}`,
+      badge: "📅",
+      cover: list[list.length - 1].thumb,
+      ids: list.map((p) => p.id),
+    });
+  }
+
+  // 3) Per-person "over the years" — anyone whose photos span 2+ years.
+  for (const person of namedPeople()) {
+    const theirs = all.filter((p) => (p.personIds || []).includes(person.id));
+    if (theirs.length < 4) continue;
+    const spanYears = new Set(theirs.map((p) => photoYear(p)));
+    if (spanYears.size < 2) continue;
+    theirs.sort((a, b) => photoTakenAt(a) - photoTakenAt(b));
+    mems.push({
+      id: `person-${person.id}`,
+      kind: "person",
+      personId: person.id,
+      title: `${person.relationship === "Me" ? "You" : person.name} over the years`,
+      subtitle: `${theirs.length} photos · ${spanYears.size} years`,
+      badge: "🌱",
+      cover: albumCover(person.id, person) || theirs[theirs.length - 1].thumb,
+      ids: theirs.map((p) => p.id),
+    });
+  }
+
+  // 4) Month highlights — a few busy months as throwback "trips".
+  const byMonth = new Map();
+  for (const p of all) {
+    const dt = new Date(photoTakenAt(p));
+    const key = `${dt.getFullYear()}-${dt.getMonth()}`;
+    if (!byMonth.has(key)) byMonth.set(key, []);
+    byMonth.get(key).push(p);
+  }
+  const months = [...byMonth.entries()]
+    .filter(([, list]) => list.length >= 8)
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, 4);
+  for (const [key, list] of months) {
+    const [yy, mm] = key.split("-").map(Number);
+    list.sort((a, b) => photoTakenAt(a) - photoTakenAt(b));
+    mems.push({
+      id: `month-${key}`,
+      kind: "slideshow",
+      title: `${MONTHS[mm]} ${yy}`,
+      subtitle: `${list.length} photos`,
+      badge: "📸",
+      cover: list[Math.floor(list.length / 2)].thumb,
+      ids: list.map((p) => p.id),
+    });
+  }
+
+  return mems;
+}
+
+function memoryCard(mem) {
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "mem-card";
+  card.innerHTML =
+    `<span class="mem-card__cover"><img src="${mem.cover}" alt="" loading="lazy" /></span>` +
+    `<span class="mem-card__badge">${mem.badge || "✨"}</span>` +
+    `<span class="mem-card__body"><span class="mem-card__title">${escapeHtml(mem.title)}</span>` +
+    `<span class="mem-card__sub">${escapeHtml(mem.subtitle)}</span></span>`;
+  card.addEventListener("click", () => openMemory(mem));
+  return card;
+}
+
+function openMemory(mem) {
+  if (!mem) return;
+  if (mem.kind === "year") return openYearReview(mem.year);
+  if (mem.kind === "person") return openPersonTimeline(mem.personId);
+  startSlideshow(mem.ids, { title: mem.title });
+}
+
+function openPersonTimeline(personId) {
+  const person = state.people.find((p) => p.id === personId);
+  if (!person) return;
+  albumTimelineOn = true;
+  navTo("albums");
+  openAlbum(personId);
+}
+
+function renderMemories() {
+  setAskMsg("");
+  renderAskResults([]);
+  const askInput = el("askInput");
+  if (askInput) askInput.value = "";
+
+  // On this day strip.
+  const otdWrap = el("memOnThisDay");
+  const otdGrid = el("memOnThisDayGrid");
+  const otd = onThisDayPhotos();
+  if (otdWrap && otdGrid) {
+    if (otd.length) {
+      otdWrap.hidden = false;
+      otdGrid.innerHTML = "";
+      const ids = otd.map((p) => p.id);
+      for (const p of otd.slice(0, 20)) {
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "mem-otd__cell";
+        cell.innerHTML = `<img src="${p.thumb}" alt="" loading="lazy" /><span class="mem-otd__year">${photoYear(p)}</span>`;
+        cell.addEventListener("click", () => openLightbox(p.id, false, ids));
+        otdGrid.appendChild(cell);
+      }
+      const play = el("memOnThisDayPlay");
+      if (play) play.onclick = () => startSlideshow(ids, { title: "On this day" });
+    } else {
+      otdWrap.hidden = true;
+    }
+  }
+
+  // Memory cards.
+  const grid = el("memGrid");
+  const empty = el("memEmpty");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const mems = buildMemories().filter((m) => m.id !== "otd"); // on-this-day has its own strip
+  if (!mems.length) {
+    grid.hidden = true;
+    if (empty) empty.hidden = false;
+    return;
+  }
+  grid.hidden = false;
+  if (empty) empty.hidden = true;
+  for (const mem of mems) grid.appendChild(memoryCard(mem));
+}
+
+// Home-screen teaser: a compact strip that nudges people into the Memories
+// screen, highlighting any "on this day" finds for the current date.
+function renderHomeMemories() {
+  const wrap = el("homeMemories");
+  if (!wrap) return;
+  const hasPhotos = datedPhotos().length > 0;
+  if (!hasPhotos) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  const otd = onThisDayPhotos();
+  const title = el("homeMemoriesTitle");
+  const sub = el("homeMemoriesSub");
+  const strip = el("homeMemoriesStrip");
+  if (title) title.textContent = otd.length ? "On this day" : "Your memories";
+  if (sub) {
+    sub.textContent = otd.length
+      ? `${otd.length} photo${otd.length === 1 ? "" : "s"} from years gone by`
+      : "On this day, year-in-review, slideshows and Ask Famsort";
+  }
+  if (strip) {
+    strip.innerHTML = "";
+    const preview = (otd.length ? otd : datedPhotos().slice().sort((a, b) => photoTakenAt(b) - photoTakenAt(a))).slice(0, 6);
+    for (const p of preview) {
+      const img = document.createElement("img");
+      img.className = "home-mem__thumb";
+      img.src = p.thumb;
+      img.alt = "";
+      img.loading = "lazy";
+      strip.appendChild(img);
+    }
+  }
+}
+
+/* --------------------------------------------------------- year in review */
+
+function openYearReview(year) {
+  const modal = el("yearReviewModal");
+  const body = el("yearReviewBody");
+  if (!modal || !body) return;
+  const list = datedPhotos().filter((p) => photoYear(p) === year).sort((a, b) => photoTakenAt(a) - photoTakenAt(b));
+  if (!list.length) return;
+  const ids = list.map((p) => p.id);
+
+  // Top people by appearances this year.
+  const counts = new Map();
+  for (const p of list) for (const pid of p.personIds || []) counts.set(pid, (counts.get(pid) || 0) + 1);
+  const top = [...counts.entries()]
+    .map(([pid, n]) => ({ person: state.people.find((x) => x.id === pid), n }))
+    .filter((x) => x.person && x.person.name)
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 5);
+  const videos = list.filter((p) => photoIsVideo(p)).length;
+  const monthsActive = new Set(list.map((p) => new Date(photoTakenAt(p)).getMonth())).size;
+
+  el("yearReviewTitle").textContent = `${year} in review`;
+  const stat = (n, label) => `<div class="yrev__stat"><span class="yrev__num">${n}</span><span class="yrev__lab">${label}</span></div>`;
+  let html = `<div class="yrev__stats">`;
+  html += stat(list.length, `photo${list.length === 1 ? "" : "s"}`);
+  if (videos) html += stat(videos, `video${videos === 1 ? "" : "s"}`);
+  html += stat(top.length, `${top.length === 1 ? "person" : "people"}`);
+  html += stat(monthsActive, `active month${monthsActive === 1 ? "" : "s"}`);
+  html += `</div>`;
+  if (top.length) {
+    html += `<div class="yrev__people">`;
+    for (const t of top) {
+      const face = albumCover(t.person.id, t.person) || t.person.thumb || "";
+      const nm = t.person.relationship === "Me" ? "You" : t.person.name;
+      html += `<div class="yrev__person">${face ? `<img src="${face}" alt="" />` : `<span class="yrev__noface">${escapeHtml(nm[0] || "?")}</span>`}<span class="yrev__pn">${escapeHtml(nm)}</span><span class="yrev__pc">${t.n}</span></div>`;
+    }
+    html += `</div>`;
+  }
+  body.innerHTML = html;
+  const playBtn = el("yearReviewPlay");
+  if (playBtn) playBtn.onclick = () => { closeYearReview(); startSlideshow(ids, { title: `${year} in review` }); };
+  modal.hidden = false;
+}
+function closeYearReview() {
+  const modal = el("yearReviewModal");
+  if (modal) modal.hidden = true;
+}
+
+/* -------------------------------------------------------------- slideshow */
+
+let slideIds = [];
+let slideIdx = 0;
+let slidePlaying = true;
+let slideTimer = null;
+const SLIDE_MS = 3800;
+
+function startSlideshow(ids, opts = {}) {
+  ids = (ids || []).filter(Boolean);
+  if (!ids.length) {
+    uiAlert("There are no photos to play in a slideshow yet.");
+    return;
+  }
+  slideIds = ids;
+  slideIdx = 0;
+  slidePlaying = true;
+  const ov = el("slideshow");
+  if (!ov) return;
+  ov.hidden = false;
+  el("slideTitle").textContent = opts.title || "Slideshow";
+  el("slidePlay").textContent = "⏸";
+  showSlide(0);
+  startSlideTimer();
+}
+function startSlideTimer() {
+  stopSlideTimer();
+  if (slidePlaying) slideTimer = setInterval(() => slideStep(1), SLIDE_MS);
+}
+function stopSlideTimer() {
+  if (slideTimer) {
+    clearInterval(slideTimer);
+    slideTimer = null;
+  }
+}
+function slideStep(delta) {
+  if (!slideIds.length) return;
+  slideIdx = (slideIdx + delta + slideIds.length) % slideIds.length;
+  showSlide(slideIdx);
+  if (slidePlaying) startSlideTimer(); // reset the clock on manual steps
+}
+function showSlide(i) {
+  const p = state.photos.find((x) => x.id === slideIds[i]);
+  if (!p) return;
+  const img = el("slideImg");
+  if (!img) return;
+  img.classList.remove("is-shown");
+  // Double rAF so the fade actually replays when swapping the source.
+  requestAnimationFrame(() => {
+    img.src = p.thumb;
+    requestAnimationFrame(() => img.classList.add("is-shown"));
+  });
+  const t = photoTakenAt(p);
+  const names = (p.personIds || [])
+    .map((id) => state.people.find((x) => x.id === id))
+    .filter(Boolean)
+    .map((x) => (x.relationship === "Me" ? "You" : x.name));
+  el("slideCaption").textContent = [t ? fmtDate(t) : "", names.slice(0, 3).join(", ")].filter(Boolean).join("  ·  ");
+  el("slideCount").textContent = `${i + 1} / ${slideIds.length}`;
+}
+function toggleSlidePlay() {
+  slidePlaying = !slidePlaying;
+  el("slidePlay").textContent = slidePlaying ? "⏸" : "▶";
+  if (slidePlaying) startSlideTimer();
+  else stopSlideTimer();
+}
+function closeSlideshow() {
+  stopSlideTimer();
+  const ov = el("slideshow");
+  if (ov) ov.hidden = true;
+  slideIds = [];
+}
+
+/* ------------------------------------------------------------ ask famsort */
+
+function setAskMsg(text) {
+  const m = el("askMsg");
+  if (m) {
+    m.textContent = text || "";
+    m.hidden = !text;
+  }
+}
+function renderAskResults(ids) {
+  const wrap = el("askResults");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  if (!ids || !ids.length) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  const head = document.createElement("div");
+  head.className = "ask-results__head";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn btn--small";
+  btn.textContent = "▶ Play these";
+  btn.addEventListener("click", () => startSlideshow(ids, { title: "Ask Famsort" }));
+  head.appendChild(btn);
+  wrap.appendChild(head);
+  const grid = document.createElement("div");
+  grid.className = "ask-results__grid";
+  for (const id of ids.slice(0, 60)) {
+    const p = state.photos.find((x) => x.id === id);
+    if (!p) continue;
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "thumb";
+    cell.innerHTML = `<img src="${p.thumb}" alt="" loading="lazy" />`;
+    cell.addEventListener("click", () => openLightbox(id, false, ids));
+    grid.appendChild(cell);
+  }
+  wrap.appendChild(grid);
+}
+
+// A tiny local natural-language parser. Recognises a person (by name, or "me"),
+// a year, and an intent (slideshow / memories / year-in-review / find). Runs
+// entirely on-device — no text ever leaves the app.
+function runAsk(query) {
+  const q = (query || "").trim();
+  if (!q) return;
+  const low = q.toLowerCase();
+  renderAskResults([]);
+
+  const people = namedPeople();
+  let person = null;
+  for (const p of people) {
+    if (p.name && low.includes(p.name.toLowerCase())) {
+      person = p;
+      break;
+    }
+  }
+  if (!person && /\b(me|myself|my)\b/.test(low)) {
+    person = people.find((p) => p.relationship === "Me") || null;
+  }
+  const ym = low.match(/\b(19|20)\d{2}\b/);
+  const year = ym ? Number(ym[0]) : 0;
+
+  const wantSlideshow = /(slideshow|slide show|montage|play|build me)/.test(low);
+  const wantYearReview = /(year in review|wrap|recap|rewind|year review)/.test(low);
+  const wantMemories = /(on this day|memor|throwback)/.test(low);
+
+  if (wantYearReview && year) {
+    navTo("memories");
+    openYearReview(year);
+    return;
+  }
+  if (wantMemories && !person && !year) {
+    setAskMsg("Here are your memories.");
+    return;
+  }
+
+  let ids = state.photos.slice();
+  if (person) ids = ids.filter((p) => (p.personIds || []).includes(person.id));
+  if (year) ids = ids.filter((p) => photoYear(p) === year);
+  const photoIds = ids.sort((a, b) => photoTakenAt(a) - photoTakenAt(b)).map((p) => p.id);
+
+  const who = person ? ` of ${person.relationship === "Me" ? "you" : person.name}` : "";
+  const when = year ? ` from ${year}` : "";
+
+  if (!photoIds.length) {
+    setAskMsg(`I couldn't find any photos${who}${when}. Try a different name or year.`);
+    return;
+  }
+  if (wantSlideshow) {
+    const title = `${person ? (person.relationship === "Me" ? "You" : person.name) : "Photos"}${year ? ` · ${year}` : ""}`;
+    startSlideshow(photoIds, { title });
+    setAskMsg(`Playing a slideshow of ${photoIds.length} photo${photoIds.length === 1 ? "" : "s"}${who}${when}.`);
+    return;
+  }
+  setAskMsg(`Found ${photoIds.length} photo${photoIds.length === 1 ? "" : "s"}${who}${when}. Tap one to view, or play them all.`);
+  renderAskResults(photoIds);
+}
+
 function navTo(view) {
   document.querySelectorAll(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
   document.querySelectorAll(".tabbar__btn").forEach((b) =>
@@ -11829,7 +12659,8 @@ function navTo(view) {
   if (view === "settings") renderSettingsExtras();
   if (view === "sharing") renderSharingExtras();
   if (view === "family") renderFamily();
-  if (view === "add") renderHomeTip();
+  if (view === "memories") renderMemories();
+  if (view === "add") { renderHomeTip(); renderHomeMemories(); }
   // Both the home (Add) and Albums screens kick off a background back-up of
   // anything still outstanding, so it keeps moving on its own wherever the user
   // is — not only when they open Albums (which is why it could look stuck).
@@ -11957,6 +12788,8 @@ function wire() {
   el("accountMenu").addEventListener("click", (e) => e.stopPropagation());
   document.addEventListener("click", closeAccountMenu);
   el("accountMenuAccount").addEventListener("click", () => { closeAccountMenu(); navTo("account"); });
+  const accountMenuMemories = el("accountMenuMemories");
+  if (accountMenuMemories) accountMenuMemories.addEventListener("click", () => { closeAccountMenu(); navTo("memories"); });
   el("accountMenuSharing").addEventListener("click", () => { closeAccountMenu(); navTo("sharing"); });
   el("accountMenuSetup").addEventListener("click", () => { closeAccountMenu(); navTo("add"); openSetupConfig(); });
   el("accountMenuSettings").addEventListener("click", () => { closeAccountMenu(); navTo("settings"); });
@@ -12133,6 +12966,16 @@ function wire() {
   el("albumFavBtn").addEventListener("click", () => {
     if (state.activeAlbum) toggleFavAlbum(state.activeAlbum);
   });
+  const albumTimelineBtn = el("albumTimelineBtn");
+  if (albumTimelineBtn) albumTimelineBtn.addEventListener("click", toggleAlbumTimeline);
+  const albumSlideshowBtn = el("albumSlideshowBtn");
+  if (albumSlideshowBtn) albumSlideshowBtn.addEventListener("click", () => {
+    if (!state.activeAlbum) return;
+    const photos = albumPhotos(state.activeAlbum).slice();
+    sortAlbumPhotos(photos);
+    const ids = (albumTimelineOn ? photos.slice().sort((a, b) => photoTakenAt(a) - photoTakenAt(b)) : photos).map((p) => p.id);
+    startSlideshow(ids, { title: albumDisplayName(state.activeAlbum) });
+  });
   el("albumEditBtn").addEventListener("click", (e) => {
     const pid = e.currentTarget.dataset.pid;
     if (pid) openPersonEdit(pid);
@@ -12200,6 +13043,58 @@ function wire() {
     if (e.key === "Escape") closeLightbox();
     else if (e.key === "ArrowLeft") lightboxStep(-1);
     else if (e.key === "ArrowRight") lightboxStep(1);
+  });
+
+  // --- Discover: memories, slideshow, year-in-review, ask, photo details ---
+  const famEditBtn = el("famEditBtn");
+  if (famEditBtn) famEditBtn.addEventListener("click", toggleFamilyEdit);
+  const homeMemoriesOpen = el("homeMemoriesOpen");
+  if (homeMemoriesOpen) homeMemoriesOpen.addEventListener("click", () => navTo("memories"));
+  const homeMemories = el("homeMemories");
+  if (homeMemories) homeMemories.addEventListener("click", (e) => {
+    if (e.target.closest("button")) return;
+    navTo("memories");
+  });
+  // Ask Famsort local parser.
+  const askGo = el("askGoBtn");
+  if (askGo) askGo.addEventListener("click", () => runAsk(el("askInput")?.value));
+  const askInput = el("askInput");
+  if (askInput) askInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); runAsk(askInput.value); }
+  });
+  document.querySelectorAll("[data-ask-chip]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const q = chip.dataset.askChip;
+      if (askInput) askInput.value = q;
+      runAsk(q);
+    });
+  });
+  // Photo details sheet.
+  const pdetClose = el("photoDetailsClose");
+  if (pdetClose) pdetClose.addEventListener("click", closePhotoDetails);
+  const pdetModal = el("photoDetailsModal");
+  if (pdetModal) pdetModal.addEventListener("click", (e) => { if (e.target === pdetModal) closePhotoDetails(); });
+  // Year in review modal.
+  const yrevClose = el("yearReviewClose");
+  if (yrevClose) yrevClose.addEventListener("click", closeYearReview);
+  const yrevModal = el("yearReviewModal");
+  if (yrevModal) yrevModal.addEventListener("click", (e) => { if (e.target === yrevModal) closeYearReview(); });
+  // Slideshow overlay.
+  const slideClose = el("slideClose");
+  if (slideClose) slideClose.addEventListener("click", closeSlideshow);
+  const slidePrev = el("slidePrev");
+  if (slidePrev) slidePrev.addEventListener("click", () => slideStep(-1));
+  const slideNext = el("slideNext");
+  if (slideNext) slideNext.addEventListener("click", () => slideStep(1));
+  const slidePlay = el("slidePlay");
+  if (slidePlay) slidePlay.addEventListener("click", toggleSlidePlay);
+  document.addEventListener("keydown", (e) => {
+    const ov = el("slideshow");
+    if (!ov || ov.hidden) return;
+    if (e.key === "Escape") closeSlideshow();
+    else if (e.key === "ArrowLeft") slideStep(-1);
+    else if (e.key === "ArrowRight") slideStep(1);
+    else if (e.key === " ") { e.preventDefault(); toggleSlidePlay(); }
   });
 }
 
