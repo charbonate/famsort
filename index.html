@@ -1298,7 +1298,7 @@ p { margin: 0 0 .9rem; }
         <h3>Albums shared with you</h3>
         <p>Albums a co-parent has shared with you show up here. If they've made you a <strong>manager</strong>, you can request to add other viewers or editors — the album's owner approves each request from their device.</p>
         <div class="shared-list" id="sharedList"></div>
-        <p class="card-plain__fine">Use <strong>Add photos to my Famsort</strong> on any shared album to pull its photos in and sort them into your own albums. Requesting to add someone else needs <strong>edit access</strong> to the shared album.</p>
+        <p class="card-plain__fine">Use <strong>Scan this album for faces</strong> on any shared album to recognise who's in its photos and sort them into your own albums. Photos are downloaded only to detect faces and removed from your device afterwards — unless your output location is this device. Requesting to add someone else needs <strong>edit access</strong> to the shared album.</p>
       </div>
 
       <div class="card-plain">
@@ -5904,7 +5904,7 @@ async function renderSharedAlbums() {
     const pull = document.createElement("div");
     pull.className = "shared-item__pull";
     pull.innerHTML = `
-      <button class="btn btn--primary btn--sm" type="button" data-pull>Add photos to my Famsort</button>
+      <button class="btn btn--primary btn--sm" type="button" data-pull>Scan this album for faces</button>
       <p class="msg shared-item__pull-msg" data-pull-msg hidden></p>`;
     pull.querySelector("[data-pull]").addEventListener("click", (e) => pullSharedAlbum(s, e.currentTarget, pull.querySelector("[data-pull-msg]")));
     card.appendChild(pull);
@@ -5966,11 +5966,25 @@ async function requestAddToShared(s, cap, form) {
   }
 }
 
-// Pull a shared album's photos into THIS user's Famsort: download each file from
-// the other parent's drive, then run it through the same on-device face
-// detection + sorting pipeline as a manual import. Only needs view access.
-// Downloads and processes in small chunks so memory stays bounded and results
-// appear live.
+// How much on-device storage is free right now (bytes), or null if the browser
+// won't report it. Used to size the shared-album pull-in batches.
+async function freeStorageBytes() {
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const { quota = 0, usage = 0 } = await navigator.storage.estimate();
+      const free = quota - usage;
+      return free > 0 ? free : 0;
+    }
+  } catch {}
+  return null;
+}
+
+// Pull a shared album's photos into THIS user's Famsort for FACE DETECTION only.
+// Each photo is downloaded from the other parent's drive, scanned for faces, and
+// then released from the device again — unless the device itself is the final
+// output location, in which case the sorted copy is kept there. Storage-aware:
+// when space is plentiful it downloads big batches in parallel (fastest); when
+// space is tight it scans a few at a time and frees each batch before the next.
 let pullingShared = false;
 async function pullSharedAlbum(s, btn, msg) {
   if (pullingShared) return;
@@ -5980,26 +5994,63 @@ async function pullSharedAlbum(s, btn, msg) {
   if (btn) btn.disabled = true;
   try {
     show("Looking for photos in this album…");
-    const files = await cloud.listSharedFolderPhotos(s.driveId, s.itemId);
-    if (files === null) { show("Couldn't open this album — make sure you're still signed in and have access."); return; }
-    if (!files.length) { show("No photos or videos found in this album yet."); return; }
-    show(`Found ${files.length} item${files.length === 1 ? "" : "s"}. Downloading…`);
-    const CHUNK = 12;
+    const all = await cloud.listSharedFolderPhotos(s.driveId, s.itemId);
+    if (all === null) { show("Couldn't open this album — make sure you're still signed in and have access."); return; }
+    // Face detection only works on stills, so pull images and skip videos.
+    const files = all.filter((f) => isImageName(f.name) || /^image\//i.test(f.type || ""));
+    const skippedVids = all.length - files.length;
+    if (!files.length) {
+      show(skippedVids ? "This album only has videos — there are no photos to scan for faces." : "No photos found in this album yet.");
+      return;
+    }
+
+    // Is the device the FINAL output location? If so, sorted copies belong here
+    // and are kept. Otherwise the download is temporary and removed after use.
+    const deviceIsFinalOutput = state.outputMode === "device" && !!state.outputHandle;
+
+    // Size each batch to available storage. Plenty of room → one big, fast,
+    // parallel batch. Tight on space → a few at a time, released between batches.
+    const free = await freeStorageBytes();
+    const totalBytes = files.reduce((n, f) => n + (f.size || 0), 0);
+    const avg = Math.max(512 * 1024, Math.round(totalBytes / files.length) || 2 * 1024 * 1024);
+    let batchSize;
+    if (free === null) {
+      batchSize = 12; // browser won't report storage — safe middle ground
+    } else if (free > totalBytes * 4) {
+      batchSize = Math.min(48, files.length); // storage not an issue → fastest
+    } else {
+      // Keep in-flight downloads under ~15% of free space, 3–48 at a time.
+      batchSize = Math.max(3, Math.min(48, Math.floor((free * 0.15) / avg)));
+    }
+
     let pulled = 0;
     let failed = 0;
-    for (let i = 0; i < files.length; i += CHUNK) {
-      const slice = files.slice(i, i + CHUNK);
-      const got = [];
-      for (const f of slice) {
-        const blob = await cloud.downloadSharedFile(f.driveId, f.id);
-        if (!blob) { failed++; continue; }
-        got.push(new File([blob], f.name || `photo-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" }));
-      }
+    for (let i = 0; i < files.length; i += batchSize) {
+      const slice = files.slice(i, i + batchSize);
+      const done = Math.min(i + slice.length, files.length);
+      show(`Downloading ${done} of ${files.length}…`);
+      // Download the batch in parallel for speed.
+      const results = await Promise.all(
+        slice.map(async (f) => {
+          const blob = await cloud.downloadSharedFile(f.driveId, f.id);
+          if (!blob) return null;
+          return new File([blob], f.name || `photo-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
+        })
+      );
+      let got = results.filter(Boolean);
+      failed += slice.length - got.length;
       pulled += got.length;
-      show(`Sorting ${Math.min(i + CHUNK, files.length)} of ${files.length}…`);
-      if (got.length) await handleFiles(got); // face-detect + sort into your albums
+      if (got.length) {
+        show(`Scanning faces ${done} of ${files.length}…`);
+        await handleFiles(got, { faceOnly: true }); // detect faces; keep copy only if device is output
+      }
+      got = null; // drop this batch's downloads so they leave the device before the next
+      await new Promise((r) => setTimeout(r, 0)); // let the browser reclaim memory
     }
-    const bits = [`Added ${pulled} photo${pulled === 1 ? "" : "s"} from “${s.name}”.`];
+
+    const bits = [`Scanned ${pulled} photo${pulled === 1 ? "" : "s"} from “${s.name}” for faces.`];
+    if (deviceIsFinalOutput) bits.push("Sorted copies were saved to your device output folder.");
+    if (skippedVids) bits.push(`${skippedVids} video${skippedVids === 1 ? "" : "s"} skipped (no faces).`);
     if (failed) bits.push(`${failed} couldn't be downloaded.`);
     bits.push("Check People and Albums to confirm faces.");
     show(bits.join(" "));
@@ -6521,14 +6572,14 @@ function hideCloudMsg() {
 }
 
 /* ------------------------------------------------------------ add flow */
-async function handleFiles(fileList) {
+async function handleFiles(fileList, opts = {}) {
   // Hold the scan lock during a direct import too, so a timed/focus-triggered
   // background scan can't start on top of it and fight over the progress bar.
   // If we're already inside a folder scan (lock held), this is a no-op.
   const ownLock = !scanBusy;
   if (ownLock) scanBusy = true;
   try {
-    await processFiles(fileList);
+    await processFiles(fileList, opts);
   } finally {
     if (ownLock) scanBusy = false;
   }
@@ -6565,7 +6616,12 @@ function showProgressDone(summary) {
   }, 3400);
 }
 
-async function processFiles(fileList) {
+async function processFiles(fileList, opts = {}) {
+  // faceOnly: this is a shared-album pull-in. Download is temporary — run face
+  // detection, keep only the lightweight thumbnail + face data, and never leave
+  // the full-resolution file on the device unless the device is the final
+  // output location (handled below via wantsBackup).
+  const faceOnly = !!opts.faceOnly;
   const files = Array.from(fileList).filter(
     (f) => f.type.startsWith("image/") || f.type.startsWith("video/") || isMediaName(f.name)
   );
@@ -6646,8 +6702,9 @@ async function processFiles(fileList) {
       batchFaces.push(faceRec);
     }
     // Keep the original video so it can be played back later (images stay as
-    // thumbnails only — videos need the real file to play).
-    if (isVid) {
+    // thumbnails only — videos need the real file to play). Shared pull-ins are
+    // face-detection only, so we never store their blobs on the device.
+    if (isVid && !faceOnly) {
       try {
         await db.put("media", { id: photoId, blob: files[i] });
       } catch {
@@ -6673,9 +6730,15 @@ async function processFiles(fileList) {
     // Log what the sorter did with this photo so the user can verify / amend it
     // from the Activity tab, even if no cloud/device output is configured.
     logActivity({ photoId, name: photoRec.name, album: albumNameFor([...personIds]), dest: outputDest() });
-    const wantsBackup =
-      state.autoBackup &&
-      (cloud.oneDriveConfigured() || (state.outputMode === "device" && !!state.outputHandle));
+    // Decide whether to keep a sorted copy of the original. For a normal import
+    // we save to whatever output is configured (cloud or device). For a shared
+    // pull-in we only keep a copy when the DEVICE is the final output location
+    // — otherwise the download was temporary (face detection only) and is
+    // released after this batch, never copied into the user's own cloud.
+    const deviceOut = state.outputMode === "device" && !!state.outputHandle;
+    const wantsBackup = faceOnly
+      ? state.autoBackup && deviceOut
+      : state.autoBackup && (cloud.oneDriveConfigured() || deviceOut);
     if (wantsBackup) {
       toBackup.push({ file: files[i], personIds: [...personIds], photoId });
     }
