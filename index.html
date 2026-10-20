@@ -471,6 +471,22 @@ p { margin: 0 0 .9rem; }
   background: #fff;
 }
 .text-input:focus { outline: none; border-color: var(--accent); }
+.field-row + .field-row { margin-top: 8px; }
+
+/* Signed-in account chip (the OneDrive account = the Famsort login). */
+.account-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-2-soft, #d9efe9);
+  color: var(--accent-2-dark, #22685b);
+  font-size: .86rem;
+  font-weight: 600;
+}
+.account-line--block { display: flex; margin: 4px 0 10px; }
 
 /* Cloud sources → output → sort wizard */
 .wizard { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
@@ -790,7 +806,7 @@ p { margin: 0 0 .9rem; }
         <!-- STEP 1 — SOURCES (device folders AND cloud folders together) -->
         <div class="wizard-pane" id="wizPaneSources">
           <div class="wizard-head">
-            <span class="wizard-step-badge">Step 1 of 2</span>
+            <span class="wizard-step-badge">Step 1 of 3</span>
             <h3>Where are your photos?</h3>
           </div>
           <p>Add as many places as you like — folders on <strong>this device</strong>, folders in your <strong>cloud</strong>, or pick photos straight from your gallery. Famsort pulls from all of them and sorts the faces <strong>on this device</strong>. Nothing is uploaded.</p>
@@ -829,9 +845,10 @@ p { margin: 0 0 .9rem; }
         <!-- STEP 2 — OUTPUT -->
         <div class="wizard-pane" id="wizPaneOutput" hidden>
           <div class="wizard-head">
-            <span class="wizard-step-badge">Step 2 of 2</span>
+            <span class="wizard-step-badge">Step 2 of 3</span>
             <h3>Where should the sorted albums go?</h3>
           </div>
+          <div class="account-line" id="accountLine" hidden></div>
           <p>Pick where the organised per-person albums are saved. A <strong>cloud backup is best</strong> — every device sees the same albums and nothing is lost if a phone breaks.</p>
 
           <div class="output-opt" id="outputOptCloud">
@@ -864,9 +881,41 @@ p { margin: 0 0 .9rem; }
           <div class="btn-row btn-row--split">
             <button class="btn btn--ghost" id="backToSourcesBtn">← Back</button>
             <span class="btn-row__spacer"></span>
-            <button class="btn btn--primary" id="sortNowBtn">Sort my photos</button>
+            <button class="btn btn--primary" id="toSortingBtn">Next: how to sort →</button>
           </div>
           <p class="msg" id="cloudMsg" hidden></p>
+        </div>
+
+        <!-- STEP 3 — SORTING RULE -->
+        <div class="wizard-pane" id="wizPaneSorting" hidden>
+          <div class="wizard-head">
+            <span class="wizard-step-badge">Step 3 of 3</span>
+            <h3>How should photos with more than one person be sorted?</h3>
+          </div>
+          <p>Your in-app albums always <strong>mirror the folders</strong> in your output exactly. Choose how a photo that has several tagged people is filed.</p>
+
+          <div class="output-opt" id="sortOptPerPerson">
+            <label class="output-opt__head">
+              <input type="radio" name="sortMode" id="sortModePerPerson" value="perPerson" checked />
+              <span class="output-opt__title">👥 A folder for each person <span class="badge">Recommended</span></span>
+            </label>
+            <p class="output-opt__desc">A photo of two people is copied into <strong>both</strong> their folders, so every person's album shows every photo they're in. (Uses a little more space — the same photo is stored in each folder.)</p>
+          </div>
+
+          <div class="output-opt" id="sortOptSingle">
+            <label class="output-opt__head">
+              <input type="radio" name="sortMode" id="sortModeSingle" value="single" />
+              <span class="output-opt__title">🗂️ One copy, grouped</span>
+            </label>
+            <p class="output-opt__desc">A photo is filed <strong>once</strong>, under its main person's folder (a child first, otherwise the first person tagged). No duplicates, but a person's album won't show photos filed under someone else.</p>
+          </div>
+
+          <div class="btn-row btn-row--split">
+            <button class="btn btn--ghost" id="backToOutputBtn">← Back</button>
+            <span class="btn-row__spacer"></span>
+            <button class="btn btn--primary" id="sortNowBtn">Sort my photos</button>
+          </div>
+          <p class="msg" id="sortingMsg" hidden></p>
         </div>
       </div>
 
@@ -983,7 +1032,42 @@ p { margin: 0 0 .9rem; }
     <!-- SETTINGS SCREEN -->
     <section class="view" id="view-settings" data-view="settings" hidden>
       <h2 class="view__title">Family & privacy</h2>
+      <div class="card-plain">
+        <h3>Your Famsort account</h3>
+        <p>Famsort uses your <strong>cloud account</strong> as your login. Sign in with the <strong>same account on any device</strong> and your people, albums, output and sorting settings follow you — so your phone and laptop never get out of step.</p>
+        <div class="account-line account-line--block" id="accountLineSettings" hidden></div>
+        <div class="btn-row">
+          <button class="btn btn--primary" id="accountSignInBtn" hidden>Sign in to my cloud</button>
+        </div>
+        <p class="card-plain__fine">Folders you add from <strong>this device</strong> are only available on this device — cloud folders and all settings sync everywhere.</p>
+      </div>
 
+      <div class="card-plain">
+        <h3>Invite a co-parent</h3>
+        <p>Share an album with another parent. <strong>Viewer</strong> can see the photos; <strong>Adder</strong> can also add and change them. They'll get an email with a secure link — they sign in with their own cloud account.</p>
+        <div class="field-row">
+          <input class="text-input" id="inviteEmail" type="email" inputmode="email" autocomplete="off" spellcheck="false" placeholder="their email address" />
+        </div>
+        <div class="field-row">
+          <select class="text-input" id="inviteAlbum"></select>
+          <select class="text-input" id="inviteRole">
+            <option value="read">Viewer (can see)</option>
+            <option value="write">Adder (can add &amp; change)</option>
+          </select>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn--primary" id="inviteSendBtn">Send invite</button>
+        </div>
+        <p class="msg" id="inviteMsg" hidden></p>
+      </div>
+
+      <div class="card-plain">
+        <h3>How photos are sorted</h3>
+        <p>Choose how a photo with more than one tagged person is filed. Your albums always mirror your output folders.</p>
+        <label class="output-opt__head"><input type="radio" name="sortModeSettings" id="sortModeSettingsPerPerson" value="perPerson" /> <span class="output-opt__title">A folder for each person <span class="badge">Recommended</span></span></label>
+        <label class="output-opt__head"><input type="radio" name="sortModeSettings" id="sortModeSettingsSingle" value="single" /> <span class="output-opt__title">One copy, grouped</span></label>
+        <p class="msg" id="sortModeSettingsMsg" hidden></p>
+      </div>
       <div class="card-plain">
         <h3>Share recognition with your partner</h3>
         <p>Export a tiny file that teaches your partner's phone to recognise your kids the same way — <strong>no photos included</strong>, just the face "fingerprints". They import it and their photos sort automatically too.</p>
@@ -2008,7 +2092,10 @@ function setClientId(id) {
 }
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
-const SCOPES = ["Files.ReadWrite"];
+// Files.ReadWrite = own drive (read camera roll, write Famsort albums).
+// Files.ReadWrite.All = invite a co-parent to a folder AND later ingest a folder
+// they share back. Both were consented at app registration.
+const SCOPES = ["Files.ReadWrite", "Files.ReadWrite.All"];
 const MAX_FILES = 300;
 
 function oneDriveConfigured() {
@@ -2365,6 +2452,46 @@ async function getFolderWebUrl(folderPath) {
   }
 }
 
+// The signed-in account's display name + email, so the app can show "Signed in
+// as …" and treat this OneDrive account as the user's Famsort login. Null when
+// not signed in. Never prompts.
+async function accountInfo() {
+  if (!oneDriveConfigured()) return null;
+  try {
+    const msal = await ensureMsal();
+    const acct = msal.getAllAccounts()[0];
+    if (!acct) return null;
+    return { username: acct.username || "", name: acct.name || acct.username || "" };
+  } catch {
+    return null;
+  }
+}
+
+// Invite a co-parent to one of the output folders. role "read" = Viewer (can see
+// the album), "write" = Adder (can add/change photos). Creates the folder if it
+// doesn't exist yet so there's always something to share. OneDrive emails them a
+// sign-in link. Returns the Graph permission object on success.
+async function inviteToFolder(folderPath, email, role, message) {
+  if (!oneDriveConfigured()) throw new Error("OneDrive not configured");
+  const token = await getToken();
+  const destId = await ensureFolderPath(folderPath, token);
+  if (!destId) throw new Error("Could not create or find that folder");
+  const roles = role === "write" ? ["write"] : ["read"];
+  const res = await fetch(`${GRAPH}/me/drive/items/${destId}/invite`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      recipients: [{ email: String(email || "").trim() }],
+      roles,
+      requireSignIn: true,
+      sendInvitation: true,
+      message: message || "I've shared a Famsort photo album with you.",
+    }),
+  });
+  if (!res.ok) throw new Error(`Invite failed (${res.status})`);
+  return res.json();
+}
+
 // Sign in only (or confirm an existing session). Returns true on success. Kept
 // separate from the camera-roll import so a returning device can rebuild its
 // library from the saved manifest BEFORE deciding whether to re-scan anything.
@@ -2637,7 +2764,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, inviteToFolder, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -2694,6 +2821,7 @@ const state = {
   keptDistinct: new Set(), // photo ids the user confirmed are NOT duplicates (stop flagging)
   cloudSources: [], // chosen OneDrive source folders [{id, name}] ([] = camera roll default)
   outputRoot: "Famsort", // OneDrive folder path where sorted per-person albums are written
+  sortMode: "perPerson", // how multi-person photos are filed: "perPerson" = a copy in EVERY tagged person's folder (albums never miss a photo, duplicates across folders); "single" = one copy in the primary person's folder only (no duplicates)
   outputMode: "cloud", // "cloud" = back up albums to OneDrive; "device" = write to a local folder only
   outputHandle: null, // FileSystemDirectoryHandle when outputMode === "device"
   outputHandleName: "", // display name of the chosen device output folder
@@ -3079,6 +3207,11 @@ function backupFolderFor(personIds) {
 // people goes to a single "Unsorted" folder. Distinct + stable order.
 function backupFoldersFor(personIds) {
   const root = (state.outputRoot || "Famsort").replace(/\/+$/, "");
+  // "single" sorting rule: one copy only, filed under the primary person's
+  // folder (child-first, else first named, else "Unsorted") — no duplicates.
+  if (state.sortMode === "single") return [`${root}/${albumNameFor(personIds)}`];
+  // "perPerson" (default/recommended): a copy in EVERY tagged person's folder so
+  // each person's folder holds every photo they're in.
   const safe = (s) => String(s).replace(/[\\/:*?"<>|]/g, "_");
   const names = (personIds || [])
     .map((id) => state.people.find((p) => p.id === id))
@@ -4388,6 +4521,13 @@ function buildCloudModel() {
     })),
     backedUpKeys: [...state.backedUpKeys],
     settings: { autoBackup: state.autoBackup },
+    // Account-level config so every device signed into this OneDrive uses the
+    // SAME output + sorting + cloud sources (device-only folders stay local).
+    config: {
+      outputRoot: state.outputRoot || "Famsort",
+      sortMode: state.sortMode === "single" ? "single" : "perPerson",
+      cloudSources: state.cloudSources || [],
+    },
   };
 }
 
@@ -4452,6 +4592,28 @@ async function restoreCloudModel() {
     const before = state.backedUpKeys.size;
     for (const k of model.backedUpKeys) state.backedUpKeys.add(k);
     if (state.backedUpKeys.size !== before) await saveBackedUpKeys();
+  }
+
+  // Adopt the account-level config from the cloud so this device matches every
+  // other device on the same account (the fix for "laptop and phone got jumbled
+  // because each had its own local selections"). The cloud is the source of
+  // truth for output + sorting + cloud sources; device-only folders stay local.
+  if (model.config && typeof model.config === "object") {
+    const c = model.config;
+    let cfgChanged = false;
+    if (c.outputRoot && c.outputRoot !== state.outputRoot) { state.outputRoot = c.outputRoot; cfgChanged = true; }
+    if ((c.sortMode === "single" || c.sortMode === "perPerson") && c.sortMode !== state.sortMode) { state.sortMode = c.sortMode; cfgChanged = true; }
+    if (Array.isArray(c.cloudSources)) {
+      const same = JSON.stringify(c.cloudSources) === JSON.stringify(state.cloudSources || []);
+      if (!same) { state.cloudSources = c.cloudSources; cfgChanged = true; }
+    }
+    if (cfgChanged) {
+      await saveCloudPrefs();
+      renderSources();
+      renderOutputLabel();
+      renderSortModeUI();
+      changed = true;
+    }
   }
 
   if (changed) {
@@ -4651,12 +4813,15 @@ function renderWatched() {
   renderSources();
 }
 
-// Toggle between the two wizard steps (sources ↔ output).
+// Move between the three wizard steps (sources → output → sorting).
 function showWizardPane(name) {
-  const s = el("wizPaneSources");
-  const o = el("wizPaneOutput");
-  if (s) s.hidden = name !== "sources";
-  if (o) o.hidden = name !== "output";
+  const panes = { sources: "wizPaneSources", output: "wizPaneOutput", sorting: "wizPaneSorting" };
+  for (const [key, id] of Object.entries(panes)) {
+    const pane = el(id);
+    if (pane) pane.hidden = name !== key;
+  }
+  if (name === "output") renderAccountLine();
+  if (name === "sorting") renderSortModeUI();
   window.scrollTo(0, 0);
 }
 
@@ -4725,6 +4890,8 @@ async function connectCloud() {
     const restored = await rebuildFromManifest();
     renderSources();
     renderOutputLabel();
+    renderAccountLine();
+    renderSettingsExtras();
     if (restored > 0) {
       showCloudMsg(`Connected. Restored ${restored} sorted photo${restored === 1 ? "" : "s"}.`);
     } else {
@@ -4744,6 +4911,8 @@ async function loadCloudPrefs() {
   state.cloudSources = Array.isArray(s?.list) ? s.list : [];
   const o = await db.get("meta", "outputRoot");
   if (o?.path) state.outputRoot = o.path;
+  const sm = await db.get("meta", "sortMode");
+  if (sm?.mode === "perPerson" || sm?.mode === "single") state.sortMode = sm.mode;
   const om = await db.get("meta", "outputMode");
   if (om?.mode) state.outputMode = om.mode;
   const oh = await db.get("meta", "outputHandle");
@@ -4759,6 +4928,7 @@ async function loadCloudPrefs() {
       cloudSignedIn = true;
       renderSources();
       renderOutputLabel();
+      renderAccountLine();
     }
   }
 }
@@ -4766,6 +4936,7 @@ async function loadCloudPrefs() {
 async function saveCloudPrefs() {
   await db.put("meta", { id: "cloudSources", list: state.cloudSources });
   await db.put("meta", { id: "outputRoot", path: state.outputRoot });
+  await db.put("meta", { id: "sortMode", mode: state.sortMode });
   await db.put("meta", { id: "outputMode", mode: state.outputMode });
 }
 
@@ -4836,6 +5007,127 @@ async function setOutputMode(mode) {
   state.outputMode = mode === "device" ? "device" : "cloud";
   await saveCloudPrefs();
   renderOutputLabel();
+}
+
+// Reflect the current sorting rule in the wizard + settings radios.
+function renderSortModeUI() {
+  const single = state.sortMode === "single";
+  const map = {
+    sortModePerPerson: !single,
+    sortModeSingle: single,
+    sortModeSettingsPerPerson: !single,
+    sortModeSettingsSingle: single,
+  };
+  for (const [id, on] of Object.entries(map)) {
+    const r = el(id);
+    if (r) r.checked = on;
+  }
+}
+
+// Change the sorting rule. From settings (where photos may already be sorted),
+// offer to RE-FILE everything to match the new rule (retrospective) or keep the
+// current folders and only apply the rule to new photos.
+async function setSortMode(mode, fromSettings) {
+  const next = mode === "single" ? "single" : "perPerson";
+  if (next === state.sortMode) return;
+  state.sortMode = next;
+  await saveCloudPrefs();
+  scheduleCloudSync();
+  renderSortModeUI();
+  const msgEl = fromSettings ? el("sortModeSettingsMsg") : el("sortingMsg");
+  const canRefile = state.outputMode === "cloud" && cloud.oneDriveConfigured() && state.photos.length > 0;
+  if (fromSettings && canRefile) {
+    const retro = window.confirm(
+      "Re-file your existing photos to match the new sorting rule now?\n\n" +
+        "OK = re-organise everything in OneDrive to match the new rule.\n" +
+        "Cancel = keep the current folders; only new photos use the new rule."
+    );
+    if (retro) {
+      scheduleRefile(state.photos.filter((p) => (p.personIds || []).length));
+      if (msgEl) { msgEl.textContent = "Re-filing your albums in OneDrive to match the new rule…"; msgEl.hidden = false; }
+    } else if (msgEl) {
+      msgEl.textContent = "Saved. Existing folders are unchanged; new photos use the new rule.";
+      msgEl.hidden = false;
+    }
+  } else if (msgEl) {
+    msgEl.textContent = "Saved.";
+    msgEl.hidden = false;
+  }
+}
+
+// Show "Signed in as …" wherever the account is surfaced, and the sign-in button
+// when not connected. The OneDrive account IS the Famsort login.
+async function renderAccountLine() {
+  let info = null;
+  try {
+    if (cloud.oneDriveConfigured()) info = await cloud.accountInfo();
+  } catch {
+    info = null;
+  }
+  const who = info ? info.username || info.name : "";
+  const a = el("accountLine");
+  if (a) {
+    a.hidden = !info;
+    a.textContent = info ? `☁ Signed in as ${who} — this is your Famsort account` : "";
+  }
+  const b = el("accountLineSettings");
+  if (b) {
+    b.hidden = !info;
+    b.textContent = info ? `☁ Signed in as ${who}` : "";
+  }
+  const btn = el("accountSignInBtn");
+  if (btn) btn.hidden = !!info || !cloud.oneDriveConfigured();
+}
+
+// Fill the co-parent invite album dropdown with the output root (everything) plus
+// each person's folder, so the user can share a single album or the whole lot.
+function renderInviteAlbums() {
+  const sel = el("inviteAlbum");
+  if (!sel) return;
+  const prev = sel.value;
+  const root = (state.outputRoot || "Famsort").replace(/\/+$/, "");
+  const safe = (s) => String(s).replace(/[\\/:*?"<>|]/g, "_");
+  const opts = [{ path: root, label: `Everything (${root})` }];
+  for (const p of namedPeopleHere()) opts.push({ path: `${root}/${safe(p.name)}`, label: p.name });
+  sel.innerHTML = "";
+  for (const o of opts) {
+    const opt = document.createElement("option");
+    opt.value = o.path;
+    opt.textContent = o.label;
+    sel.appendChild(opt);
+  }
+  if (prev && opts.some((o) => o.path === prev)) sel.value = prev;
+}
+
+// Refresh the parts of the settings screen that depend on live account/album state.
+function renderSettingsExtras() {
+  renderAccountLine();
+  renderInviteAlbums();
+  renderSortModeUI();
+}
+
+// Email a co-parent a secure link to an output folder as Viewer or Adder.
+async function sendInvite() {
+  const email = (el("inviteEmail")?.value || "").trim();
+  const path = el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
+  const role = el("inviteRole")?.value === "write" ? "write" : "read";
+  const msg = el("inviteMsg");
+  const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { show("Enter a valid email address."); return; }
+  if (!cloud.oneDriveConfigured()) { show("Connect your cloud first (Add → Add from OneDrive)."); return; }
+  if (state.outputMode !== "cloud") { show("Inviting works with cloud output. Switch output to OneDrive first."); return; }
+  const btn = el("inviteSendBtn");
+  if (btn) btn.disabled = true;
+  show("Sending invite…");
+  try {
+    await cloud.inviteToFolder(path, email, role);
+    show(`Invite sent to ${email} as ${role === "write" ? "Adder (can add & change)" : "Viewer (can see)"}.`);
+    if (el("inviteEmail")) el("inviteEmail").value = "";
+  } catch {
+    show("Couldn't send the invite — check you're signed in and the email is correct, then try again.");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // Pick an OneDrive folder for the sorted albums (and select cloud mode).
@@ -7985,6 +8277,7 @@ async function resetAll() {
   state.outputHandle = null;
   state.outputHandleName = "";
   state.outputMode = "cloud";
+  state.sortMode = "perPerson";
   el("statRow").hidden = true;
   renderAll();
   renderWatched();
@@ -8000,6 +8293,7 @@ function navTo(view) {
     b.classList.toggle("is-active", b.dataset.nav === view)
   );
   if (view === "activity") renderActivity();
+  if (view === "settings") renderSettingsExtras();
   window.scrollTo(0, 0);
   // Replay the slide+fade so switching tabs feels like a native screen change.
   const active = document.querySelector(`.view[data-view="${view}"]`);
@@ -8018,7 +8312,15 @@ function wire() {
   el("rebuildBtn").addEventListener("click", rebuildFromWatched);
   el("toOutputBtn").addEventListener("click", () => showWizardPane("output"));
   el("backToSourcesBtn").addEventListener("click", () => showWizardPane("sources"));
+  el("toSortingBtn").addEventListener("click", () => showWizardPane("sorting"));
+  el("backToOutputBtn").addEventListener("click", () => showWizardPane("output"));
   el("sortNowBtn").addEventListener("click", sortNow);
+  el("sortModePerPerson").addEventListener("change", () => setSortMode("perPerson", false));
+  el("sortModeSingle").addEventListener("change", () => setSortMode("single", false));
+  el("sortModeSettingsPerPerson").addEventListener("change", () => setSortMode("perPerson", true));
+  el("sortModeSettingsSingle").addEventListener("change", () => setSortMode("single", true));
+  el("accountSignInBtn").addEventListener("click", connectCloud);
+  el("inviteSendBtn").addEventListener("click", sendInvite);
   el("pickOutputBtn").addEventListener("click", chooseCloudOutput);
   el("pickDeviceOutputBtn").addEventListener("click", chooseDeviceOutput);
   el("outModeCloud").addEventListener("change", () => setOutputMode("cloud"));
