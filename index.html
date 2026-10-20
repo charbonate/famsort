@@ -3784,6 +3784,7 @@ const state = {
   cloudSources: [], // chosen OneDrive source folders [{id, name}] ([] = camera roll default)
   remoteSources: {}, // deviceId → {label, folders:[{name}], updatedAt}: on-device source folders on OTHER devices, synced so each device shows the full picture
   outputRoot: "Famsort", // OneDrive folder path where sorted per-person albums are written
+  configUpdatedAt: 0, // last local edit time of the core account config (outputRoot/sortMode/cloudSources) — drives last-write-wins so a stale cloud pull can't revert a fresh change
   sortMode: "perPerson", // how multi-person photos are filed: "perPerson" = a copy in EVERY tagged person's folder (albums never miss a photo, duplicates across folders); "single" = one copy in the primary person's folder only (no duplicates)
   outputMode: "cloud", // "cloud" = back up albums to OneDrive; "device" = write to a local folder only
   outputHandle: null, // FileSystemDirectoryHandle when outputMode === "device"
@@ -5672,6 +5673,7 @@ function buildCloudModel() {
     // stay local).
     config: {
       outputRoot: state.outputRoot || "Famsort",
+      configUpdatedAt: state.configUpdatedAt || 0,
       sortMode: state.sortMode === "single" ? "single" : "perPerson",
       cloudSources: state.cloudSources || [],
       favAlbums: state.favAlbums || [],
@@ -5816,11 +5818,20 @@ async function restoreCloudModel(silent = false) {
   if (model.config && typeof model.config === "object") {
     const c = model.config;
     let cfgChanged = false;
-    if (c.outputRoot && c.outputRoot !== state.outputRoot) { state.outputRoot = c.outputRoot; cfgChanged = true; }
-    if ((c.sortMode === "single" || c.sortMode === "perPerson") && c.sortMode !== state.sortMode) { state.sortMode = c.sortMode; cfgChanged = true; }
-    if (Array.isArray(c.cloudSources)) {
-      const same = JSON.stringify(c.cloudSources) === JSON.stringify(state.cloudSources || []);
-      if (!same) { state.cloudSources = c.cloudSources; cfgChanged = true; }
+    // Last-write-wins on the core account config (where backups go + how they're
+    // sorted + which cloud folders are sources). Without this, a stale cloud copy
+    // pulled on startup — before our OWN change has finished uploading — would snap
+    // the output folder / sort rule back to the old value (the bug where changing
+    // the output folder "reverted" to the previous one a moment later).
+    const cloudCfgAt = typeof c.configUpdatedAt === "number" ? c.configUpdatedAt : 0;
+    if (cloudCfgAt >= (state.configUpdatedAt || 0)) {
+      if (c.outputRoot && c.outputRoot !== state.outputRoot) { state.outputRoot = c.outputRoot; cfgChanged = true; }
+      if ((c.sortMode === "single" || c.sortMode === "perPerson") && c.sortMode !== state.sortMode) { state.sortMode = c.sortMode; cfgChanged = true; }
+      if (Array.isArray(c.cloudSources)) {
+        const same = JSON.stringify(c.cloudSources) === JSON.stringify(state.cloudSources || []);
+        if (!same) { state.cloudSources = c.cloudSources; cfgChanged = true; }
+      }
+      if (cfgChanged) state.configUpdatedAt = cloudCfgAt; // adopt the cloud's edit time too
     }
     // On-device source folders from EVERY device on this account (so the phone can
     // list "Sam's laptop" folders even though the handle lives on the laptop).
@@ -6313,6 +6324,8 @@ async function loadCloudPrefs() {
   state.remoteSources = rs && rs.map && typeof rs.map === "object" ? rs.map : {};
   const o = await db.get("meta", "outputRoot");
   if (o?.path) state.outputRoot = o.path;
+  const cua = await db.get("meta", "configUpdatedAt");
+  if (typeof cua?.at === "number") state.configUpdatedAt = cua.at;
   const sm = await db.get("meta", "sortMode");
   if (sm?.mode === "perPerson" || sm?.mode === "single") state.sortMode = sm.mode;
   const om = await db.get("meta", "outputMode");
@@ -6345,6 +6358,7 @@ async function saveCloudPrefs() {
   await db.put("meta", { id: "cloudSources", list: state.cloudSources });
   await db.put("meta", { id: "remoteSources", map: state.remoteSources || {} });
   await db.put("meta", { id: "outputRoot", path: state.outputRoot });
+  await db.put("meta", { id: "configUpdatedAt", at: state.configUpdatedAt || 0 });
   await db.put("meta", { id: "sortMode", mode: state.sortMode });
   await db.put("meta", { id: "outputMode", mode: state.outputMode });
 }
@@ -6469,6 +6483,7 @@ async function setSortMode(mode, fromSettings) {
       return;
     }
     state.sortMode = next;
+    state.configUpdatedAt = Date.now(); // local edit wins over a stale cloud pull
     await saveCloudPrefs();
     scheduleCloudSync();
     renderSortModeUI();
@@ -6478,6 +6493,7 @@ async function setSortMode(mode, fromSettings) {
   }
   // Nothing sorted yet (or not from settings) — just apply the new rule.
   state.sortMode = next;
+  state.configUpdatedAt = Date.now(); // local edit wins over a stale cloud pull
   await saveCloudPrefs();
   scheduleCloudSync();
   renderSortModeUI();
@@ -7494,6 +7510,7 @@ async function createFolderHere() {
 async function confirmFolderBrowser() {
   if (folderMode === "sources") {
     state.cloudSources = [...folderPicked.values()];
+    state.configUpdatedAt = Date.now(); // local edit wins over a stale cloud pull
     await saveCloudPrefs();
     renderCloudSources();
   } else {
@@ -7504,6 +7521,7 @@ async function confirmFolderBrowser() {
       .join("/");
     const oldRoot = state.outputRoot;
     state.outputRoot = path || "Famsort";
+    state.configUpdatedAt = Date.now(); // local edit wins over a stale cloud pull
     await saveCloudPrefs();
     renderOutputLabel();
     el("folderModal").hidden = true;
