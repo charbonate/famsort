@@ -424,6 +424,13 @@ p { margin: 0 0 .9rem; }
 .thumb__status.is-missing { background: rgba(198,24,20,.95); }
 .thumb__status.is-pending { background: rgba(176,106,0,.85); }
 .thumb__status.is-uploading { background: rgba(20,16,14,.6); }
+/* Cover-photo marker in an album's photo grid, so the user can tell which shot
+   is the album cover. */
+.thumb--cover { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; }
+.thumb__cover { position: absolute; left: 6px; top: 6px; display: inline-flex; align-items: center; gap: 4px;
+  background: var(--accent); color: #fff; font-size: .68rem; font-weight: 700; line-height: 1;
+  padding: 3px 7px; border-radius: 999px; pointer-events: none; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.thumb__cover-star { font-size: .78rem; }
 /* Per-photo upload progress bar along the bottom of the thumbnail (replaces the
    generic spinner while a photo is actively uploading). */
 .thumb__progress { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 5px;
@@ -780,6 +787,19 @@ p { margin: 0 0 .9rem; }
 .albums-backup.is-done .albums-backup__text { color: var(--success); }
 .albums-backup__track { margin-top: 10px; height: 7px; border-radius: 999px; background: #e6dccb; overflow: hidden; }
 .albums-backup__fill { height: 100%; width: 0; border-radius: 999px; background: var(--grad-primary); transition: width .35s ease; }
+
+/* Live library numbers inside the Albums status panel. */
+.libstat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
+.libstat__item { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 8px 4px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.albums-backup.is-done .libstat__item { background: rgba(255,255,255,.65); }
+.libstat__num { font-size: 1.3rem; font-weight: 800; color: var(--accent); line-height: 1.1; }
+.libstat__label { font-size: .72rem; color: var(--ink-soft); margin-top: 2px; }
+
+/* Divider between the fixed "Everyone/Untagged" specials and the sortable
+   person albums on the Albums index. Spans the full grid width. */
+.albums-divider { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; margin: 8px 2px 2px; }
+.albums-divider::before, .albums-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.albums-divider span { font-size: .82rem; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; }
 .ticks { margin: 0; padding-left: 0; list-style: none; display: grid; gap: .5rem; }
 .ticks li { position: relative; padding-left: 1.6rem; color: var(--ink-soft); font-size: .92rem; }
 .ticks li::before { content: "🔒"; position: absolute; left: 0; font-size: .85rem; }
@@ -1281,9 +1301,13 @@ p { margin: 0 0 .9rem; }
           </label>
         </div>
         <div class="albums-backup" id="albumsBackupSummary" hidden>
+          <div class="libstat">
+            <div class="libstat__item"><span class="libstat__num" id="libStatSourced">0</span><span class="libstat__label">sourced</span></div>
+            <div class="libstat__item"><span class="libstat__num" id="libStatSorted">0</span><span class="libstat__label">sorted into albums</span></div>
+            <div class="libstat__item"><span class="libstat__num" id="libStatBackedUp">0</span><span class="libstat__label">backed up</span></div>
+          </div>
           <div class="albums-backup__row">
             <span class="albums-backup__text" id="albumsBackupText"></span>
-            <button class="btn btn--ghost btn--sm" id="albumsBackupAllBtn" type="button" hidden>Back up everything now</button>
           </div>
           <div class="albums-backup__track" id="albumsBackupTrack" hidden><div class="albums-backup__fill" id="albumsBackupFill"></div></div>
         </div>
@@ -3433,11 +3457,17 @@ async function saveCloudModel(model) {
 }
 
 // Download the identity model, or null if none has been saved yet (fresh account).
+// cache: "no-store" is CRITICAL — without it the browser can hand back a stale
+// cached copy of this JSON, so a device would keep showing old data and never
+// pick up another device's latest changes.
 async function loadCloudModel() {
   const token = await getTokenSilent();
   if (!token) return null;
   const url = `${GRAPH}/me/drive/special/approot:/${MODEL_PATH}:/content`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, "Cache-Control": "no-cache" },
+    cache: "no-store",
+  });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Model load ${res.status}`);
   return res.json();
@@ -3465,7 +3495,12 @@ async function loadCloudLibrary() {
   const token = await getTokenSilent();
   if (!token) return null;
   const url = `${GRAPH}/me/drive/special/approot:/${LIBRARY_PATH}:/content`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  // no-store so we always read the newest manifest, never a cached one (otherwise
+  // this device's photo counts/albums drift from the account's real state).
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, "Cache-Control": "no-cache" },
+    cache: "no-store",
+  });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Library load ${res.status}`);
   return res.json();
@@ -5588,6 +5623,7 @@ async function cloudStartup() {
   await restoreCloudModel();
   await rebuildFromManifest();
   loadAccountPhoto();
+  startCloudPolling();
   // Re-verify every album against OneDrive now, in the background, so the cards
   // show a real "backed up" tick instead of one carried over from last launch,
   // then sweep up any photos still missing a backup \u2014 across ALL albums, without
@@ -5601,7 +5637,7 @@ async function cloudStartup() {
 let lastCatchUp = 0;
 async function cloudCatchUp() {
   if (!cloud.oneDriveConfigured()) return;
-  if (Date.now() - lastCatchUp < 20000) return; // at most once every 20s
+  if (Date.now() - lastCatchUp < 8000) return; // at most once every 8s
   lastCatchUp = Date.now();
   try {
     if (!(await cloud.hasCloudAccount())) return;
@@ -5610,6 +5646,18 @@ async function cloudCatchUp() {
   } catch {
     /* offline — try again next time the app is focused */
   }
+}
+
+// Keep an OPEN device converging with the account even when it never loses/gains
+// focus (e.g. two tabs side by side): poll the cloud model + manifest on a gentle
+// timer while signed in. The 8s throttle in cloudCatchUp stops this from doubling
+// up with the focus/visibility handlers.
+let cloudPollTimer = null;
+function startCloudPolling() {
+  if (cloudPollTimer) return;
+  cloudPollTimer = setInterval(() => {
+    if (document.visibilityState === "visible") cloudCatchUp();
+  }, 20000);
 }
 
 // On open/restart, walk every person album and re-check its OneDrive folders so
@@ -5802,6 +5850,7 @@ async function connectCloud() {
     scheduleLibrarySync();
     // Catch the album ticks up + sweep any missing backups in the background.
     verifyAllAlbums().then(() => backupAllAlbums());
+    startCloudPolling();
     return true;
   } finally {
     if (btn) btn.disabled = false;
@@ -6151,6 +6200,7 @@ async function signOutAccount() {
     // Stop background scanning/syncing FIRST so nothing new starts or repopulates
     // while we're signing out.
     if (autoSyncTimer) { clearInterval(autoSyncTimer); autoSyncTimer = null; }
+    if (cloudPollTimer) { clearInterval(cloudPollTimer); cloudPollTimer = null; }
     // Let any upload/scan that's already running finish cleanly (don't cut it off
     // mid-file). No new work can start now that the timer is cleared.
     setAuthOverlayMsg("Finishing anything still backing up\u2026");
@@ -8699,11 +8749,19 @@ function renderAlbumIndex() {
   if (albumPhotoCount(UNTAGGED)) specials.push({ id: UNTAGGED, name: "Untagged", special: true });
   if (state.pendingClusters.length) specials.push({ id: AWAITING, name: "Awaiting tag", special: true });
 
-  const list = [
-    ...specials,
-    ...roster.map((p) => ({ id: p.id, name: p.name, isChild: p.isChild, person: p })),
-  ];
-  for (const a of list) cards.appendChild(albumCard(a));
+  // The specials sit in their own section at the top, then a divider, then the
+  // sortable person albums below — so the fixed views (Everyone/Untagged) are
+  // clearly separate from "your people" which you can sort and favourite.
+  for (const a of specials) cards.appendChild(albumCard(a));
+  if (roster.length) {
+    const divider = document.createElement("div");
+    divider.className = "albums-divider";
+    divider.innerHTML = `<span>Your people's albums</span>`;
+    cards.appendChild(divider);
+    for (const p of roster) {
+      cards.appendChild(albumCard({ id: p.id, name: p.name, isChild: p.isChild, person: p }));
+    }
+  }
 
   el("albumsCloudInfo").textContent = cloudInfoText(albumCloudStatus(ALL_ALBUM));
   renderAlbumsBackupSummary();
@@ -8726,42 +8784,64 @@ function albumsBackupTotals() {
   return { total, done };
 }
 
-// The one overall "backing up / all backed up" status for the whole Albums
-// screen, so the user sees progress at a glance WITHOUT opening each album.
+// The one overall status + live numbers for the whole Albums screen, so the user
+// sees progress at a glance WITHOUT opening each album: how many photos are
+// sourced, how many sorted into albums, and how many are backed up. Backing up
+// happens automatically (no button) — this is a pure read-out.
 function renderAlbumsBackupSummary() {
   const bar = el("albumsBackupSummary");
   if (!bar) return;
+  if (!state.photos.length) { bar.hidden = true; return; }
+  bar.hidden = false;
+
+  const sourced = state.photos.length;
+  const { total, done } = albumsBackupTotals();
+  const sorted = total; // distinct photos filed into at least one person's album
+  const srcEl = el("libStatSourced");
+  const sortEl = el("libStatSorted");
+  const backEl = el("libStatBackedUp");
+  if (srcEl) srcEl.textContent = sourced;
+  if (sortEl) sortEl.textContent = sorted;
+
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
-  if ((!device && !cloudOK) || !state.autoBackup) { bar.hidden = true; return; }
-  const { total, done } = albumsBackupTotals();
-  if (total === 0) { bar.hidden = true; return; }
-  bar.hidden = false;
-  const where = device ? "this device" : "OneDrive";
-  const pct = Math.min(100, Math.round((done / total) * 100));
+  const hasOutput = device || cloudOK;
   const txt = el("albumsBackupText");
   const fill = el("albumsBackupFill");
   const track = el("albumsBackupTrack");
-  const btn = el("albumsBackupAllBtn");
+
+  // No backup destination (or auto-backup off): show the numbers we can, and tell
+  // the user how to turn on backups. No progress bar / "done" styling.
+  if (!hasOutput || !state.autoBackup) {
+    if (backEl) backEl.textContent = "\u2014";
+    bar.classList.remove("is-done");
+    if (track) track.hidden = true;
+    if (txt) txt.textContent = !hasOutput
+      ? "Choose a cloud or device output on the Add screen to back up your albums."
+      : "Auto-backup is off \u2014 turn it on in Settings to save copies automatically.";
+    return;
+  }
+
+  if (backEl) backEl.textContent = done;
+  const where = device ? "this device" : "OneDrive";
+  const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 100;
   const busy = forceBackupBusy || backingUpAll;
   bar.classList.toggle("is-done", done >= total);
   if (done >= total) {
     if (txt) txt.textContent = `\u2713 All ${total} album photo${total === 1 ? "" : "s"} backed up to ${where}`;
     if (track) track.hidden = true;
-    if (btn) btn.hidden = true;
   } else {
     if (txt)
       txt.textContent = busy
-        ? `Backing up your albums\u2026 ${done} of ${total} saved to ${where}`
-        : `${total - done} of ${total} still to back up to ${where}`;
+        ? `Backing up automatically\u2026 ${done} of ${total} saved to ${where}`
+        : `Backing up to ${where} in the background \u2014 ${total - done} to go\u2026`;
     if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
-    if (btn) { btn.hidden = false; btn.disabled = busy; btn.textContent = busy ? "Backing up\u2026" : "Back up everything now"; }
   }
 }
 
 // Back up EVERY album's outstanding photos in one background sweep \u2014 no need to
-// open each album. Runs automatically after startup (when auto-backup is on) and
-// from the "Back up everything now" button.
+// open each album. Runs automatically: on startup, after sign-in, and whenever
+// the user opens the Albums screen (when auto-backup is on).
 let backingUpAll = false;
 async function backupAllAlbums() {
   const device = state.outputMode === "device" && !!state.outputHandle;
@@ -8994,6 +9074,9 @@ function renderAlbumDetail() {
 
   grid.innerHTML = "";
   const orderedIds = photos.map((p) => p.id);
+  // Which photo is this album's cover, so we can badge it ("★ Cover photo").
+  const coverThumb = person ? albumCover(id, person) : null;
+  let coverMarked = false;
   for (const ph of photos) {
     const cell = document.createElement("div");
     cell.className = "thumb";
@@ -9004,6 +9087,15 @@ function renderAlbumDetail() {
     img.loading = "lazy";
     img.addEventListener("click", () => openLightbox(ph.id, false, orderedIds));
     cell.appendChild(img);
+    // Mark the cover photo so the user can tell which one it is at a glance.
+    if (coverThumb && !coverMarked && ph.thumb === coverThumb) {
+      coverMarked = true;
+      cell.classList.add("thumb--cover");
+      const cov = document.createElement("span");
+      cov.className = "thumb__cover";
+      cov.innerHTML = '<span class="thumb__cover-star">\u2605</span> Cover photo';
+      cell.appendChild(cov);
+    }
     if (ph.isVideo) {
       const play = document.createElement("span");
       play.className = "thumb__play";
@@ -10239,6 +10331,9 @@ function navTo(view) {
   if (view === "activity") renderActivity();
   if (view === "account") renderAccountExtras();
   if (view === "settings") renderSettingsExtras();
+  // Opening Albums kicks off a background back-up of anything still outstanding,
+  // so it happens by itself — no "back up now" button to press.
+  if (view === "albums") backupAllAlbums();
   window.scrollTo(0, 0);
   // Replay the slide+fade so switching tabs feels like a native screen change.
   const active = document.querySelector(`.view[data-view="${view}"]`);
@@ -10487,8 +10582,6 @@ function wire() {
   });
   const editSetupBtn = el("editSetupBtn");
   if (editSetupBtn) editSetupBtn.addEventListener("click", openSetupConfig);
-  const backupAllBtn = el("albumsBackupAllBtn");
-  if (backupAllBtn) backupAllBtn.addEventListener("click", backupAllAlbums);
   const repairBtn = el("albumBackupRepair");
   if (repairBtn)
     repairBtn.addEventListener("click", () => {
