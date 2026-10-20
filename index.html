@@ -760,6 +760,26 @@ p { margin: 0 0 .9rem; }
 .card-plain h3 { font-size: 1.1rem; }
 .card-plain p { color: var(--ink-soft); font-size: .93rem; }
 .card-plain__fine { color: var(--ink-soft); font-size: .82rem; margin-top: 8px; opacity: .9; }
+.source-add-hint { line-height: 1.5; }
+.source-add-hint strong { color: var(--ink); }
+
+/* First-run vs returning: the "Your setup" summary of inputs / output / sorting */
+.setup-summary__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.setup-summary__scope { font-size: .74rem; color: var(--accent-dark); background: var(--accent-soft); border-radius: 999px; padding: 3px 10px; font-weight: 600; white-space: nowrap; }
+.setup-summary__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 14px 0 12px; }
+.setup-summary__grid > div { background: var(--cream-2); border-radius: var(--radius-sm); padding: 10px 12px; }
+.setup-summary__grid dt { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); font-weight: 700; display: flex; flex-direction: column; gap: 2px; }
+.setup-summary__hint { font-size: .68rem; letter-spacing: 0; text-transform: none; font-weight: 500; opacity: .85; }
+.setup-summary__grid dd { margin: 6px 0 0; font-size: .95rem; color: var(--ink); font-weight: 600; }
+
+/* Albums screen: one overall backup/sync status for the whole library */
+.albums-backup { background: var(--cream-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 14px; }
+.albums-backup.is-done { background: var(--success-soft); border-color: #cdebd7; }
+.albums-backup__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.albums-backup__text { font-size: .9rem; color: var(--ink); font-weight: 600; }
+.albums-backup.is-done .albums-backup__text { color: var(--success); }
+.albums-backup__track { margin-top: 10px; height: 7px; border-radius: 999px; background: #e6dccb; overflow: hidden; }
+.albums-backup__fill { height: 100%; width: 0; border-radius: 999px; background: var(--grad-primary); transition: width .35s ease; }
 .ticks { margin: 0; padding-left: 0; list-style: none; display: grid; gap: .5rem; }
 .ticks li { position: relative; padding-left: 1.6rem; color: var(--ink-soft); font-size: .92rem; }
 .ticks li::before { content: "🔒"; position: absolute; left: 0; font-size: .85rem; }
@@ -1009,6 +1029,7 @@ p { margin: 0 0 .9rem; }
       <div class="account-menu__list">
         <button class="account-menu__item" id="accountMenuSignIn" type="button" hidden><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></span>Sign in</button>
         <button class="account-menu__item" id="accountMenuAccount" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5c0-3.3 2.9-5.2 6.5-5.2s6.5 1.9 6.5 5.2"/></svg></span>Your account</button>
+        <button class="account-menu__item" id="accountMenuSetup" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M4 12h16M4 17h7"/><circle cx="18" cy="7" r="2"/><circle cx="14" cy="17" r="2"/></svg></span>Setup &amp; sources</button>
         <button class="account-menu__item" id="accountMenuSettings" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.2 14.9a1.5 1.5 0 0 0 .3 1.7 2 2 0 1 1-2.8 2.8 1.5 1.5 0 0 0-2.55 1.06 2 2 0 1 1-4 0A1.5 1.5 0 0 0 7.6 19.5a1.5 1.5 0 0 0-1.7.3 2 2 0 1 1-2.8-2.8 1.5 1.5 0 0 0 .3-1.7A1.5 1.5 0 0 0 2 13.9a2 2 0 1 1 0-4 1.5 1.5 0 0 0 1.4-1.4 1.5 1.5 0 0 0-.3-1.7 2 2 0 1 1 2.8-2.8 1.5 1.5 0 0 0 1.7.3h.1A1.5 1.5 0 0 0 9.9 3a2 2 0 1 1 4 0 1.5 1.5 0 0 0 .9 1.4 1.5 1.5 0 0 0 1.7-.3 2 2 0 1 1 2.8 2.8 1.5 1.5 0 0 0-.3 1.7v.1a1.5 1.5 0 0 0 1.4.9 2 2 0 1 1 0 4 1.5 1.5 0 0 0-1.4.9z"/></svg></span>Settings</button>
         <button class="account-menu__item" id="accountMenuActivity" type="button"><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.4-7 4.2 14 2.4-7H21"/></svg></span>App activity log</button>
         <button class="account-menu__item" id="accountMenuSwitch" type="button" hidden><span class="account-menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h13M14 4l3 4-3 4"/><path d="M20 16H7M10 20l-3-4 3-4"/></svg></span>Switch account</button>
@@ -1025,6 +1046,21 @@ p { margin: 0 0 .9rem; }
       <div class="hero-mini">
         <h1>Sort your photos by <em>the people you love</em> — automatically.</h1>
         <p>Point Famsort at a folder (like your OneDrive camera roll). It finds the faces <strong>on this device</strong>, groups them, and keeps watching for new photos. Nothing is uploaded.</p>
+      </div>
+
+      <div class="card-plain setup-summary" id="setupSummary" hidden>
+        <div class="setup-summary__head">
+          <h3>Your setup</h3>
+          <span class="setup-summary__scope">Shared across all your devices</span>
+        </div>
+        <dl class="setup-summary__grid">
+          <div><dt>Inputs<span class="setup-summary__hint">where photos come from</span></dt><dd id="setupSummaryInputs">—</dd></div>
+          <div><dt>Output<span class="setup-summary__hint">where sorted albums are saved</span></dt><dd id="setupSummaryOutput">—</dd></div>
+          <div><dt>Sorting<span class="setup-summary__hint">how photos with several people are filed</span></dt><dd id="setupSummarySorting">—</dd></div>
+        </dl>
+        <div class="btn-row">
+          <button class="btn btn--ghost btn--sm" id="editSetupBtn" type="button">Edit inputs, output &amp; sorting</button>
+        </div>
       </div>
 
       <div class="card-plain" id="sourceWizard">
@@ -1048,6 +1084,8 @@ p { margin: 0 0 .9rem; }
               <input type="file" id="fileInput" accept="image/*,video/*" multiple hidden />
             </label>
           </div>
+
+          <p class="card-plain__fine source-add-hint"><strong>Add folder on this device</strong> keeps watching a folder for new photos (desktop Chrome/Edge). <strong>Add from OneDrive</strong> pulls from a cloud folder and syncs across all your devices. <strong>Add photos &amp; videos</strong> is a one-off pick from this device. Nothing is uploaded for face-finding — that runs on this device.</p>
 
           <!-- One-time OneDrive client-ID setup (revealed when needed). -->
           <div class="cloud-setup" id="cloudSetup" hidden>
@@ -1184,6 +1222,13 @@ p { margin: 0 0 .9rem; }
           <label class="toggle" id="kidsOnlyWrap" hidden>
             <input type="checkbox" id="kidsOnly" /> Just my kids
           </label>
+        </div>
+        <div class="albums-backup" id="albumsBackupSummary" hidden>
+          <div class="albums-backup__row">
+            <span class="albums-backup__text" id="albumsBackupText"></span>
+            <button class="btn btn--ghost btn--sm" id="albumsBackupAllBtn" type="button" hidden>Back up everything now</button>
+          </div>
+          <div class="albums-backup__track" id="albumsBackupTrack" hidden><div class="albums-backup__fill" id="albumsBackupFill"></div></div>
         </div>
         <div class="albums-toolbar" id="albumsToolbar" hidden>
           <label class="sortsel">Sort
@@ -3427,6 +3472,9 @@ const state = {
   outputHandle: null, // FileSystemDirectoryHandle when outputMode === "device"
   outputHandleName: "", // display name of the chosen device output folder
   activity: [], // recent auto-sort log (newest first), capped — powers the Activity tab
+  deletedPeople: {}, // id → tombstone timestamp: people deleted on ANY device, so deletions propagate
+  deletedPhotos: {}, // id → tombstone timestamp: photos deleted on ANY device
+  setupDone: false, // account-level: the first-run setup (inputs → output → sorting) has been completed
 };
 
 let autoScanning = false; // true during a background re-scan (suppresses nav + overlay)
@@ -5115,6 +5163,26 @@ async function runRefile() {
 // them (including the "that's not them" corrections). Photos themselves live as
 // files in OneDrive; this small JSON lets any signed-in device re-sort that
 // library into the same albums. No photos are stored in it.
+// Stamp a person as changed right now, so last-write-wins sync can tell which
+// device holds the newest version of their name / relationship / cover, then
+// persist them. Use this for every LOCAL edit (not when adopting cloud values).
+async function savePerson(person) {
+  person.updatedAt = Date.now();
+  await db.put("people", person);
+}
+
+// Persist the deletion tombstones — the ids we've removed, with the time we
+// removed them — so a deletion made on one device isn't silently "undone" by an
+// older copy still sitting on another device.
+async function saveTombstones() {
+  await db.put("meta", { id: "deletedPeople", map: state.deletedPeople });
+  await db.put("meta", { id: "deletedPhotos", map: state.deletedPhotos });
+}
+
+async function saveSetupDone() {
+  await db.put("meta", { id: "setupDone", done: !!state.setupDone });
+}
+
 function buildCloudModel() {
   return {
     version: 1,
@@ -5130,7 +5198,9 @@ function buildCloudModel() {
       thumb: p.thumb || "",
       coverThumb: p.coverThumb || "",
       coverPos: p.coverPos || "",
+      updatedAt: p.updatedAt || 0, // last local edit time — drives last-write-wins
     })),
+    deletedPeople: state.deletedPeople || {}, // tombstones so deletions propagate
     backedUpKeys: [...state.backedUpKeys],
     settings: { autoBackup: state.autoBackup },
     // Account-level config so every device signed into this OneDrive uses the
@@ -5142,6 +5212,7 @@ function buildCloudModel() {
       cloudSources: state.cloudSources || [],
       favAlbums: state.favAlbums || [],
       kidsOnly: !!state.kidsOnly,
+      setupDone: !!state.setupDone,
     },
   };
 }
@@ -5177,7 +5248,36 @@ async function restoreCloudModel(silent = false) {
   if (!model || !Array.isArray(model.people)) return;
 
   let changed = false;
+
+  // --- 1. Merge deletion tombstones both ways (most-recent-change-wins) ---
+  const cloudTombs = model.deletedPeople && typeof model.deletedPeople === "object" ? model.deletedPeople : {};
+  let tombsChanged = false;
+  for (const [tid, ts] of Object.entries(cloudTombs)) {
+    const t = Number(ts) || 0;
+    if (!state.deletedPeople[tid] || state.deletedPeople[tid] < t) { state.deletedPeople[tid] = t; tombsChanged = true; }
+  }
+
+  // Apply tombstones: drop any local person deleted elsewhere, UNLESS we edited
+  // them here AFTER that deletion (in which case our newer edit re-creates them).
+  const freedFaces = [];
+  for (const [tid, ts] of Object.entries(state.deletedPeople)) {
+    const local = state.people.find((p) => p.id === tid);
+    if (local && (local.updatedAt || 0) <= (Number(ts) || 0)) {
+      state.people = state.people.filter((p) => p.id !== tid);
+      await db.remove("people", tid);
+      for (const f of state.faces) {
+        if (f.personId === tid) { f.personId = null; f.notIds = (f.notIds || []).filter((n) => n !== tid); freedFaces.push(f); }
+      }
+      changed = true;
+    }
+  }
+  if (freedFaces.length) await db.bulkPut("faces", freedFaces);
+
+  // --- 2. Reconcile people with last-write-wins on identity, union on learning ---
   for (const cp of model.people) {
+    // Skip anyone we've deleted locally more recently than this cloud copy.
+    const tomb = state.deletedPeople[cp.id];
+    if (tomb && (Number(tomb) || 0) >= (cp.updatedAt || 0)) continue;
     let local = state.people.find((p) => p.id === cp.id);
     if (!local) {
       local = {
@@ -5191,22 +5291,39 @@ async function restoreCloudModel(silent = false) {
         thumb: cp.thumb || "",
         coverThumb: cp.coverThumb || "",
         coverPos: cp.coverPos || "",
+        updatedAt: cp.updatedAt || 0,
       };
       state.people.push(local);
       changed = true;
     } else {
-      if (!local.relationship && cp.relationship) local.relationship = cp.relationship;
+      // Identity fields (name / relationship / child / ignored / cover): the
+      // device with the NEWER edit wins, so a rename or cover change on the
+      // laptop shows up on the phone and vice-versa \u2014 never silently reverted.
+      if ((cp.updatedAt || 0) > (local.updatedAt || 0)) {
+        if (cp.name && local.name !== cp.name) { local.name = cp.name; changed = true; }
+        if (local.relationship !== (cp.relationship || "")) { local.relationship = cp.relationship || ""; changed = true; }
+        if (local.isChild !== !!cp.isChild) { local.isChild = !!cp.isChild; changed = true; }
+        if (local.ignored !== !!cp.ignored) { local.ignored = !!cp.ignored; changed = true; }
+        if (cp.coverThumb && local.coverThumb !== cp.coverThumb) { local.coverThumb = cp.coverThumb; changed = true; }
+        if ((cp.coverPos || "") !== (local.coverPos || "")) { local.coverPos = cp.coverPos || ""; changed = true; }
+        if (!local.thumb && cp.thumb) local.thumb = cp.thumb;
+        local.updatedAt = cp.updatedAt || 0;
+      } else {
+        // Our copy is newer (or same) \u2014 keep our identity, but still fill blanks.
+        if (!local.relationship && cp.relationship) local.relationship = cp.relationship;
+        if (!local.thumb && cp.thumb) local.thumb = cp.thumb;
+        if (!local.coverThumb && cp.coverThumb) { local.coverThumb = cp.coverThumb; changed = true; }
+      }
+      // Face learning (descriptors + negatives) ALWAYS unions \u2014 recognition
+      // improvements from every device accumulate and are never lost to LWW.
       const before = (local.descriptors?.length || 0) + (local.negatives?.length || 0);
       local.descriptors = sample([...(local.descriptors || []), ...(cp.descriptors || [])], 12);
       local.negatives = sample([...(local.negatives || []), ...(cp.negatives || [])], 20);
-      if (!local.thumb && cp.thumb) local.thumb = cp.thumb;
-      // A cover picked on any device wins everywhere (account-level choice).
-      if (cp.coverThumb && local.coverThumb !== cp.coverThumb) { local.coverThumb = cp.coverThumb; changed = true; }
-      if (cp.coverPos !== undefined && local.coverPos !== cp.coverPos) { local.coverPos = cp.coverPos; changed = true; }
       if (local.descriptors.length + local.negatives.length !== before) changed = true;
     }
     await db.put("people", local);
   }
+  if (tombsChanged) await saveTombstones();
 
   if (Array.isArray(model.backedUpKeys) && model.backedUpKeys.length) {
     const before = state.backedUpKeys.size;
@@ -5235,6 +5352,9 @@ async function restoreCloudModel(silent = false) {
     if (typeof c.kidsOnly === "boolean" && c.kidsOnly !== state.kidsOnly) {
       state.kidsOnly = c.kidsOnly; albumPrefsChanged = true;
     }
+    // Once setup is finished on ANY device, it's finished for the account \u2014 so a
+    // second device doesn't make the user re-run the first-time steps.
+    if (c.setupDone && !state.setupDone) { state.setupDone = true; await saveSetupDone(); changed = true; }
     if (albumPrefsChanged) { await saveAlbumPrefs(); changed = true; }
     if (cfgChanged) {
       await saveCloudPrefs();
@@ -5275,7 +5395,9 @@ function buildLibraryManifest() {
       backupId: p.backupId || null,
       backupFolder: p.backupFolder || null,
       cloudCopies: p.cloudCopies || null,
+      updatedAt: p.updatedAt || 0, // last change to this photo's albums/pointers
     })),
+    deletedPhotos: state.deletedPhotos || {}, // tombstones so photo deletions propagate
   };
 }
 
@@ -5309,32 +5431,76 @@ async function rebuildFromManifest() {
   }
   if (!lib || !Array.isArray(lib.photos)) return 0;
 
-  const haveIds = new Set(state.photos.map((p) => p.id));
+  // --- Merge photo deletion tombstones both ways, then apply them locally ---
+  const cloudTombs = lib.deletedPhotos && typeof lib.deletedPhotos === "object" ? lib.deletedPhotos : {};
+  let tombsChanged = false;
+  for (const [tid, ts] of Object.entries(cloudTombs)) {
+    const t = Number(ts) || 0;
+    if (!state.deletedPhotos[tid] || state.deletedPhotos[tid] < t) { state.deletedPhotos[tid] = t; tombsChanged = true; }
+  }
+  let removed = 0;
+  for (const [tid, ts] of Object.entries(state.deletedPhotos)) {
+    const local = state.photos.find((p) => p.id === tid);
+    if (local && (local.updatedAt || 0) <= (Number(ts) || 0)) {
+      state.photos = state.photos.filter((p) => p.id !== tid);
+      const fids = state.faces.filter((f) => f.photoId === tid).map((f) => f.id);
+      state.faces = state.faces.filter((f) => f.photoId !== tid);
+      state.keptDistinct.delete(tid);
+      await db.remove("photos", tid);
+      await db.remove("media", tid);
+      for (const fid of fids) await db.remove("faces", fid);
+      removed++;
+    }
+  }
+  if (tombsChanged) await saveTombstones();
+
+  const byId = new Map(state.photos.map((p) => [p.id, p]));
   const toAdd = [];
+  const toUpdate = [];
   for (const e of lib.photos) {
-    if (haveIds.has(e.id)) continue;
-    // Skip if the same shot is already here under a different id (dedupe by hash).
-    if (e.hash && state.photos.some((p) => p.hash && face.hamming(p.hash, e.hash) <= 2)) continue;
-    toAdd.push({
-      id: e.id,
-      thumb: e.thumb,
-      hash: e.hash,
-      name: e.name,
-      personIds: e.personIds || [],
-      manualIds: e.manualIds || [],
-      isVideo: !!e.isVideo,
-      duration: e.duration || 0,
-      dims: e.dims || { w: 0, h: 0 },
-      cloudId: e.cloudId || null,
-      backupId: e.backupId || null,
-      backupFolder: e.backupFolder || null,
-      cloudCopies: e.cloudCopies || null,
-      fromCloud: true, // original lives in OneDrive, not on this device
-    });
+    // Skip anything we've deleted locally more recently than this cloud copy.
+    const tomb = state.deletedPhotos[e.id];
+    if (tomb && (Number(tomb) || 0) >= (e.updatedAt || 0)) continue;
+    const local = byId.get(e.id);
+    if (!local) {
+      // Skip if the same shot is already here under a different id (dedupe by hash).
+      if (e.hash && state.photos.some((p) => p.hash && face.hamming(p.hash, e.hash) <= 2)) continue;
+      toAdd.push({
+        id: e.id,
+        thumb: e.thumb,
+        hash: e.hash,
+        name: e.name,
+        personIds: e.personIds || [],
+        manualIds: e.manualIds || [],
+        isVideo: !!e.isVideo,
+        duration: e.duration || 0,
+        dims: e.dims || { w: 0, h: 0 },
+        cloudId: e.cloudId || null,
+        backupId: e.backupId || null,
+        backupFolder: e.backupFolder || null,
+        cloudCopies: e.cloudCopies || null,
+        updatedAt: e.updatedAt || 0,
+        fromCloud: true, // original lives in OneDrive, not on this device
+      });
+    } else if ((e.updatedAt || 0) > (local.updatedAt || 0)) {
+      // Another device re-tagged / re-filed this photo more recently \u2014 adopt its
+      // album membership and cloud pointers so both devices converge.
+      local.personIds = e.personIds || [];
+      local.manualIds = e.manualIds || [];
+      if (e.cloudId) local.cloudId = e.cloudId;
+      if (e.backupId) local.backupId = e.backupId;
+      if (e.backupFolder) local.backupFolder = e.backupFolder;
+      if (e.cloudCopies) local.cloudCopies = e.cloudCopies;
+      local.updatedAt = e.updatedAt || 0;
+      toUpdate.push(local);
+    }
   }
   if (toAdd.length) {
     state.photos.push(...toAdd);
     await db.bulkPut("photos", toAdd);
+  }
+  if (toUpdate.length) await db.bulkPut("photos", toUpdate);
+  if (toAdd.length || toUpdate.length || removed) {
     recomputePending();
     renderAll();
   }
@@ -5348,8 +5514,10 @@ async function cloudStartup() {
   await rebuildFromManifest();
   loadAccountPhoto();
   // Re-verify every album against OneDrive now, in the background, so the cards
-  // show a real "backed up" tick instead of one carried over from last launch.
-  verifyAllAlbums();
+  // show a real "backed up" tick instead of one carried over from last launch,
+  // then sweep up any photos still missing a backup \u2014 across ALL albums, without
+  // the user having to open each one.
+  verifyAllAlbums().then(() => backupAllAlbums());
 }
 
 // Throttled background re-sync when the app regains focus: silently pulls the
@@ -5570,6 +5738,12 @@ async function loadCloudPrefs() {
   }
   const act = await db.get("meta", "activity");
   state.activity = Array.isArray(act?.list) ? act.list : [];
+  const dp = await db.get("meta", "deletedPeople");
+  state.deletedPeople = dp && dp.map && typeof dp.map === "object" ? dp.map : {};
+  const dph = await db.get("meta", "deletedPhotos");
+  state.deletedPhotos = dph && dph.map && typeof dph.map === "object" ? dph.map : {};
+  const su = await db.get("meta", "setupDone");
+  state.setupDone = !!(su && su.done);
   if (cloud.oneDriveConfigured()) {
     const signedIn = await cloud.hasCloudAccount();
     if (signedIn) {
@@ -5865,24 +6039,76 @@ function downscaleSquare(dataUrl, edge) {
 }
 
 // Sign out of this device's Famsort session (the cloud account = the login).
+// Signing out clears this device's TEMPORARY working memory (thumbnails + face
+// data + counts) for privacy. Nothing is ever stored on our servers; the user's
+// originals and sorted albums stay in their own cloud, and everything is
+// restored exactly where they left off when they sign back in.
 async function signOutAccount() {
-  if (!(await uiConfirm("Sign out of Famsort on this device? Your photos and albums stay safe in your cloud — you can sign back in anytime.", { okLabel: "Sign out" }))) return;
+  if (
+    !(await uiConfirm(
+      "Sign out of Famsort on this device?\n\nWe'll clear this device's temporary memory (the thumbnails and face data kept here) for your privacy \u2014 nothing is ever stored on our servers. Your original photos and your sorted albums stay safe in your own cloud, and everything comes back exactly where you left off when you sign in again.",
+      { okLabel: "Sign out & clear", danger: true }
+    ))
+  )
+    return;
   const msg = el("accountMsg");
   const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
-  show("Signing out…");
   try {
+    // Push anything still pending UP to the cloud first, so a sign-out never
+    // loses an unsynced edit (push-before-destroy).
+    if (cloud.oneDriveConfigured() && (cloudSignedIn || (await cloud.hasCloudAccount()))) {
+      show("Saving your latest changes to your cloud\u2026");
+      try {
+        await cloud.saveCloudModel(buildCloudModel());
+        await cloud.saveCloudLibrary(buildLibraryManifest());
+      } catch { /* offline \u2014 local data is kept intact below if sign-out is cancelled */ }
+    }
+    show("Clearing this device's temporary memory for your privacy\u2026");
     await cloud.signOut();
     cloudSignedIn = false;
     msProfilePhoto = null;
     photoLoadedFor = null;
+    // Stop background scanning/syncing so nothing repopulates after the wipe.
+    if (autoSyncTimer) { clearInterval(autoSyncTimer); autoSyncTimer = null; }
+    await clearLocalData();
     try { localStorage.removeItem(CONNECTED_KEY); } catch { /* ignore */ }
-    show("Signed out. Sign in again to pick up your albums on this device.");
+    show("Signed out. We removed this device's temporary memory for your privacy \u2014 nothing is stored on our servers. Sign in on any device to pick up exactly where you left off.");
   } catch {
-    show("Couldn't sign out cleanly — try again.");
+    show("Couldn't sign out cleanly \u2014 try again.");
   }
   renderAccountLine();
+  renderSettingsExtras();
   renderSources();
   renderOutputLabel();
+  renderAll();
+  navTo("add");
+}
+
+// Wipe this device's cached library (photos, faces, people, video blobs) and the
+// in-memory counts on sign-out. The cloud holds the real, permanent data and
+// restores it on the next sign-in \u2014 so this is privacy clean-up, not data loss.
+// Device-only preferences (watched folders, chosen output, client id, sort mode)
+// are deliberately KEPT so the next sign-in picks up where the user left off.
+async function clearLocalData() {
+  await db.clearStore("photos");
+  await db.clearStore("faces");
+  await db.clearStore("people");
+  await db.clearStore("media");
+  state.people = [];
+  state.photos = [];
+  state.faces = [];
+  state.pendingClusters = [];
+  state.activeAlbum = null;
+  state.keptDistinct = new Set();
+  state.backedUpKeys = new Set();
+  state.processedKeys = new Set();
+  state.deletedPeople = {};
+  state.deletedPhotos = {};
+  try { verifiedThisSession.clear(); } catch { /* ignore */ }
+  await saveProcessedKeys();
+  await saveBackedUpKeys();
+  await saveKeptDistinct();
+  await saveTombstones();
 }
 
 // Switch to a different cloud account, then pull that account's library in.
@@ -6498,6 +6724,13 @@ async function chooseDeviceOutput() {
 async function sortNow() {
   const btn = el("sortNowBtn");
   if (btn) btn.disabled = true;
+  // First sort → setup is done. Remember it (and share it across the account) so
+  // returning users see their setup summary instead of the first-time steps.
+  if (!state.setupDone) {
+    state.setupDone = true;
+    await saveSetupDone();
+    renderSetupUI();
+  }
   try {
     // 1) Device folders — scan each watched handle (duplicates skipped).
     for (const w of state.watched) {
@@ -6792,6 +7025,7 @@ async function processFiles(fileList, opts = {}) {
       duration: result.duration || 0,
       dims: { w: result.width || 0, h: result.height || 0 },
       addedAt: Date.now(), // when it was imported into Famsort (for sorting)
+      updatedAt: Date.now(), // last change to albums/pointers — drives last-write-wins sync
       fileModified: files[i] && files[i].lastModified ? files[i].lastModified : 0, // original file's own date
     };
     state.photos.push(photoRec);
@@ -7270,7 +7504,7 @@ async function assignToExistingPerson(person) {
 // Add a cluster's faces to an existing person and learn their descriptors.
 async function mergeClusterIntoPerson(cluster, person) {
   person.descriptors = sample([...person.descriptors, ...cluster.faces.map((f) => f.descriptor)], 12);
-  await db.put("people", person);
+  await savePerson(person);
   assignClusterToPerson(cluster, person.id);
   await assignMatchingUnassigned(person);
 }
@@ -7317,6 +7551,7 @@ async function commitToExistingPerson(existing, picked) {
   if (rel) {
     existing.relationship = rel;
     existing.isChild = isChildRelationship(rel);
+    await savePerson(existing); // persist the relationship even if no faces were picked
   }
   await rejectFacesFromPerson(rejected, existing.id);
   if (picked.faces.length) await mergeClusterIntoPerson(picked, existing);
@@ -7338,7 +7573,7 @@ async function commitNewPerson(name, picked) {
     thumb: picked.faces[0] ? picked.faces[0].thumb : modalPhoto ? modalPhoto.thumb : "",
   };
   state.people.push(person);
-  await db.put("people", person);
+  await savePerson(person);
   await rejectFacesFromPerson(rejected, person.id);
   if (picked.faces.length) {
     assignClusterToPerson(picked, person.id);
@@ -7841,7 +8076,7 @@ async function savePersonEdit() {
   // "My child" status now comes from the relationship (no separate toggle).
   p.isChild = isChildRelationship(p.relationship);
   if (editingContactIcon) p.thumb = editingContactIcon;
-  await db.put("people", p);
+  await savePerson(p);
   closePersonEdit();
   scheduleCloudSync();
   renderAll();
@@ -7879,6 +8114,10 @@ async function deletePerson() {
   if (freedFaces.length) await db.bulkPut("faces", freedFaces);
   updatePhotoLabels(touchedPhotos);
   await db.remove("people", id);
+  // Tombstone the deletion so it propagates to every device and isn't "undone"
+  // by an older copy still holding this person.
+  state.deletedPeople[id] = Date.now();
+  await saveTombstones();
   if (state.activeAlbum === id) state.activeAlbum = null;
   closePersonEdit();
   recomputePending();
@@ -7971,6 +8210,7 @@ function updatePhotoLabels(photoIds) {
       if (f.photoId === p.id && f.personId && f.personId !== IGNORED) ids.add(f.personId);
     }
     p.personIds = [...ids];
+    p.updatedAt = Date.now(); // re-tagged — newer than other devices, so this wins on sync
     updated.push(p);
   }
   if (updated.length) db.bulkPut("photos", updated);
@@ -7991,6 +8231,46 @@ function renderAll() {
   renderPeople();
   renderAlbums();
   renderStats();
+  renderSetupUI();
+}
+
+// Show the first-time setup steps to NEW users, and a clear at-a-glance "Your
+// setup" summary (inputs \u2192 output \u2192 sorting) to returning users \u2014 so what the
+// app reads from, where it writes, and how it sorts is always obvious and is the
+// SAME on every device (these are account-level settings).
+function renderSetupUI() {
+  const summary = el("setupSummary");
+  const hero = document.querySelector("#view-add .hero-mini");
+  const wizard = el("sourceWizard");
+  if (hero) hero.hidden = !!state.setupDone;
+  if (summary) summary.hidden = !state.setupDone;
+  // Before first-run setup, show the stepped wizard; afterwards collapse it
+  // behind the summary's "Edit" button so the screen isn't a wall of steps.
+  if (wizard && !configEditing) wizard.hidden = !!state.setupDone;
+  if (!state.setupDone) return;
+  const nSrc = state.watched.length + (state.cloudSources?.length || 0);
+  const outputEl = el("setupSummaryOutput");
+  const inputsEl = el("setupSummaryInputs");
+  const sortingEl = el("setupSummarySorting");
+  if (inputsEl) inputsEl.textContent = nSrc ? `${nSrc} source${nSrc === 1 ? "" : "s"}` : "No sources yet \u2014 add one";
+  if (outputEl) {
+    outputEl.textContent =
+      state.outputMode === "device"
+        ? `This device${state.outputHandleName ? " \u00b7 " + state.outputHandleName : ""}`
+        : `OneDrive \u00b7 ${state.outputRoot || "Famsort"}`;
+  }
+  if (sortingEl) sortingEl.textContent = state.sortMode === "single" ? "One copy, grouped by main person" : "A folder for each person";
+}
+
+// Reveal the setup wizard for editing (from the summary's "Edit" button). Keeps
+// the three panes available as plain config \u2014 no first-time step pressure.
+let configEditing = false;
+function openSetupConfig() {
+  configEditing = true;
+  const wizard = el("sourceWizard");
+  if (wizard) wizard.hidden = false;
+  showWizardPane("sources");
+  wizard?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // The three Add-screen tiles are live counts of the whole library and double as
@@ -8257,6 +8537,7 @@ function renderAlbumIndex() {
   if (!people.length && !state.photos.length) {
     el("albumsEmpty").hidden = false;
     el("albumsToolbar").hidden = true;
+    renderAlbumsBackupSummary();
     return;
   }
   el("albumsEmpty").hidden = true;
@@ -8288,6 +8569,88 @@ function renderAlbumIndex() {
   for (const a of list) cards.appendChild(albumCard(a));
 
   el("albumsCloudInfo").textContent = cloudInfoText(albumCloudStatus(ALL_ALBUM));
+  renderAlbumsBackupSummary();
+}
+
+// Count every distinct photo across all the real person albums and how many are
+// already backed up \u2014 the numbers behind the overall status bar.
+function albumsBackupTotals() {
+  const seen = new Set();
+  let total = 0;
+  let done = 0;
+  for (const p of namedPeopleHere()) {
+    for (const ph of albumPhotos(p.id)) {
+      if (seen.has(ph.id)) continue;
+      seen.add(ph.id);
+      total++;
+      if (isPhotoBackedUp(ph)) done++;
+    }
+  }
+  return { total, done };
+}
+
+// The one overall "backing up / all backed up" status for the whole Albums
+// screen, so the user sees progress at a glance WITHOUT opening each album.
+function renderAlbumsBackupSummary() {
+  const bar = el("albumsBackupSummary");
+  if (!bar) return;
+  const device = state.outputMode === "device" && !!state.outputHandle;
+  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  if ((!device && !cloudOK) || !state.autoBackup) { bar.hidden = true; return; }
+  const { total, done } = albumsBackupTotals();
+  if (total === 0) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const where = device ? "this device" : "OneDrive";
+  const pct = Math.min(100, Math.round((done / total) * 100));
+  const txt = el("albumsBackupText");
+  const fill = el("albumsBackupFill");
+  const track = el("albumsBackupTrack");
+  const btn = el("albumsBackupAllBtn");
+  const busy = forceBackupBusy || backingUpAll;
+  bar.classList.toggle("is-done", done >= total);
+  if (done >= total) {
+    if (txt) txt.textContent = `\u2713 All ${total} album photo${total === 1 ? "" : "s"} backed up to ${where}`;
+    if (track) track.hidden = true;
+    if (btn) btn.hidden = true;
+  } else {
+    if (txt)
+      txt.textContent = busy
+        ? `Backing up your albums\u2026 ${done} of ${total} saved to ${where}`
+        : `${total - done} of ${total} still to back up to ${where}`;
+    if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
+    if (btn) { btn.hidden = false; btn.disabled = busy; btn.textContent = busy ? "Backing up\u2026" : "Back up everything now"; }
+  }
+}
+
+// Back up EVERY album's outstanding photos in one background sweep \u2014 no need to
+// open each album. Runs automatically after startup (when auto-backup is on) and
+// from the "Back up everything now" button.
+let backingUpAll = false;
+async function backupAllAlbums() {
+  const device = state.outputMode === "device" && !!state.outputHandle;
+  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  if ((!device && !cloudOK) || !state.autoBackup) return;
+  if (backingUpAll || forceBackupBusy) return;
+  const seen = new Set();
+  const gaps = [];
+  for (const p of namedPeopleHere()) {
+    for (const ph of albumPhotos(p.id)) {
+      if (seen.has(ph.id)) continue;
+      seen.add(ph.id);
+      if (!isPhotoBackedUp(ph)) gaps.push(ph.id);
+    }
+  }
+  if (!gaps.length) { renderAlbumsBackupSummary(); return; }
+  backingUpAll = true;
+  renderAlbumsBackupSummary();
+  try {
+    await forceBackupPhotos(gaps, "Backing up your albums", true);
+  } finally {
+    backingUpAll = false;
+    renderAlbumsBackupSummary();
+    const av = el("view-albums");
+    if (av && !av.hidden && !state.activeAlbum) renderAlbumIndex();
+  }
 }
 
 // One album "box": cover, count badge, name, kid badge, and a favourite star.
@@ -9413,7 +9776,7 @@ async function setAlbumCover(personId, photo) {
   // be nudged to keep them in frame (object-position) instead of a dead-centre
   // crop that can cut the person off when they're to one side / small.
   person.coverPos = faceCenterPos(personId, photo.id);
-  await db.put("people", person);
+  await savePerson(person);
   scheduleCloudSync();
   renderAll();
   // Re-open the photo so the button flips to the "★ …'s cover" state.
@@ -9429,6 +9792,9 @@ async function deletePhotoRecord(photoId) {
   await db.remove("photos", photoId);
   await db.remove("media", photoId);
   for (const fid of faceIds) await db.remove("faces", fid);
+  // Tombstone the deletion so it propagates and isn't re-added from the manifest.
+  state.deletedPhotos[photoId] = Date.now();
+  await saveTombstones();
   scheduleLibrarySync(); // photo removed — update the sorted-output manifest
 }
 
@@ -9763,6 +10129,7 @@ function wire() {
   el("accountMenu").addEventListener("click", (e) => e.stopPropagation());
   document.addEventListener("click", closeAccountMenu);
   el("accountMenuAccount").addEventListener("click", () => { closeAccountMenu(); navTo("account"); });
+  el("accountMenuSetup").addEventListener("click", () => { closeAccountMenu(); navTo("add"); openSetupConfig(); });
   el("accountMenuSettings").addEventListener("click", () => { closeAccountMenu(); navTo("settings"); });
   el("accountMenuActivity").addEventListener("click", () => { closeAccountMenu(); navTo("activity"); });
   el("accountMenuSwitch").addEventListener("click", () => { closeAccountMenu(); switchAccountFlow(); });
@@ -9931,6 +10298,10 @@ function wire() {
   el("albumBackupNow").addEventListener("click", () => {
     if (state.activeAlbum) forceBackupAlbum(state.activeAlbum);
   });
+  const editSetupBtn = el("editSetupBtn");
+  if (editSetupBtn) editSetupBtn.addEventListener("click", openSetupConfig);
+  const backupAllBtn = el("albumsBackupAllBtn");
+  if (backupAllBtn) backupAllBtn.addEventListener("click", backupAllAlbums);
   const repairBtn = el("albumBackupRepair");
   if (repairBtn)
     repairBtn.addEventListener("click", () => {
