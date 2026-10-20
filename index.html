@@ -434,6 +434,29 @@ p { margin: 0 0 .9rem; }
   border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Tap-to-open key explaining the per-photo corner status icons (touch-friendly —
+   works on phones where hover tooltips never appear). */
+.status-key { margin: 2px 0 10px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--cream-2); overflow: hidden; }
+.status-key__summary { cursor: pointer; list-style: none; padding: 10px 14px; font-size: .85rem;
+  font-weight: 600; color: var(--ink-soft); display: flex; align-items: center; gap: 8px;
+  -webkit-user-select: none; user-select: none; }
+.status-key__summary::-webkit-details-marker { display: none; }
+.status-key__summary::before { content: "ⓘ"; font-size: 1rem; color: var(--accent); }
+.status-key[open] .status-key__summary { border-bottom: 1px solid var(--line); }
+.status-key__list { list-style: none; margin: 0; padding: 10px 14px; display: grid; gap: 10px; }
+.status-key__list li { display: flex; align-items: flex-start; gap: 10px; font-size: .82rem;
+  line-height: 1.35; color: var(--ink); }
+.status-key__list li span:last-child { padding-top: 1px; }
+.status-key__badge { flex: none; min-width: 22px; height: 22px; display: inline-flex;
+  align-items: center; justify-content: center; font-size: .74rem; line-height: 1; padding: 0 5px;
+  border-radius: 7px; color: #fff; }
+.status-key__badge.is-saved { background: rgba(46,125,74,.9); }
+.status-key__badge.is-lowres { background: rgba(200,80,20,.92); }
+.status-key__badge.is-missing { background: rgba(198,24,20,.95); }
+.status-key__badge.is-pending { background: rgba(176,106,0,.85); }
+.status-key__badge.is-uploading { background: rgba(20,16,14,.6); }
+
 /* Lightbox (full photo viewer) */
 .lightbox { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
   align-items: center; justify-content: flex-start; gap: 12px; padding: 24px; overflow-y: auto;
@@ -1000,7 +1023,7 @@ p { margin: 0 0 .9rem; }
     <!-- ADD SCREEN -->
     <section class="view" id="view-add" data-view="add">
       <div class="hero-mini">
-        <h1>Sort your photos by <em>child</em> — automatically.</h1>
+        <h1>Sort your photos by <em>the people you love</em> — automatically.</h1>
         <p>Point Famsort at a folder (like your OneDrive camera roll). It finds the faces <strong>on this device</strong>, groups them, and keeps watching for new photos. Nothing is uploaded.</p>
       </div>
 
@@ -1129,14 +1152,14 @@ p { margin: 0 0 .9rem; }
 
       <div class="tips">
         <h3>Tip</h3>
-        <p>Start with 20–50 photos that include your kids. You can keep adding more later and they'll sort themselves.</p>
+        <p>Start with 20–50 photos that include the people you want to sort by. You can keep adding more later and they'll sort themselves.</p>
       </div>
     </section>
 
     <!-- PEOPLE SCREEN -->
     <section class="view" id="view-people" data-view="people" hidden>
       <h2 class="view__title">Who's who?</h2>
-      <p class="view__sub">We grouped the faces we found. Tag your children — tap <strong>Ignore</strong> for anyone who isn't one of your kids.</p>
+      <p class="view__sub">We grouped the faces we found. Tag the people you know — tap <strong>Ignore</strong> for anyone you don't want sorted.</p>
 
       <section class="to-name" id="toNamePanel" hidden>
         <h3 class="people-subhead people-subhead--hot" id="toNameHead">Faces to tag</h3>
@@ -1159,7 +1182,7 @@ p { margin: 0 0 .9rem; }
         <div class="albums-head">
           <h2 class="view__title">Albums</h2>
           <label class="toggle" id="kidsOnlyWrap" hidden>
-            <input type="checkbox" id="kidsOnly" /> My Children
+            <input type="checkbox" id="kidsOnly" /> Just my kids
           </label>
         </div>
         <div class="albums-toolbar" id="albumsToolbar" hidden>
@@ -1173,7 +1196,7 @@ p { margin: 0 0 .9rem; }
         </div>
         <div class="album-cards" id="albumCards"></div>
         <div class="empty" id="albumsEmpty">
-          <p>No albums yet. Add photos and name your kids to see their albums here.</p>
+          <p>No albums yet. Add photos and name your people to see their albums here.</p>
         </div>
       </div>
 
@@ -1214,6 +1237,16 @@ p { margin: 0 0 .9rem; }
         </div>
         <p class="view__sub" id="awaitingSub" hidden>New faces we found. Tag them so their photos sort into albums, or tap Ignore.</p>
         <div class="people-grid" id="awaitingGrid" hidden></div>
+        <details class="status-key" id="statusKey" hidden>
+          <summary class="status-key__summary">What do the photo corner icons mean?</summary>
+          <ul class="status-key__list">
+            <li><span class="status-key__badge is-saved">☁</span><span>Backed up — safely saved to your output folder (mirrored in OneDrive).</span></li>
+            <li><span class="status-key__badge is-pending">⏳</span><span>Waiting — queued to back up, not saved yet.</span></li>
+            <li><span class="status-key__badge is-uploading"><span class="spin"></span></span><span>Backing up now — upload in progress.</span></li>
+            <li><span class="status-key__badge is-missing">⚠</span><span>Not backed up — we checked its folder and the file isn't there yet. Tap <strong>Back up</strong> to upload it.</span></li>
+            <li><span class="status-key__badge is-lowres">⚠</span><span>Low-res preview only — the full-size original wasn't on this device. Use ‘Pull from source in full quality’.</span></li>
+          </ul>
+        </details>
         <div class="album-grid" id="albumGrid"></div>
       </div>
     </section>
@@ -1311,7 +1344,7 @@ p { margin: 0 0 .9rem; }
       </div>
       <div class="card-plain">
         <h3>Share recognition with your partner</h3>
-        <p>Export a tiny file that teaches your partner's phone to recognise your kids the same way — <strong>no photos included</strong>, just the face "fingerprints". They import it and their photos sort automatically too.</p>
+        <p>Export a tiny file that teaches your partner's phone to recognise your family the same way — <strong>no photos included</strong>, just the face "fingerprints". They import it and their photos sort automatically too.</p>
         <div class="btn-row">
           <button class="btn btn--primary" id="exportBtn">Export face model</button>
           <label class="btn btn--ghost">
@@ -5096,6 +5129,7 @@ function buildCloudModel() {
       negatives: p.negatives || [],
       thumb: p.thumb || "",
       coverThumb: p.coverThumb || "",
+      coverPos: p.coverPos || "",
     })),
     backedUpKeys: [...state.backedUpKeys],
     settings: { autoBackup: state.autoBackup },
@@ -5156,6 +5190,7 @@ async function restoreCloudModel(silent = false) {
         negatives: cp.negatives || [],
         thumb: cp.thumb || "",
         coverThumb: cp.coverThumb || "",
+        coverPos: cp.coverPos || "",
       };
       state.people.push(local);
       changed = true;
@@ -5167,6 +5202,7 @@ async function restoreCloudModel(silent = false) {
       if (!local.thumb && cp.thumb) local.thumb = cp.thumb;
       // A cover picked on any device wins everywhere (account-level choice).
       if (cp.coverThumb && local.coverThumb !== cp.coverThumb) { local.coverThumb = cp.coverThumb; changed = true; }
+      if (cp.coverPos !== undefined && local.coverPos !== cp.coverPos) { local.coverPos = cp.coverPos; changed = true; }
       if (local.descriptors.length + local.negatives.length !== before) changed = true;
     }
     await db.put("people", local);
@@ -7339,19 +7375,25 @@ function resolveSameName(answer) {
   if (r) r(answer);
 }
 
-// Self-teach from an ignore: after growing the hidden "Ignored" bucket, sweep
-// the remaining unnamed faces and auto-ignore any whose CLOSEST match is now
-// that bucket — so the same junk (or the same non-kid person) doesn't keep
-// coming back to be tagged. Uses the whole people set, so a face that's nearer
-// a real named person is never swept away.
-async function sweepIgnoredLookalikes() {
-  const ignored = state.people.find((p) => p.id === IGNORED);
-  if (!ignored || !ignored.descriptors.length) return;
+// Self-teach from an ignore WITHOUT over-reaching. After an ignore we only
+// collapse faces that are NEAR-IDENTICAL to the ones just ignored — burst frames
+// or re-saves of the very same shot — so pressing Ignore on one face-group never
+// cascades and hides OTHER, distinct groups the user still wants to tag. (The
+// hidden "Ignored" bucket still grows, so genuinely matching faces on FUTURE
+// imports auto-skip via the normal import matcher at IGNORE_MATCH_THRESHOLD.)
+const SWEEP_SAME_SHOT = 0.3; // tighter than IGNORE_MATCH_THRESHOLD: essentially "the same photo again"
+async function sweepIgnoredLookalikes(justIgnored) {
+  const refs = (justIgnored || []).map((f) => f.descriptor).filter(Boolean);
+  if (!refs.length) return;
   const updated = [];
   for (const f of state.faces) {
-    if (f.personId) continue;
-    const m = face.matchPerson(f.descriptor, state.people);
-    if (m && m.id === IGNORED) {
+    if (f.personId) continue; // already named or already ignored
+    let best = Infinity;
+    for (const d of refs) {
+      const dist = face.euclidean(f.descriptor, d);
+      if (dist < best) best = dist;
+    }
+    if (best <= SWEEP_SAME_SHOT) {
       f.personId = IGNORED;
       updated.push(f);
     }
@@ -7369,7 +7411,7 @@ async function ignoreCluster(cluster) {
   ignored.descriptors = sample([...ignored.descriptors, ...cluster.faces.map((f) => f.descriptor)], 20);
   await db.put("people", ignored);
   assignClusterToPerson(cluster, IGNORED);
-  await sweepIgnoredLookalikes();
+  await sweepIgnoredLookalikes(cluster.faces);
   recomputePending();
   renderAll();
 }
@@ -7404,7 +7446,7 @@ async function ignoreFace(faceRec) {
   faceRec.notIds = [];
   await db.put("faces", faceRec);
   updatePhotoLabels(new Set([faceRec.photoId]));
-  await sweepIgnoredLookalikes();
+  await sweepIgnoredLookalikes([faceRec]);
   recomputePending();
   renderAll();
   // Ignored — stay on this photo if other faces still need a decision, else move on.
@@ -7981,11 +8023,12 @@ function renderPeople() {
   for (const p of named) {
     const count = state.photos.filter((ph) => ph.personIds.includes(p.id)).length;
     const rel = relationshipLabel(p);
+    const coverPos = albumCoverPos(p.id, p);
     const card = document.createElement("div");
     card.className = "person-card";
     card.innerHTML = `
       <button class="person-card__face person-card__face--btn" data-nav="${p.id}" aria-label="Open ${p.name}'s album">
-        <img src="${p.coverThumb || p.thumb}" alt="${p.name}" />
+        <img src="${p.coverThumb || p.thumb}" alt="${p.name}"${coverPos ? ` style="object-position:${coverPos}"` : ""} />
       </button>
       <div class="person-card__body">
         <div class="person-card__name">${p.name}${p.isChild ? ' <span class="badge-kid">child</span>' : ""}</div>
@@ -8080,6 +8123,36 @@ function albumCover(id, person) {
   const photos = albumPhotos(id);
   if (photos.length) return photos[photos.length - 1].thumb;
   return person ? person.thumb || "" : "";
+}
+
+// CSS object-position for a person's cover, so the crop-to-fill stays centred on
+// THEIR face rather than the middle of the photo (helps when the person is off to
+// one side or small/far in the frame). Returns "" (= default 50% 50%) when we
+// have no face box to work from. Prefers a saved pick position; otherwise derives
+// one from the person's face in the fallback-cover photo.
+function albumCoverPos(id, person) {
+  if (!person || id === AWAITING) return "";
+  if (person.coverThumb) return person.coverPos || "";
+  const photos = albumPhotos(id);
+  if (!photos.length) return "";
+  return faceCenterPos(person.id, photos[photos.length - 1].id);
+}
+
+// Find this person's face in a photo and return its centre as an object-position
+// string ("62% 38%"), clamped away from the extreme edges so the face never sits
+// flush against the frame. "" when there's no usable box.
+function faceCenterPos(personId, photoId) {
+  const f = state.faces.find((fc) => fc.photoId === photoId && fc.personId === personId && (fc.box || fc._box));
+  const b = f && (f.box || f._box);
+  if (!b || typeof b.x !== "number" || typeof b.w !== "number") return "";
+  const cx = Math.max(0, Math.min(1, b.x + b.w / 2));
+  const cy = Math.max(0, Math.min(1, b.y + b.h / 2));
+  // Keep the focal point within 15%–85% so a face near an edge still shows some
+  // surrounding context instead of being jammed into the corner.
+  const px = Math.round(Math.max(15, Math.min(85, cx * 100)));
+  const py = Math.round(Math.max(15, Math.min(85, cy * 100)));
+  if (px === 50 && py === 50) return "";
+  return `${px}% ${py}%`;
 }
 
 function isFavAlbum(id) {
@@ -8222,6 +8295,7 @@ function albumCard(a) {
   const id = a.id;
   const count = albumPhotoCount(id);
   const cover = albumCover(id, a.person);
+  const coverPos = albumCoverPos(id, a.person);
   const card = document.createElement("div");
   card.className = "album-card" + (a.special ? " album-card--special" : "");
   card.setAttribute("role", "button");
@@ -8245,7 +8319,7 @@ function albumCard(a) {
   const rel = a.person ? relationshipLabel(a.person) : "";
   card.innerHTML = `
     <div class="album-card__cover">
-      ${cover ? `<img src="${cover}" alt="" loading="lazy" />` : `<span class="album-card__ph">${ph}</span>`}
+      ${cover ? `<img src="${cover}" alt="" loading="lazy"${coverPos ? ` style="object-position:${coverPos}"` : ""} />` : `<span class="album-card__ph">${ph}</span>`}
       <span class="album-card__count">${count}</span>
       ${savedBadge}
     </div>
@@ -8376,6 +8450,7 @@ function renderAlbumDetail() {
     el("awaitingSub").hidden = false;
     el("awaitingGrid").hidden = false;
     el("albumPhotoSortWrap").hidden = true;
+    if (el("statusKey")) el("statusKey").hidden = true;
     grid.hidden = true;
     el("albumDetailMeta").textContent = `${state.pendingClusters.length} face group${state.pendingClusters.length === 1 ? "" : "s"} to name`;
     renderClusterCards(el("awaitingGrid"));
@@ -8404,6 +8479,14 @@ function renderAlbumDetail() {
   const rel = person ? relationshipLabel(person) : "";
   el("albumDetailMeta").textContent =
     (rel ? `${rel} · ` : "") + `${photos.length} photo${photos.length === 1 ? "" : "s"}` + (info ? ` · ${info}` : "");
+
+  // The corner-icon legend is only useful once photos actually carry status
+  // badges — i.e. auto-backup is on and an output (cloud or device) is set.
+  const statusKey = el("statusKey");
+  if (statusKey) {
+    const outputReady = state.outputMode === "device" ? !!state.outputHandle : cloud.oneDriveConfigured();
+    statusKey.hidden = !(photos.length && state.autoBackup && outputReady);
+  }
 
   grid.innerHTML = "";
   const orderedIds = photos.map((p) => p.id);
@@ -9326,6 +9409,10 @@ async function setAlbumCover(personId, photo) {
   const person = state.people.find((p) => p.id === personId);
   if (!person || !photo) return;
   person.coverThumb = photo.thumb;
+  // Remember WHERE this person's face sits in the photo so the cropped cover can
+  // be nudged to keep them in frame (object-position) instead of a dead-centre
+  // crop that can cut the person off when they're to one side / small.
+  person.coverPos = faceCenterPos(personId, photo.id);
   await db.put("people", person);
   scheduleCloudSync();
   renderAll();
