@@ -8412,7 +8412,9 @@ async function redetectFaces(photoIds) {
     let hiRes = 0; // photos we re-checked from the full-resolution original
     let lowRes = 0; // photos we could only re-check from the small thumbnail
     let batch = [];
+    let scanned = 0; // how many we actually re-checked (so a cancel reports the right count)
     for (let i = 0; i < photos.length; i++) {
+      if (scanCancelRequested) break; // user tapped ✕ on the overlay — stop the re-scan here
       const photo = photos[i];
       el("procCount").textContent = `${i + 1} of ${photos.length}`;
       el("procBar").style.width = Math.round(((i + 1) / photos.length) * 100) + "%";
@@ -8466,6 +8468,7 @@ async function redetectFaces(photoIds) {
         batch.push(rec);
       }
       found += faces.length;
+      scanned++;
       if (batch.length >= 24) {
         await db.bulkPut("faces", batch);
         batch = [];
@@ -8478,7 +8481,11 @@ async function redetectFaces(photoIds) {
     updatePhotoLabels(targetIds);
     recomputePending();
     renderAll();
-    showProgressDone(`Found ${found} face${found === 1 ? "" : "s"} in ${photos.length} photo${photos.length === 1 ? "" : "s"}`);
+    showProgressDone(
+      scanCancelRequested
+        ? `Stopped — re-scanned ${scanned} of ${photos.length} photo${photos.length === 1 ? "" : "s"}, found ${found} face${found === 1 ? "" : "s"}`
+        : `Found ${found} face${found === 1 ? "" : "s"} in ${photos.length} photo${photos.length === 1 ? "" : "s"}`
+    );
     const detector = face.detectorInfo();
     const ssdNote = detector.ssd ? "" : " The accurate detector didn't load on this device, so results are limited — reload on a good connection and try again.";
     const hiNote = hiRes ? ` ${hiRes} re-checked in full detail from the original file.` : "";
