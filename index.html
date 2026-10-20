@@ -566,6 +566,49 @@ p { margin: 0 0 .9rem; }
 .access-row__actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .btn--sm { padding: 5px 10px; font-size: .78rem; border-radius: 8px; }
 .access-row__remove { color: var(--danger, #c0392b); }
+.access-row__manager { font-size: .72rem; color: var(--accent-dark, #c8461f); font-weight: 600; }
+.access-row__manage {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .76rem;
+  color: var(--ink-soft, #6b6b6b);
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+  margin-top: 2px;
+}
+.access-row__manage select {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+/* "Can they invite others" picker in the invite form */
+.invite-manage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 2px 0 10px;
+  font-size: .84rem;
+  color: var(--ink-soft, #6b6b6b);
+}
+.invite-manage select { flex: 1 1 auto; min-width: 140px; }
+/* Owner-side request inbox (shows only when a manager has asked to add someone) */
+.access-requests {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--accent-soft, #fde2d6);
+  border-radius: 10px;
+  background: var(--accent-soft, #fde2d6);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.access-requests__title { margin: 0; font-size: .9rem; }
+.access-row--request { background: #fff; }
 
 /* Cloud sources → output → sort wizard */
 .wizard { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
@@ -1159,14 +1202,22 @@ p { margin: 0 0 .9rem; }
             <option value="write">Editor (add, change, delete)</option>
           </select>
         </div>
+        <label class="invite-manage">Can they invite others too?
+          <select class="text-input" id="inviteManage">
+            <option value="none">No — just them</option>
+            <option value="read">Yes, up to Viewer</option>
+            <option value="write">Yes, up to Editor</option>
+          </select>
+        </label>
         <div class="btn-row">
           <button class="btn btn--primary" id="inviteSendBtn">Send invite</button>
         </div>
         <p class="msg" id="inviteMsg" hidden></p>
+        <div class="access-requests" id="inviteRequests" hidden></div>
         <div class="access-tracker">
           <h4 class="access-tracker__title">Who has access</h4>
           <div class="access-list" id="inviteAccessList"></div>
-          <p class="card-plain__fine">OneDrive supports two levels: <strong>Viewer</strong> and <strong>Editor</strong>. “Add-only” and “admin” aren’t possible on a personal cloud account.</p>
+          <p class="card-plain__fine">OneDrive supports two levels: <strong>Viewer</strong> and <strong>Editor</strong>. “Add-only” and “admin” aren’t possible on a personal cloud account. When you let a co-parent invite others, <strong>you still approve each request</strong> — the actual access is always granted from your account.</p>
         </div>
       </div>
 
@@ -2749,9 +2800,49 @@ async function removePermission(folderPath, permId) {
   return true;
 }
 
-// Sign in only (or confirm an existing session). Returns true on success. Kept
-// separate from the camera-roll import so a returning device can rebuild its
-// library from the saved manifest BEFORE deciding whether to re-scan anything.
+// --- Managed co-parents: a small JSON file inside the shared album folder holds
+// the delegation policy (who may invite others + at what level) and any pending
+// requests. The folder owner always writes the real OneDrive grants; this file
+// just carries the intent so a co-parent's app can request and the owner's app
+// can approve. Editors have write access to the folder, so they can append a
+// request; only the owner can act on it.
+const ACCESS_FILE = "_famsort-access.json";
+
+function accessFilePath(folderPath) {
+  const clean = String(folderPath || "").replace(/^\/+|\/+$/g, "");
+  return clean ? `${clean}/${ACCESS_FILE}` : ACCESS_FILE;
+}
+
+// Read the delegation config for a folder. Returns {} if it doesn't exist yet,
+// or null if we couldn't check (offline / not signed in).
+async function readAccessConfig(folderPath) {
+  if (!oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${GRAPH}/me/drive/root:/${encodeURI(accessFilePath(folderPath))}:/content`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 404) return {};
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// Write the delegation config for a folder (owner only in practice).
+async function writeAccessConfig(folderPath, config) {
+  if (!oneDriveConfigured()) throw new Error("OneDrive not configured");
+  const token = await getToken();
+  const res = await fetch(`${GRAPH}/me/drive/root:/${encodeURI(accessFilePath(folderPath))}:/content`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(config || {}),
+  });
+  if (!res.ok) throw new Error(`Save failed (${res.status})`);
+  return res.json();
+}
 async function signIn(onStatus) {
   if (!getClientId()) {
     onStatus?.(
@@ -3021,7 +3112,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -5560,52 +5651,198 @@ function roleLabel(role) {
 // and controls to change or remove it. Keeps the user from double-inviting and
 // makes it obvious "this person already has access".
 let inviteAccessToken = 0;
+let currentAccessConfig = null; // delegation policy for the album shown in the tracker
+let currentAccessPath = "";
 async function renderInviteAccess() {
   const box = el("inviteAccessList");
   if (!box) return;
   const path = el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
   const mine = ++inviteAccessToken;
+  const reqBox = el("inviteRequests");
+  if (reqBox) { reqBox.hidden = true; reqBox.innerHTML = ""; }
   if (!cloud.oneDriveConfigured() || state.outputMode !== "cloud") {
     box.innerHTML = `<p class="access-empty">Switch output to OneDrive to share albums.</p>`;
     return;
   }
   box.innerHTML = `<p class="access-empty">Checking who has access…</p>`;
-  let list = null;
-  try { list = await cloud.listFolderPermissions(path); } catch { list = null; }
+  let list = null, config = null;
+  try {
+    [list, config] = await Promise.all([
+      cloud.listFolderPermissions(path),
+      cloud.readAccessConfig(path),
+    ]);
+  } catch { list = null; }
   if (mine !== inviteAccessToken) return; // a newer render superseded this one
+  currentAccessPath = path;
+  currentAccessConfig = config && typeof config === "object" ? config : {};
+  const managers = currentAccessConfig.managers || {};
   if (list === null) {
     box.innerHTML = `<p class="access-empty">Couldn't check access — make sure you're signed in.</p>`;
     return;
   }
   if (!list.length) {
     box.innerHTML = `<p class="access-empty">No one else has access to this album yet.</p>`;
-    return;
+  } else {
+    box.innerHTML = "";
+    for (const p of list) {
+      const row = document.createElement("div");
+      row.className = "access-row";
+      const other = p.role === "write" ? "read" : "write";
+      const cap = p.email ? (managers[p.email.toLowerCase()] || "none") : "none";
+      const manageControl = p.email
+        ? `<label class="access-row__manage">Can invite others
+             <select data-manage="${escapeHtml(p.email)}">
+               <option value="none"${cap === "none" ? " selected" : ""}>No</option>
+               <option value="read"${cap === "read" ? " selected" : ""}>Up to Viewer</option>
+               <option value="write"${cap === "write" ? " selected" : ""}>Up to Editor</option>
+             </select></label>`
+        : "";
+      row.innerHTML = `
+        <div class="access-row__who">
+          <span class="access-row__name">${escapeHtml(p.name)}</span>
+          ${p.email && p.email !== p.name ? `<span class="access-row__email">${escapeHtml(p.email)}</span>` : ""}
+          ${p.pending ? `<span class="access-row__pending">invite pending</span>` : ""}
+          ${cap !== "none" ? `<span class="access-row__manager">Manager · can invite ${cap === "write" ? "editors" : "viewers"}</span>` : ""}
+        </div>
+        <span class="access-chip ${p.role === "write" ? "access-chip--editor" : "access-chip--viewer"}">${p.role === "write" ? "Editor" : "Viewer"}</span>
+        <div class="access-row__actions">
+          <button class="btn btn--ghost btn--sm" data-act="role" data-perm="${p.permId}" data-role="${other}">Make ${other === "write" ? "Editor" : "Viewer"}</button>
+          <button class="btn btn--ghost btn--sm access-row__remove" data-act="remove" data-perm="${p.permId}">Remove</button>
+        </div>
+        ${manageControl}`;
+      box.appendChild(row);
+    }
+    box.querySelectorAll("button[data-act]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const permId = b.dataset.perm;
+        if (b.dataset.act === "role") changeAccessRole(permId, b.dataset.role);
+        else removeAccess(permId);
+      })
+    );
+    box.querySelectorAll("select[data-manage]").forEach((s) =>
+      s.addEventListener("change", () => setManagerCap(s.dataset.manage, s.value))
+    );
   }
-  box.innerHTML = "";
-  for (const p of list) {
+  renderAccessRequests();
+}
+
+// Owner-side inbox: pending "please add this person" requests left by managers.
+// Only shows when there's something to approve, so it never clutters the card.
+function renderAccessRequests() {
+  const box = el("inviteRequests");
+  if (!box) return;
+  const pending = ((currentAccessConfig || {}).proposals || []).filter((p) => p.status === "pending");
+  if (!pending.length) { box.hidden = true; box.innerHTML = ""; return; }
+  box.hidden = false;
+  box.innerHTML = `<h4 class="access-requests__title">Requests to approve</h4>`;
+  for (const pr of pending) {
     const row = document.createElement("div");
-    row.className = "access-row";
-    const other = p.role === "write" ? "read" : "write";
+    row.className = "access-row access-row--request";
     row.innerHTML = `
       <div class="access-row__who">
-        <span class="access-row__name">${escapeHtml(p.name)}</span>
-        ${p.email && p.email !== p.name ? `<span class="access-row__email">${escapeHtml(p.email)}</span>` : ""}
-        ${p.pending ? `<span class="access-row__pending">invite pending</span>` : ""}
+        <span class="access-row__name">${escapeHtml(pr.email)}</span>
+        <span class="access-row__email">requested by ${escapeHtml(pr.by)} · as ${pr.role === "write" ? "Editor" : "Viewer"}</span>
       </div>
-      <span class="access-chip ${p.role === "write" ? "access-chip--editor" : "access-chip--viewer"}">${p.role === "write" ? "Editor" : "Viewer"}</span>
       <div class="access-row__actions">
-        <button class="btn btn--ghost btn--sm" data-act="role" data-perm="${p.permId}" data-role="${other}">Make ${other === "write" ? "Editor" : "Viewer"}</button>
-        <button class="btn btn--ghost btn--sm access-row__remove" data-act="remove" data-perm="${p.permId}">Remove</button>
+        <button class="btn btn--primary btn--sm" data-req="approve" data-id="${escapeHtml(pr.id)}">Approve</button>
+        <button class="btn btn--ghost btn--sm" data-req="decline" data-id="${escapeHtml(pr.id)}">Decline</button>
       </div>`;
     box.appendChild(row);
   }
-  box.querySelectorAll("button[data-act]").forEach((b) =>
+  box.querySelectorAll("button[data-req]").forEach((b) =>
     b.addEventListener("click", () => {
-      const permId = b.dataset.perm;
-      if (b.dataset.act === "role") changeAccessRole(permId, b.dataset.role);
-      else removeAccess(permId);
+      if (b.dataset.req === "approve") approveProposal(b.dataset.id);
+      else declineProposal(b.dataset.id);
     })
   );
+}
+
+// Owner grants or revokes a co-parent's right to invite others, capped at a
+// level. Stored in the album's _famsort-access.json; the owner's app still
+// performs every real OneDrive grant, so this is honest delegation, not a bypass.
+async function setManagerCap(email, cap) {
+  const path = currentAccessPath || el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
+  const key = String(email || "").toLowerCase();
+  const msg = el("inviteMsg");
+  const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  show("Saving…");
+  try {
+    const config = (await cloud.readAccessConfig(path)) || {};
+    config.v = 1;
+    config.managers = config.managers || {};
+    if (cap === "read" || cap === "write") config.managers[key] = cap;
+    else delete config.managers[key];
+    await cloud.writeAccessConfig(path, config);
+    show(cap === "none"
+      ? `${email} can no longer invite others.`
+      : `${email} can now invite others up to ${cap === "write" ? "Editor" : "Viewer"}.`);
+  } catch {
+    show("Couldn't save that — try again.");
+  }
+  renderInviteAccess();
+}
+
+// Owner approves a manager's request: performs the real invite (capped at what
+// the manager is allowed to grant), then marks the request resolved.
+async function approveProposal(id) {
+  const path = currentAccessPath || el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
+  const msg = el("inviteMsg");
+  const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  try {
+    const config = (await cloud.readAccessConfig(path)) || {};
+    const pr = (config.proposals || []).find((p) => p.id === id && p.status === "pending");
+    if (!pr) { renderInviteAccess(); return; }
+    const cap = (config.managers || {})[String(pr.by || "").toLowerCase()];
+    if (!cap) {
+      pr.status = "declined";
+      await cloud.writeAccessConfig(path, config);
+      show(`${pr.by} isn't allowed to invite others, so that request was declined.`);
+      renderInviteAccess();
+      return;
+    }
+    let role = pr.role === "write" ? "write" : "read";
+    if (cap === "read" && role === "write") role = "read"; // cap down to their max
+    show(`Approving — giving ${pr.email} ${roleLabel(role)}…`);
+    await cloud.inviteToFolder(path, pr.email, role);
+    pr.status = "approved";
+    pr.approvedRole = role;
+    await cloud.writeAccessConfig(path, config);
+    show(`Approved. ${pr.email} now has ${roleLabel(role)}.`);
+  } catch {
+    show("Couldn't approve that request — try again.");
+  }
+  renderInviteAccess();
+}
+
+async function declineProposal(id) {
+  const path = currentAccessPath || el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
+  const msg = el("inviteMsg");
+  const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  try {
+    const config = (await cloud.readAccessConfig(path)) || {};
+    const pr = (config.proposals || []).find((p) => p.id === id && p.status === "pending");
+    if (pr) { pr.status = "declined"; await cloud.writeAccessConfig(path, config); }
+    show("Request declined.");
+  } catch {
+    show("Couldn't update that request — try again.");
+  }
+  renderInviteAccess();
+}
+
+// Record a co-parent's delegation cap in the album config when inviting them.
+// Returns a sentence to append to the invite confirmation (or "" if none/failed).
+async function applyManagerCap(path, email, cap) {
+  if (cap !== "read" && cap !== "write") return "";
+  try {
+    const config = (await cloud.readAccessConfig(path)) || {};
+    config.v = 1;
+    config.managers = config.managers || {};
+    config.managers[String(email).toLowerCase()] = cap;
+    await cloud.writeAccessConfig(path, config);
+    return ` They can also invite others up to ${cap === "write" ? "Editor" : "Viewer"}.`;
+  } catch {
+    return "";
+  }
 }
 
 async function changeAccessRole(permId, role) {
@@ -5643,6 +5880,7 @@ async function sendInvite() {
   const email = (el("inviteEmail")?.value || "").trim();
   const path = el("inviteAlbum")?.value || (state.outputRoot || "Famsort");
   const role = el("inviteRole")?.value === "write" ? "write" : "read";
+  const manage = el("inviteManage")?.value === "write" ? "write" : el("inviteManage")?.value === "read" ? "read" : "none";
   const msg = el("inviteMsg");
   const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { show("Enter a valid email address."); return; }
@@ -5667,7 +5905,8 @@ async function sendInvite() {
         show(`${email} already has access as ${roleLabel(role)} — nothing to change.`);
       } else {
         await cloud.setPermissionRole(path, already.permId, role);
-        show(`${email} already had access — updated them to ${roleLabel(role)}.`);
+        const extra = await applyManagerCap(path, email, manage);
+        show(`${email} already had access — updated them to ${roleLabel(role)}.${extra}`);
         if (el("inviteEmail")) el("inviteEmail").value = "";
       }
       renderInviteAccess();
@@ -5678,7 +5917,8 @@ async function sendInvite() {
   show("Sending invite…");
   try {
     await cloud.inviteToFolder(path, email, role);
-    show(`Invite sent to ${email} as ${roleLabel(role)}.`);
+    const extra = await applyManagerCap(path, email, manage);
+    show(`Invite sent to ${email} as ${roleLabel(role)}.${extra}`);
     if (el("inviteEmail")) el("inviteEmail").value = "";
     renderInviteAccess();
   } catch {
