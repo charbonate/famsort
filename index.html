@@ -640,6 +640,16 @@ p { margin: 0 0 .9rem; }
 .ui-modal__text { margin: 0 0 18px; font-size: .95rem; line-height: 1.5; white-space: pre-line; }
 .ui-modal__actions { display: flex; justify-content: flex-end; gap: 8px; }
 
+/* Albums shared with you (co-parent inbound) */
+.shared-list { display: flex; flex-direction: column; gap: 10px; }
+.shared-item { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: #fff; }
+.shared-item__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.shared-item__name { font-weight: 700; font-size: .95rem; }
+.shared-item__by { font-size: .78rem; color: var(--ink-soft, #6b6b6b); }
+.shared-item__mgr { margin: 8px 0 6px; font-size: .82rem; color: var(--accent-2-dark, #22685b); font-weight: 600; }
+.shared-item__mgr--none { color: var(--ink-soft, #6b6b6b); font-weight: 500; }
+.shared-item__request .field-row { margin: 6px 0; }
+
 /* Cloud sources → output → sort wizard */
 .wizard { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
 .wizard__step { display: flex; gap: 12px; align-items: flex-start; }
@@ -1260,6 +1270,13 @@ p { margin: 0 0 .9rem; }
           <div class="access-list" id="inviteAccessList"></div>
           <p class="card-plain__fine">OneDrive supports two levels: <strong>Viewer</strong> and <strong>Editor</strong>. “Add-only” and “admin” aren’t possible on a personal cloud account. When you let a co-parent invite others, <strong>you still approve each request</strong> — the actual access is always granted from your account.</p>
         </div>
+      </div>
+
+      <div class="card-plain">
+        <h3>Albums shared with you</h3>
+        <p>Albums a co-parent has shared with you show up here. If they've made you a <strong>manager</strong>, you can request to add other viewers or editors — the album's owner approves each request from their device.</p>
+        <div class="shared-list" id="sharedList"></div>
+        <p class="card-plain__fine">Requesting to add someone needs <strong>edit access</strong> to the shared album. Sorting the shared photos into your own albums is coming next.</p>
       </div>
 
       <div class="card-plain">
@@ -2894,6 +2911,70 @@ async function writeAccessConfig(folderPath, config) {
   if (!res.ok) throw new Error(`Save failed (${res.status})`);
   return res.json();
 }
+
+// --- Inbound sharing (co-parent side) --------------------------------------
+// Folders OTHER people have shared with this account. Lets a co-parent see the
+// albums they've been invited to and, if made a manager, request to add others.
+async function listSharedWithMe() {
+  if (!oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${GRAPH}/me/drive/sharedWithMe`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const out = [];
+    for (const it of data.value || []) {
+      const r = it.remoteItem;
+      if (!r || !r.folder) continue; // only folders (albums), not single files
+      const driveId = r.parentReference && r.parentReference.driveId;
+      const itemId = r.id;
+      if (!driveId || !itemId) continue;
+      const sharedBy =
+        (r.shared && r.shared.sharedBy && r.shared.sharedBy.user && r.shared.sharedBy.user.displayName) ||
+        (it.createdBy && it.createdBy.user && it.createdBy.user.displayName) ||
+        "";
+      out.push({ name: r.name || it.name || "Shared album", driveId, itemId, webUrl: r.webUrl || it.webUrl || "", sharedBy });
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+// Read the delegation config on a SHARED folder (someone else's drive). {} if
+// absent, null on error. Same physical file the owner reads via /me/drive.
+async function readSharedAccessConfig(driveId, itemId) {
+  if (!oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${GRAPH}/drives/${driveId}/items/${itemId}:/${ACCESS_FILE}:/content`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 404) return {};
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// Append/update the delegation config on a SHARED folder. Requires edit (Editor)
+// access to that folder — a view-only co-parent can't write it.
+async function writeSharedAccessConfig(driveId, itemId, config) {
+  if (!oneDriveConfigured()) throw new Error("OneDrive not configured");
+  const token = await getToken();
+  const res = await fetch(`${GRAPH}/drives/${driveId}/items/${itemId}:/${ACCESS_FILE}:/content`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(config || {}),
+  });
+  if (!res.ok) throw new Error(`Save failed (${res.status})`);
+  return res.json();
+}
 async function signIn(onStatus) {
   if (!getClientId()) {
     onStatus?.(
@@ -3163,7 +3244,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, signIn, listChildFolders, cameraRollFolder, importFromFolders, importCameraRoll, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -5692,6 +5773,100 @@ function renderSettingsExtras() {
   renderAccountLine();
   renderInviteAlbums();
   renderSortModeUI();
+  renderSharedAlbums();
+}
+
+// Co-parent (inbound) side: list albums shared WITH this account. For albums
+// where the owner made this user a manager, offer a "Request to add someone"
+// form that writes a pending proposal into the album's _famsort-access.json —
+// the same file the owner's approval inbox reads. This closes the delegation
+// loop without any backend: owner grants, co-parent requests, owner approves.
+async function renderSharedAlbums() {
+  const box = el("sharedList");
+  if (!box) return;
+  if (!cloud.oneDriveConfigured()) {
+    box.innerHTML = `<p class="access-empty">Sign in to your cloud to see albums shared with you.</p>`;
+    return;
+  }
+  box.innerHTML = `<p class="access-empty">Checking for shared albums…</p>`;
+  const shared = await cloud.listSharedWithMe();
+  if (shared === null) {
+    box.innerHTML = `<p class="access-empty">Couldn't load shared albums — make sure you're signed in.</p>`;
+    return;
+  }
+  if (!shared.length) {
+    box.innerHTML = `<p class="access-empty">Nothing has been shared with you yet.</p>`;
+    return;
+  }
+  const me = await cloud.accountInfo().catch(() => null);
+  const myEmail = me && me.username ? me.username.toLowerCase() : "";
+  box.innerHTML = "";
+  for (const s of shared) {
+    const config = await cloud.readSharedAccessConfig(s.driveId, s.itemId);
+    const cap = config && config.managers ? config.managers[myEmail] : null;
+    const card = document.createElement("div");
+    card.className = "shared-item";
+    card.innerHTML = `
+      <div class="shared-item__head">
+        <span class="shared-item__name">${escapeHtml(s.name)}</span>
+        ${s.sharedBy ? `<span class="shared-item__by">shared by ${escapeHtml(s.sharedBy)}</span>` : ""}
+      </div>`;
+    if (cap === "read" || cap === "write") {
+      const form = document.createElement("div");
+      form.className = "shared-item__request";
+      form.innerHTML = `
+        <p class="shared-item__mgr">You're a manager — you can request to add others (up to ${cap === "write" ? "Editor" : "Viewer"}).</p>
+        <div class="field-row">
+          <input class="text-input" type="email" inputmode="email" autocomplete="off" spellcheck="false" placeholder="their email" data-req-email />
+          <select class="text-input" data-req-role>
+            <option value="read">Viewer</option>
+            ${cap === "write" ? `<option value="write">Editor</option>` : ""}
+          </select>
+        </div>
+        <button class="btn btn--primary btn--sm" type="button" data-req-send>Request to add</button>
+        <p class="msg" data-req-msg hidden></p>`;
+      form.querySelector("[data-req-send]").addEventListener("click", () => requestAddToShared(s, cap, form));
+      card.appendChild(form);
+    } else {
+      const note = document.createElement("p");
+      note.className = "shared-item__mgr shared-item__mgr--none";
+      note.textContent = "Viewing only. Ask the owner to make you a manager if you need to invite others.";
+      card.appendChild(note);
+    }
+    box.appendChild(card);
+  }
+}
+
+// Manager submits a request to add someone to a shared album (owner approves).
+async function requestAddToShared(s, cap, form) {
+  const email = (form.querySelector("[data-req-email]")?.value || "").trim();
+  const wanted = form.querySelector("[data-req-role]")?.value;
+  const role = wanted === "write" && cap === "write" ? "write" : "read";
+  const msg = form.querySelector("[data-req-msg]");
+  const show = (t) => { if (msg) { msg.textContent = t; msg.hidden = false; } };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { show("Enter a valid email address."); return; }
+  const me = await cloud.accountInfo().catch(() => null);
+  const by = (me && (me.username || me.name)) || "a co-parent";
+  show("Sending request…");
+  try {
+    const config = (await cloud.readSharedAccessConfig(s.driveId, s.itemId)) || {};
+    config.v = 1;
+    config.proposals = config.proposals || [];
+    config.proposals.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      by,
+      email,
+      role,
+      ts: new Date().toISOString(),
+      status: "pending",
+    });
+    await cloud.writeSharedAccessConfig(s.driveId, s.itemId, config);
+    show(`Request sent. ${s.sharedBy || "The owner"} will be asked to approve ${email} as ${role === "write" ? "Editor" : "Viewer"}.`);
+    const inp = form.querySelector("[data-req-email]");
+    if (inp) inp.value = "";
+  } catch {
+    show("Couldn't send — you may only have view access to this album. Ask the owner to give you edit access, then try again.");
+  }
 }
 
 // Refresh the Account screen: identity line, the details list (who / which cloud /
