@@ -784,8 +784,8 @@ p { margin: 0 0 .9rem; }
 .setup-summary__grid > div { background: var(--cream-2); border-radius: var(--radius-sm); padding: 10px 12px; display: flex; flex-direction: column; }
 .setup-summary__grid dt { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); font-weight: 700; display: flex; flex-direction: column; gap: 2px; }
 .setup-summary__hint { font-size: .68rem; letter-spacing: 0; text-transform: none; font-weight: 500; opacity: .85; }
-.setup-summary__grid dd { margin: 6px 0 0; font-size: .95rem; color: var(--ink); font-weight: 600; }
-.setup-summary__edit { align-self: flex-start; margin-top: 10px; }
+.setup-summary__grid dd { margin: 6px 0 12px; font-size: .95rem; color: var(--ink); font-weight: 600; }
+.setup-summary__edit { align-self: flex-start; margin-top: auto; }
 /* Editing bar at the top of the wizard: a clear way back to the summary. */
 .wizard-editbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--accent-soft); border-radius: var(--radius-sm); padding: 8px 8px 8px 14px; margin-bottom: 14px; }
 .wizard-editbar__label { font-size: .85rem; font-weight: 700; color: var(--accent-dark); }
@@ -799,8 +799,10 @@ p { margin: 0 0 .9rem; }
 .home-backup { background: var(--cream-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 11px 14px; margin: 0 0 18px; }
 .home-backup.is-done { background: var(--success-soft); border-color: #cdebd7; }
 .home-backup.is-busy { background: var(--accent-soft); border-color: #d9d3f5; }
-.home-backup__text { display: flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 600; color: var(--ink); }
+.home-backup__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.home-backup__text { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 600; color: var(--ink); }
 .home-backup.is-done .home-backup__text { color: var(--success); }
+.home-backup__row .btn { flex: 0 0 auto; }
 .home-backup__track { margin-top: 10px; height: 7px; border-radius: 999px; background: #e6dccb; overflow: hidden; }
 .home-backup__fill { height: 100%; width: 0; border-radius: 999px; background: var(--grad-primary); transition: width .35s ease; }
 .home-backup__spin { flex: 0 0 auto; width: 13px; height: 13px; border: 2px solid rgba(90,76,209,.3); border-top-color: var(--accent); border-radius: 50%; animation: authspin .7s linear infinite; }
@@ -1332,7 +1334,10 @@ p { margin: 0 0 .9rem; }
       <!-- Live backup banner: always makes it clear whether a backup is running
            and how far it's got, right on the home screen. -->
       <div class="home-backup" id="homeBackup" hidden>
-        <span class="home-backup__text" id="homeBackupText"></span>
+        <div class="home-backup__row">
+          <span class="home-backup__text" id="homeBackupText"></span>
+          <button class="btn btn--primary btn--sm" id="homeBackupNow" type="button" hidden>⤒ Back up now</button>
+        </div>
         <div class="home-backup__track" id="homeBackupTrack" hidden><div class="home-backup__fill" id="homeBackupFill"></div></div>
       </div>
 
@@ -4284,6 +4289,9 @@ let forceBackupBusy = false;
 // banner can show "Backing up N of M" in real time (0/0 when idle).
 let backupLiveDone = 0;
 let backupLiveTotal = 0;
+// How many photos the last backup sweep couldn't upload because their full-size
+// original isn't on this device (so the banner can say WHY, not just "pending").
+let backupBlocked = 0;
 // Cloud reconciliation state: are we mid-verify, and when did we last verify each
 // album (to throttle the background re-checks)?
 let reconcileBusy = false;
@@ -5073,6 +5081,10 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
   setAlbumBackupProgress(total, total);
   backupLiveTotal = 0;
   backupLiveDone = 0;
+  // Remember how many couldn't upload because their full-size original isn't on
+  // THIS device — so the home banner can explain the hold-up instead of looking
+  // like it's silently stuck.
+  backupBlocked = needsSource;
   forceBackupBusy = false;
   await saveBackedUpKeys();
   if (!device) {
@@ -8750,6 +8762,7 @@ function renderHomeBackup() {
   const txt = el("homeBackupText");
   const track = el("homeBackupTrack");
   const fill = el("homeBackupFill");
+  const nowBtn = el("homeBackupNow");
   const where = device ? "this device" : "OneDrive";
   const busy = (forceBackupBusy || backingUpAll) && backupLiveTotal > 0;
   wrap.classList.toggle("is-busy", busy);
@@ -8758,13 +8771,27 @@ function renderHomeBackup() {
     const pct = backupLiveTotal ? Math.round((backupLiveDone / backupLiveTotal) * 100) : 0;
     if (txt) txt.innerHTML = `<span class="home-backup__spin"></span> Backing up ${backupLiveDone} of ${backupLiveTotal} to ${where}\u2026`;
     if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
+    if (nowBtn) nowBtn.hidden = true;
   } else if (done >= total) {
     if (txt) txt.textContent = `\u2713 All ${total} photo${total === 1 ? "" : "s"} backed up to ${where}`;
     if (track) track.hidden = true;
+    if (nowBtn) nowBtn.hidden = true;
   } else {
     const pct = total ? Math.round((done / total) * 100) : 0;
-    if (txt) txt.textContent = `${done} of ${total} backed up to ${where} \u2014 ${total - done} will sync automatically`;
+    const left = total - done;
+    // Be honest about WHY it's paused: if some originals aren't on this device
+    // they can't upload here — that's not "stuck", it just needs the source.
+    const blocked = Math.min(backupBlocked, left);
+    if (txt) {
+      if (blocked >= left && blocked > 0) {
+        txt.textContent = `${done} of ${total} backed up \u2014 ${blocked} need their original (reconnect the source folder, or open this on the device that has them)`;
+      } else {
+        txt.textContent = `${done} of ${total} backed up to ${where} \u2014 ${left} still to go`;
+      }
+    }
     if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
+    // Offer a manual kick so the user isn't waiting on the background sweep.
+    if (nowBtn) nowBtn.hidden = blocked >= left && blocked > 0;
   }
 }
 
@@ -10574,9 +10601,10 @@ function navTo(view) {
   if (view === "activity") renderActivity();
   if (view === "account") renderAccountExtras();
   if (view === "settings") renderSettingsExtras();
-  // Opening Albums kicks off a background back-up of anything still outstanding,
-  // so it happens by itself — no "back up now" button to press.
-  if (view === "albums") backupAllAlbums();
+  // Both the home (Add) and Albums screens kick off a background back-up of
+  // anything still outstanding, so it keeps moving on its own wherever the user
+  // is — not only when they open Albums (which is why it could look stuck).
+  if ((view === "albums" || view === "add") && state.setupDone) backupAllAlbums();
   window.scrollTo(0, 0);
   // Replay the slide+fade so switching tabs feels like a native screen change.
   const active = document.querySelector(`.view[data-view="${view}"]`);
@@ -10837,6 +10865,12 @@ function wire() {
   );
   const closeSetupBtn = el("closeSetupBtn");
   if (closeSetupBtn) closeSetupBtn.addEventListener("click", closeSetupConfig);
+  const homeBackupNow = el("homeBackupNow");
+  if (homeBackupNow)
+    homeBackupNow.addEventListener("click", () => {
+      setAutoBackupMsg("Backing up now\u2026");
+      backupAllAlbums();
+    });
   const repairBtn = el("albumBackupRepair");
   if (repairBtn)
     repairBtn.addEventListener("click", () => {
