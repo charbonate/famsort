@@ -923,7 +923,7 @@ p { margin: 0 0 .9rem; }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  display: grid; grid-template-columns: repeat(2, 1fr);
+  display: grid; grid-template-columns: repeat(3, 1fr);
   background: rgba(255, 255, 255, .92); backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
   box-shadow: 0 -6px 20px -14px rgba(50, 35, 20, .35);
@@ -2481,11 +2481,16 @@ function videoFrameCanvas(video, maxEdge) {
 // Process a video with the SAME on-device face engine: sample keyframes, detect
 // faces per frame, collapse the same person across frames into one, and build a
 // keyframe-hash sequence fingerprint for cross-source video de-duplication.
-async function analyzeVideoFile(file, onFrame = () => {}) {
+async function analyzeVideoFile(file, onFrame = () => {}, opts = {}) {
   const { video, url } = await fileToVideo(file);
   try {
     const duration = isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
-    const frames = Math.max(1, Math.min(VIDEO_MAX_FRAMES, Math.ceil(duration) || 1));
+    // How many keyframes to sample across the clip. By default we take roughly
+    // one per second, capped at VIDEO_MAX_FRAMES so bulk imports stay fast. A
+    // deliberate per-video "deep scan" passes a higher opts.maxFrames so long
+    // clips are divided into MORE frames (denser coverage → fewer missed faces).
+    const maxFrames = Math.max(1, opts.maxFrames || VIDEO_MAX_FRAMES);
+    const frames = Math.max(1, Math.min(maxFrames, Math.ceil(duration) || 1));
     const step = duration ? duration / frames : 0;
 
     const allFaces = [];
@@ -8990,7 +8995,16 @@ function openPersonEdit(personId) {
   editingPersonId = personId;
   editingContactIcon = null;
   editingRelationship = p.relationship || "";
-  el("personEditFace").src = p.thumb || "";
+  // Show the best available face for this person (their face from the chosen
+  // cover photo, else the largest/clearest crop) rather than the first-tagged
+  // one. Persist it as their avatar too — but never override a photo the user
+  // linked from a contact (iconLocked).
+  const niceFace = bestFaceThumbFor(personId);
+  if (niceFace && !p.iconLocked && p.thumb !== niceFace) {
+    p.thumb = niceFace;
+    savePerson(p).then(scheduleCloudSync);
+  }
+  el("personEditFace").src = niceFace || p.thumb || "";
   el("personEditName").value = p.name;
   const custom = el("relCustom");
   if (custom) custom.value = RELATIONSHIPS.includes(editingRelationship) ? "" : editingRelationship;
@@ -9030,7 +9044,7 @@ async function savePersonEdit() {
   p.relationship = editingRelationship ? editingRelationship.trim() : "";
   // "My child" status now comes from the relationship (no separate toggle).
   p.isChild = isChildRelationship(p.relationship);
-  if (editingContactIcon) p.thumb = editingContactIcon;
+  if (editingContactIcon) { p.thumb = editingContactIcon; p.iconLocked = true; }
   await savePerson(p);
   closePersonEdit();
   scheduleCloudSync();
@@ -9759,6 +9773,39 @@ function faceCenterPos(personId, photoId) {
   const py = Math.round(Math.max(15, Math.min(85, cy * 100)));
   if (px === 50 && py === 50) return "";
   return `${px}% ${py}%`;
+}
+
+// Pick the nicest face crop to represent a person (their avatar / edit icon).
+// Order of preference, so the icon isn't just the first-tagged — often small,
+// soft or far-away — crop:
+//   1. their face taken FROM the cover photo they chose (keeps icon + cover in sync),
+//   2. otherwise the LARGEST face box we have for them — more pixels means it was
+//      closer and sharper, i.e. not blurry / not far away.
+// Returns "" when the person has no tagged faces (caller falls back to p.thumb).
+function bestFaceThumbFor(personId) {
+  const faces = state.faces.filter((f) => f.personId === personId && f.thumb);
+  if (!faces.length) return "";
+  const person = state.people.find((p) => p.id === personId);
+  // 1. Prefer the face that lives in the cover photo they picked.
+  if (person && person.coverThumb) {
+    const coverPhoto = state.photos.find((ph) => ph.thumb === person.coverThumb);
+    if (coverPhoto) {
+      const onCover = faces.find((f) => f.photoId === coverPhoto.id);
+      if (onCover) return onCover.thumb;
+    }
+  }
+  // 2. Otherwise the biggest (closest / clearest) face box wins.
+  const area = (f) => {
+    const b = f.box || f._box;
+    return b && typeof b.w === "number" && typeof b.h === "number" ? b.w * b.h : 0;
+  };
+  let best = faces[0];
+  let bestArea = area(best);
+  for (const f of faces) {
+    const a = area(f);
+    if (a > bestArea) { bestArea = a; best = f; }
+  }
+  return best.thumb || "";
 }
 
 function isFavAlbum(id) {
@@ -10652,6 +10699,14 @@ async function showLightboxPhoto() {
     tagFace.textContent = "＋ Tag a face";
     tagFace.addEventListener("click", () => startFaceTagDraw(photo));
     actions.appendChild(tagFace);
+  } else {
+    // Videos get their own deep scan: sample MANY frames across the clip (more
+    // than the quick import pass) so people who only appear briefly are caught.
+    const vscan = document.createElement("button");
+    vscan.className = "btn btn--ghost";
+    vscan.textContent = "Find faces in this video";
+    vscan.addEventListener("click", () => findFacesInVideo(photo, vscan));
+    actions.appendChild(vscan);
   }
 
   const del = document.createElement("button");
@@ -11325,8 +11380,74 @@ async function findFacesInPhoto(photo, btn) {
   }
 }
 
-// Set this photo as the person's album cover — the WHOLE photo (shown cropped-
-// to-fill and centred on the People grid / album card), not a tight face crop.
+// Deep-scan a single video for faces. Unlike the quick pass at import time (10
+// frames), this samples many more keyframes across the whole clip, so someone
+// who only shows up briefly isn't missed. New faces are matched to your people
+// and added to this video; duplicates of faces already found here are skipped.
+async function findFacesInVideo(photo, btn) {
+  if (!photo || !photoIsVideo(photo)) return;
+  const was = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Scanning video…"; }
+  try {
+    await face.loadModels();
+    // Sample frames THROUGH the real video, so we need the original file. Use the
+    // copy stored on this device, else stream it back from OneDrive on demand.
+    let blob = null;
+    const media = await db.get("media", photo.id);
+    if (media && media.blob) blob = media.blob;
+    if (!blob && photo.cloudId) blob = await cloud.downloadCloudFile(photo.cloudId);
+    if (!blob) {
+      if (btn) btn.textContent = "Video not on this device";
+      return;
+    }
+    // maxFrames: 40 → up to ~1 frame/second for clips up to 40s, far denser than
+    // the 10-frame import pass, which is what catches people the first scan missed.
+    const res = await face.analyzeVideoFile(
+      blob,
+      (p) => { if (btn) btn.textContent = `Scanning video… ${Math.round(p * 100)}%`; },
+      { maxFrames: 40 }
+    );
+    const found = res.faces || [];
+    const existing = state.faces.filter((f) => f.photoId === photo.id);
+    const fresh = [];
+    let alreadyTagged = 0;
+    for (const f of found) {
+      const dup =
+        existing.some((e) => face.euclidean(e.descriptor, f.descriptor) < 0.45) ||
+        fresh.some((e) => face.euclidean(e.descriptor, f.descriptor) < 0.45);
+      if (dup) { alreadyTagged++; continue; }
+      const match = face.matchPerson(f.descriptor, state.people);
+      fresh.push({
+        id: db.uid(),
+        photoId: photo.id,
+        descriptor: f.descriptor,
+        thumb: f.thumb,
+        box: f.box || null,
+        personId: match ? match.id : null,
+      });
+    }
+    if (fresh.length) {
+      state.faces.push(...fresh);
+      await db.bulkPut("faces", fresh);
+      const ids = new Set(photo.personIds || []);
+      for (const f of fresh) if (f.personId && f.personId !== IGNORED) ids.add(f.personId);
+      photo.personIds = [...ids];
+      await db.put("photos", photo);
+      recomputePending();
+      renderAll();
+      if (btn) btn.textContent = `Found ${fresh.length} new face${fresh.length === 1 ? "" : "s"}`;
+      renderLightboxTagging(photo);
+    } else if (btn) {
+      btn.textContent = alreadyTagged > 0
+        ? `Already tagged ${alreadyTagged} face${alreadyTagged === 1 ? "" : "s"}`
+        : "No new faces found";
+    }
+  } catch {
+    if (btn) btn.textContent = "Scan failed — try again";
+  } finally {
+    if (btn) setTimeout(() => { btn.disabled = false; btn.textContent = was; }, 2600);
+  }
+}
 // Covers are account-level, so mirror the change to every signed-in device.
 async function setAlbumCover(personId, photo) {
   const person = state.people.find((p) => p.id === personId);
