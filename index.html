@@ -359,6 +359,24 @@ p { margin: 0 0 .9rem; }
   cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .12s; }
 .album-card__fav:hover { background: rgba(20,16,14,.65); }
 .album-card__fav.is-on { color: #ffd34d; }
+.album-card__drag { position: absolute; top: 6px; left: 6px; width: 30px; height: 30px; border: none;
+  border-radius: 50%; background: rgba(20,16,14,.4); color: #fff; font-size: 1rem; line-height: 1;
+  cursor: grab; display: flex; align-items: center; justify-content: center; touch-action: none;
+  z-index: 3; transition: background .12s; }
+.album-card__drag:hover { background: rgba(20,16,14,.65); }
+.album-card__drag:active { cursor: grabbing; }
+.album-card.is-dragging { opacity: .55; outline: 2px dashed var(--accent, #da1710); outline-offset: -2px;
+  transform: scale(.97); box-shadow: 0 16px 30px -12px rgba(20,16,14,.5); }
+.merge-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 14px; }
+.merge-opt { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; cursor: pointer;
+  transition: border-color .12s, background .12s; }
+.merge-opt:hover, .merge-opt:focus-visible { border-color: var(--accent-soft); background: var(--cream-2); outline: none; }
+.merge-opt__face { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; flex: none;
+  display: flex; align-items: center; justify-content: center; background: var(--cream-2); font-size: 1.2rem; }
+.merge-opt__face img { width: 100%; height: 100%; object-fit: cover; }
+.merge-opt__name { font-weight: 700; color: var(--ink); flex: 1; }
+.merge-opt__count { font-size: .8rem; color: var(--ink-soft, #7a6f66); }
 .album-card__foot { display: flex; align-items: center; gap: 6px; padding: 9px 11px; }
 .album-card__name { font-weight: 700; font-size: .92rem; color: var(--ink); overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; flex: 1; }
@@ -1416,6 +1434,7 @@ p { margin: 0 0 .9rem; }
             <select id="albumSort">
               <option value="count">Most photos</option>
               <option value="name">Name A–Z</option>
+              <option value="custom">My order (drag)</option>
             </select>
           </label>
           <span class="albums-cloud" id="albumsCloudInfo"></span>
@@ -1432,6 +1451,7 @@ p { margin: 0 0 .9rem; }
           <button class="linkbtn" id="albumBack">‹ All albums</button>
           <div class="albumdet-head__actions">
             <button class="iconbtn" id="albumEditBtn" aria-label="Edit this person" hidden>✎</button>
+            <button class="iconbtn" id="albumMergeBtn" aria-label="Merge this album into another" title="Merge into another album" hidden>⇄</button>
             <button class="iconbtn" id="albumFavBtn" aria-label="Favourite this album">☆</button>
           </div>
         </div>
@@ -1721,12 +1741,26 @@ p { margin: 0 0 .9rem; }
         <input type="text" id="relCustom" class="rel-custom" placeholder="Type a relationship" maxlength="24" hidden />
       </div>
       <button class="btn btn--ghost btn--block" id="personLinkContact" hidden>📇 Link a phone contact</button>
+      <button class="btn btn--ghost btn--block" id="personMerge" hidden>⇄ Merge with another album…</button>
       <p class="modal__hint" id="personContactMsg" hidden></p>
       <div class="btn-row btn-row--split">
         <button class="btn btn--danger btn--small" id="personDelete">Delete</button>
         <span class="btn-row__spacer"></span>
         <button class="btn btn--ghost" id="personCancel">Cancel</button>
         <button class="btn btn--primary" id="personSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Merge two albums (people) into one -->
+  <div class="modal" id="mergeModal" hidden>
+    <div class="modal__card modal__card--wide">
+      <h3 id="mergeTitle">Merge album</h3>
+      <p class="modal__hint" id="mergeHint"></p>
+      <div class="merge-list" id="mergeList"></div>
+      <div class="btn-row btn-row--split">
+        <span class="btn-row__spacer"></span>
+        <button class="btn btn--ghost" id="mergeCancel">Cancel</button>
       </div>
     </div>
   </div>
@@ -3735,10 +3769,12 @@ const state = {
   watched: [], // {id, name, handle} folders to auto-scan
   processedKeys: new Set(), // "name|size|lastModified" of files already ingested
   kidsOnly: false, // Albums screen filter driven by the "this is my child" flag
-  albumSort: "count", // album index order: "count" (most photos) | "name"
+  albumSort: "count", // album index order: "count" (most photos) | "name" | "custom" (drag)
   albumPhotoSort: "added_new", // photo order inside an open album: added_new|added_old|date_new|date_old|name
   favAlbums: [], // album ids pinned to the top of the Albums screen
   favUpdatedAt: 0, // when favAlbums last changed on THIS account — drives last-write-wins so a stale cloud copy can't wipe a fresh favourite
+  albumOrder: [], // person ids in the user's chosen drag order (used when albumSort === "custom")
+  albumOrderAt: 0, // when albumOrder last changed on THIS account — last-write-wins across devices
   specialCovers: {}, // chosen cover thumbnails for the special albums: { "__all__": thumb, "__untagged__": thumb }
   autoBackup: true, // continuously sort new photos and back organised copies to OneDrive
   backupUntagged: false, // by default DON'T back up untagged photos — they only upload once someone is tagged in them
@@ -4515,6 +4551,9 @@ const dedupedAt = new Map();
 // album (to throttle the background re-checks)?
 let reconcileBusy = false;
 const reconciledAt = new Map();
+// True while an album MERGE is relocating people, photos and OneDrive copies, so
+// the page-wide activity line reflects it and refile doesn't double-handle copies.
+let mergeBusy = false;
 // Albums whose OneDrive folders we've actually READ since the app opened. A
 // persisted cloudVerified flag from a PREVIOUS session is NOT enough to show the
 // confident "backed up" tick — files can be deleted/moved in OneDrive while the
@@ -5308,7 +5347,7 @@ function setAlbumBackupProgress(done, total) {
 
 // True when a background job (backup / verify / duplicate tidy-up) is running.
 function backgroundBusy() {
-  return forceBackupBusy || backingUpAll || reconcileBusy || dedupeBusy;
+  return forceBackupBusy || backingUpAll || reconcileBusy || dedupeBusy || mergeBusy;
 }
 
 // One plain-English line describing EXACTLY what's happening right now, combining
@@ -5330,6 +5369,7 @@ function activityStatusText() {
     parts.push(dedupeTotal > 0 ? `removing duplicate copies ${dedupeDone} of ${dedupeTotal}` : "removing duplicate copies");
   }
   if (reconcileBusy) parts.push(`checking which photos are really in ${where}`);
+  if (mergeBusy) parts.push("merging albums");
   if (!parts.length) return "";
   const joined = parts.join(" \u00b7 ");
   return joined.charAt(0).toUpperCase() + joined.slice(1) + "\u2026";
@@ -5453,6 +5493,7 @@ let refileTimer = null;
 function scheduleRefile(photos) {
   const device = state.outputMode === "device" && !!state.outputHandle;
   if (!state.autoBackup || (!device && !cloud.oneDriveConfigured())) return;
+  if (mergeBusy) return; // during a merge we relocate copies ourselves — don't double-handle
   let queued = false;
   for (const p of photos) {
     if (!p) continue;
@@ -5635,6 +5676,8 @@ function buildCloudModel() {
       cloudSources: state.cloudSources || [],
       favAlbums: state.favAlbums || [],
       favUpdatedAt: state.favUpdatedAt || 0,
+      albumOrder: state.albumOrder || [],
+      albumOrderAt: state.albumOrderAt || 0,
       kidsOnly: !!state.kidsOnly,
       setupDone: !!state.setupDone,
       specialCovers: state.specialCovers || {}, // chosen covers for Everyone/Untagged
@@ -5796,6 +5839,21 @@ async function restoreCloudModel(silent = false) {
       if (!same && cloudFavAt >= localFavAt) {
         state.favAlbums = c.favAlbums;
         state.favUpdatedAt = cloudFavAt;
+        albumPrefsChanged = true;
+      }
+    }
+    if (Array.isArray(c.albumOrder)) {
+      // Last-write-wins on the manual drag order too, so a reorder on one device
+      // propagates without a stale cloud copy snapping it back.
+      const cloudOrderAt = typeof c.albumOrderAt === "number" ? c.albumOrderAt : 0;
+      const localOrderAt = state.albumOrderAt || 0;
+      const same = JSON.stringify(c.albumOrder) === JSON.stringify(state.albumOrder || []);
+      if (!same && cloudOrderAt >= localOrderAt) {
+        state.albumOrder = c.albumOrder;
+        state.albumOrderAt = cloudOrderAt;
+        // A manual arrangement is an explicit account-level choice — show it here
+        // too, otherwise the synced order would be invisible on this device.
+        if (c.albumOrder.length) state.albumSort = "custom";
         albumPrefsChanged = true;
       }
     }
@@ -6304,6 +6362,8 @@ async function loadAlbumPrefs() {
   }
   if (Array.isArray(p.fav)) state.favAlbums = p.fav;
   if (typeof p.favUpdatedAt === "number") state.favUpdatedAt = p.favUpdatedAt;
+  if (Array.isArray(p.albumOrder)) state.albumOrder = p.albumOrder;
+  if (typeof p.albumOrderAt === "number") state.albumOrderAt = p.albumOrderAt;
   if (typeof p.kidsOnly === "boolean") state.kidsOnly = p.kidsOnly;
   if (p.specialCovers && typeof p.specialCovers === "object") state.specialCovers = p.specialCovers;
 }
@@ -6315,6 +6375,8 @@ async function saveAlbumPrefs() {
     photoSort: state.albumPhotoSort,
     fav: state.favAlbums,
     favUpdatedAt: state.favUpdatedAt || 0,
+    albumOrder: state.albumOrder || [],
+    albumOrderAt: state.albumOrderAt || 0,
     kidsOnly: state.kidsOnly,
     specialCovers: state.specialCovers || {},
   });
@@ -8720,6 +8782,8 @@ function openPersonEdit(personId) {
   renderEditRelChips();
   const linkBtn = el("personLinkContact");
   if (linkBtn) linkBtn.hidden = !contactsSupported;
+  const mergeBtn = el("personMerge");
+  if (mergeBtn) mergeBtn.hidden = namedPeople().length < 2;
   const msg = el("personContactMsg");
   if (msg) {
     msg.hidden = true;
@@ -8798,6 +8862,191 @@ async function deletePerson() {
   closePersonEdit();
   recomputePending();
   renderAll();
+}
+
+/* ------------------------------------------------- merge two albums into one */
+
+let mergeSourceId = null; // the person whose album is being merged away
+
+// Open the "merge into…" picker for a person's album. Lists every OTHER named
+// person so the user can fold a duplicate (e.g. two "Dominic" albums made on
+// different devices) into a single album.
+function openMergeModal(sourceId) {
+  const source = state.people.find((p) => p.id === sourceId);
+  if (!source) return;
+  const others = namedPeople().filter((p) => p.id !== sourceId);
+  if (!others.length) {
+    setAutoBackupMsg("There's no other album to merge into yet.");
+    return;
+  }
+  mergeSourceId = sourceId;
+  el("mergeTitle").textContent = `Merge “${source.name}”`;
+  el("mergeHint").innerHTML =
+    `Pick the album to merge <strong>${escapeHtml(source.name)}</strong> into. Every photo and face moves across, ` +
+    `the OneDrive copies are tidied into one folder, and “${escapeHtml(source.name)}” is removed. ` +
+    `Your original files are never touched.`;
+  const list = el("mergeList");
+  list.innerHTML = "";
+  others.sort((a, b) => a.name.localeCompare(b.name));
+  for (const p of others) {
+    const count = state.photos.filter((ph) => ph.personIds.includes(p.id)).length;
+    const cover = albumCover(p.id, p);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "merge-opt";
+    btn.innerHTML =
+      `<span class="merge-opt__face">${cover ? `<img src="${cover}" alt="" />` : "👤"}</span>` +
+      `<span class="merge-opt__name">${escapeHtml(p.name)}</span>` +
+      `<span class="merge-opt__count">${count} photo${count === 1 ? "" : "s"}</span>`;
+    btn.addEventListener("click", () => confirmMerge(sourceId, p.id));
+    list.appendChild(btn);
+  }
+  el("mergeModal").hidden = false;
+}
+
+function closeMergeModal() {
+  el("mergeModal").hidden = true;
+  mergeSourceId = null;
+}
+
+// Confirm, then run the merge. If we were viewing the album that's being folded
+// away, hop to the surviving album afterwards.
+async function confirmMerge(sourceId, targetId) {
+  const source = state.people.find((p) => p.id === sourceId);
+  const target = state.people.find((p) => p.id === targetId);
+  if (!source || !target) return closeMergeModal();
+  const srcCount = state.photos.filter((ph) => ph.personIds.includes(sourceId)).length;
+  closeMergeModal();
+  const ok = await uiConfirm(
+    `Merge “${source.name}” into “${target.name}”? ${srcCount} photo${srcCount === 1 ? "" : "s"} move into ` +
+      `“${target.name}”, and “${source.name}” is removed. This also fixes any OneDrive copies saved under an old folder.`,
+    { okLabel: "Merge" }
+  );
+  if (!ok) return;
+  closePersonEdit();
+  const wasViewing = state.activeAlbum === sourceId;
+  await mergePersonInto(sourceId, targetId);
+  if (wasViewing) openAlbum(targetId);
+  else renderAll();
+}
+
+// Fold person `sourceId` entirely into `targetId`: move every face, manual share
+// and learned descriptor across, recompute the affected photos' albums, delete
+// the source person, then repair OneDrive so the merged album lives in ONE
+// correct folder (relocating copies stranded under an old output root).
+async function mergePersonInto(sourceId, targetId) {
+  if (sourceId === targetId) return;
+  const source = state.people.find((p) => p.id === sourceId);
+  const target = state.people.find((p) => p.id === targetId);
+  if (!source || !target) return;
+
+  mergeBusy = true;
+  setAutoBackupMsg(`Merging “${source.name}” into “${target.name}”…`);
+  renderHomeBackup();
+  try {
+    const touched = new Set();
+    // 1. Faces: anyone tagged as the source becomes the target; negatives follow.
+    const touchedFaces = [];
+    for (const f of state.faces) {
+      let ch = false;
+      if (f.personId === sourceId) { f.personId = targetId; ch = true; }
+      if (Array.isArray(f.notIds) && f.notIds.includes(sourceId)) {
+        f.notIds = [...new Set(f.notIds.map((n) => (n === sourceId ? targetId : n)))];
+        ch = true;
+      }
+      if (ch) { touchedFaces.push(f); touched.add(f.photoId); }
+    }
+    if (touchedFaces.length) await db.bulkPut("faces", touchedFaces);
+
+    // 2. Manual shares (and any photo already carrying the source id) → target.
+    for (const ph of state.photos) {
+      if (Array.isArray(ph.manualIds) && ph.manualIds.includes(sourceId)) {
+        ph.manualIds = [...new Set(ph.manualIds.map((x) => (x === sourceId ? targetId : x)))];
+        touched.add(ph.id);
+      }
+      if (Array.isArray(ph.personIds) && ph.personIds.includes(sourceId)) touched.add(ph.id);
+    }
+
+    // 3. Recompute each touched photo's albums from faces + manual shares. refile
+    // is suppressed (mergeBusy) because we relocate the cloud copies ourselves.
+    updatePhotoLabels(touched);
+
+    // 4. Keep the target's identity but union the learning and fill any blanks.
+    target.descriptors = sample([...(target.descriptors || []), ...(source.descriptors || [])], 12);
+    target.negatives = sample([...(target.negatives || []), ...(source.negatives || [])], 20);
+    if (!target.coverThumb && source.coverThumb) { target.coverThumb = source.coverThumb; target.coverPos = source.coverPos || ""; }
+    if (!target.thumb && source.thumb) target.thumb = source.thumb;
+    if (!target.relationship && source.relationship) { target.relationship = source.relationship; target.isChild = source.isChild; }
+    await savePerson(target);
+
+    // 5. Remove the source person (tombstoned so the deletion syncs everywhere).
+    state.people = state.people.filter((p) => p.id !== sourceId);
+    state.deletedPeople[sourceId] = Date.now();
+    await db.remove("people", sourceId);
+    await saveTombstones();
+
+    // 6. Repair OneDrive: move/clean each affected photo's copies so they sit in
+    // the merged album's correct, current folders only (fixes stale-root copies).
+    if (state.outputMode === "cloud" && cloud.oneDriveConfigured()) {
+      const photos = [...touched].map((pid) => state.photos.find((p) => p.id === pid)).filter(Boolean);
+      let done = 0;
+      for (const ph of photos) {
+        await consolidatePhotoCloudCopies(ph);
+        done++;
+        if (done % 5 === 0 || done === photos.length) {
+          setAutoBackupMsg(`Tidying OneDrive copies… ${done}/${photos.length}`);
+          renderHomeBackup();
+        }
+      }
+      if (photos.length) await db.bulkPut("photos", photos);
+    }
+  } finally {
+    mergeBusy = false;
+  }
+
+  if (state.activeAlbum === sourceId) state.activeAlbum = targetId;
+  recomputePending();
+  scheduleCloudSync(); // people changed
+  scheduleLibrarySync(); // photo memberships + cloud pointers changed
+  setAutoBackupMsg(`✓ Merged into “${target.name}”.`);
+  renderHomeBackup();
+}
+
+// Make a photo's OneDrive copies match EXACTLY the folders it should live in now
+// (one per tagged person, under the CURRENT output root). Any copy sitting in a
+// wrong folder — a stale output root like "Kinalbum/Dominic", or a renamed
+// person — is MOVED into a still-needed folder (no re-upload), or deleted when
+// it's just a leftover duplicate. Never deletes the only copy of a photo.
+async function consolidatePhotoCloudCopies(photo) {
+  if (!photo || !(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
+  const targets = backupFoldersFor(photo.personIds); // correct, current folders
+  const copies = { ...photoCloudCopies(photo) };
+  const have = new Set(Object.keys(copies).filter((f) => targets.includes(f)));
+  for (const [folder, itemId] of Object.entries(copies)) {
+    if (targets.includes(folder)) continue; // already in a correct folder
+    const dest = targets.find((t) => !have.has(t)); // a needed folder with no copy yet
+    if (dest) {
+      const moved = await cloud.moveCloudFile(itemId, dest);
+      if (moved) {
+        delete copies[folder];
+        copies[dest] = moved.id || itemId;
+        have.add(dest);
+      }
+      // If the move failed, leave the copy where it is — never lose the only copy.
+      continue;
+    }
+    // No target folder still needs a copy → this is a leftover duplicate.
+    const del = await cloud.deleteCloudFile(itemId);
+    if (del) delete copies[folder];
+  }
+  photo.cloudCopies = copies;
+  // Re-point the legacy single-copy fields at a surviving copy so download/move
+  // keep working for photos saved before copy-per-person.
+  const first = Object.entries(copies)[0];
+  if (first) { photo.cloudId = first[1]; photo.backupId = first[1]; photo.backupFolder = first[0]; }
+  // A copy now in every target folder is confirmed present; otherwise leave the
+  // flag for the normal background reconcile to settle.
+  if (targets.length && targets.every((t) => copies[t])) photo.cloudVerified = true;
 }
 
 // Progressive enhancement: pull a name (and photo, if the OS exposes it) from a
@@ -9332,12 +9581,25 @@ function renderAlbumIndex() {
   el("kidsOnlyWrap").hidden = !hasAdults;
   if (state.kidsOnly) roster = roster.filter((p) => p.isChild);
 
-  // Sort the people albums by the chosen order (favourites float up after).
+  // Sort the people albums by the chosen order.
   const byCount = (a, b) => albumPhotoCount(b.id) - albumPhotoCount(a.id);
-  if (state.albumSort === "name") roster.sort((a, b) => a.name.localeCompare(b.name));
-  else roster.sort(byCount); // "count" = most photos first (default)
-  // Favourites float to the top, keeping their order otherwise.
-  roster.sort((a, b) => Number(isFavAlbum(b.id)) - Number(isFavAlbum(a.id)));
+  if (state.albumSort === "custom" && (state.albumOrder || []).length) {
+    // The user's drag order is authoritative: lay albums out exactly as arranged,
+    // with any album not yet in the saved order (e.g. a brand-new person) at the
+    // end by photo count. Favourites are NOT floated here — drag position wins.
+    const idx = new Map((state.albumOrder || []).map((id, i) => [id, i]));
+    roster.sort((a, b) => {
+      const ia = idx.has(a.id) ? idx.get(a.id) : Infinity;
+      const ib = idx.has(b.id) ? idx.get(b.id) : Infinity;
+      if (ia !== ib) return ia - ib;
+      return byCount(a, b);
+    });
+  } else {
+    if (state.albumSort === "name") roster.sort((a, b) => a.name.localeCompare(b.name));
+    else roster.sort(byCount); // "count" = most photos first (default)
+    // Favourites float to the top, keeping their order otherwise.
+    roster.sort((a, b) => Number(isFavAlbum(b.id)) - Number(isFavAlbum(a.id)));
+  }
 
   // Special albums always lead: Everyone, then Untagged (if any). "Awaiting tag"
   // is no longer a card — the faces-to-tag queue is shown above instead.
@@ -9360,6 +9622,7 @@ function renderAlbumIndex() {
 
   el("albumsCloudInfo").textContent = cloudInfoText(albumCloudStatus(ALL_ALBUM));
   renderAlbumsBackupSummary();
+  initAlbumDragReorder();
 }
 
 // Count every distinct photo across all the real person albums and how many are
@@ -9558,6 +9821,7 @@ function albumCard(a) {
     }
   });
   if (!a.special) {
+    card.dataset.pid = id;
     const star = document.createElement("button");
     star.className = "album-card__fav" + (isFavAlbum(id) ? " is-on" : "");
     star.type = "button";
@@ -9568,8 +9832,98 @@ function albumCard(a) {
       toggleFavAlbum(id);
     });
     card.querySelector(".album-card__cover").appendChild(star);
+    // Drag handle for reordering (works with mouse and touch). Grabbing it starts
+    // a pointer-drag; tapping it never opens the album.
+    const grip = document.createElement("button");
+    grip.className = "album-card__drag";
+    grip.type = "button";
+    grip.textContent = "⠿";
+    grip.setAttribute("aria-label", "Drag to reorder");
+    grip.title = "Drag to reorder";
+    card.querySelector(".album-card__cover").appendChild(grip);
   }
   return card;
+}
+
+/* ---- drag-to-reorder album cards (mouse + touch via Pointer Events) ---- */
+
+let albumDrag = null; // { card, pointerId, grip } while a drag is in progress
+
+// Bind the drag handles after every album-index render. Pointer Events give us
+// one code path that works for mouse AND touch (phones), so the same grip drags
+// on desktop and mobile. touch-action:none on the handle (CSS) stops the page
+// scrolling while you drag.
+function initAlbumDragReorder() {
+  const cards = el("albumCards");
+  if (!cards) return;
+  cards.querySelectorAll(".album-card__drag").forEach((grip) => {
+    grip.addEventListener("pointerdown", onAlbumDragStart);
+    grip.addEventListener("click", (e) => e.stopPropagation()); // tapping the grip never opens the album
+  });
+}
+
+function onAlbumDragStart(e) {
+  const grip = e.currentTarget;
+  const card = grip.closest(".album-card");
+  if (!card || !card.dataset.pid) return;
+  e.preventDefault();
+  e.stopPropagation();
+  albumDrag = { card, pointerId: e.pointerId, grip };
+  card.classList.add("is-dragging");
+  try { grip.setPointerCapture(e.pointerId); } catch { /* capture is best-effort */ }
+  document.addEventListener("pointermove", onAlbumDragMove);
+  document.addEventListener("pointerup", onAlbumDragEnd);
+  document.addEventListener("pointercancel", onAlbumDragEnd);
+}
+
+function onAlbumDragMove(e) {
+  if (!albumDrag) return;
+  e.preventDefault();
+  const cards = el("albumCards");
+  const dragging = albumDrag.card;
+  // Hide the dragged card from the hit-test so we find what's UNDER the finger.
+  dragging.style.pointerEvents = "none";
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  dragging.style.pointerEvents = "";
+  if (!under) return;
+  const over = under.closest(".album-card");
+  if (!over || over === dragging || !over.dataset.pid || !cards.contains(over)) return;
+  // Insert before or after the card we're hovering based on which half of it the
+  // pointer is in (horizontal centre reads naturally in the card grid).
+  const rect = over.getBoundingClientRect();
+  const before = e.clientX < rect.left + rect.width / 2;
+  if (before) cards.insertBefore(dragging, over);
+  else cards.insertBefore(dragging, over.nextSibling);
+}
+
+function onAlbumDragEnd() {
+  if (!albumDrag) return;
+  albumDrag.card.classList.remove("is-dragging");
+  document.removeEventListener("pointermove", onAlbumDragMove);
+  document.removeEventListener("pointerup", onAlbumDragEnd);
+  document.removeEventListener("pointercancel", onAlbumDragEnd);
+  albumDrag = null;
+  commitAlbumOrder();
+}
+
+// Read the current on-screen order of the person cards and save it as the manual
+// album order. Switches the sort to "custom" (so the arrangement sticks) and
+// mirrors it to every device on the account via the cloud model.
+function commitAlbumOrder() {
+  const cards = el("albumCards");
+  if (!cards) return;
+  const ids = [...cards.querySelectorAll(".album-card")].map((c) => c.dataset.pid).filter(Boolean);
+  const same = JSON.stringify(ids) === JSON.stringify(state.albumOrder || []);
+  state.albumOrder = ids;
+  state.albumOrderAt = Date.now();
+  if (state.albumSort !== "custom") {
+    state.albumSort = "custom";
+    const sel = el("albumSort");
+    if (sel) sel.value = "custom";
+  }
+  saveAlbumPrefs();
+  scheduleCloudSync(); // order is account-level — mirror to every device
+  if (!same) setAutoBackupMsg("✓ Album order saved — it'll match on your other devices too.");
 }
 
 // Show WHERE an album lives in the user's output as a breadcrumb — e.g.
@@ -9662,6 +10016,13 @@ function renderAlbumDetail() {
   if (editBtn) {
     editBtn.hidden = special || !person;
     editBtn.dataset.pid = person ? person.id : "";
+  }
+  const mergeBtn = el("albumMergeBtn");
+  if (mergeBtn) {
+    // Only offer merge for a real person's album, and only when there's at least
+    // one OTHER album to merge into.
+    mergeBtn.hidden = special || !person || namedPeople().length < 2;
+    mergeBtn.dataset.pid = person ? person.id : "";
   }
   const favBtn = el("albumFavBtn");
   favBtn.hidden = special;
@@ -11293,6 +11654,16 @@ function wire() {
     const pid = e.currentTarget.dataset.pid;
     if (pid) openPersonEdit(pid);
   });
+  el("albumMergeBtn").addEventListener("click", (e) => {
+    const pid = e.currentTarget.dataset.pid;
+    if (pid) openMergeModal(pid);
+  });
+  const personMergeBtn = el("personMerge");
+  if (personMergeBtn) personMergeBtn.addEventListener("click", () => {
+    if (editingPersonId) openMergeModal(editingPersonId);
+  });
+  const mergeCancelBtn = el("mergeCancel");
+  if (mergeCancelBtn) mergeCancelBtn.addEventListener("click", closeMergeModal);
   el("albumBackupNow").addEventListener("click", () => {
     if (state.activeAlbum) forceBackupAlbum(state.activeAlbum);
   });
