@@ -781,10 +781,14 @@ p { margin: 0 0 .9rem; }
 .setup-summary__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .setup-summary__scope { font-size: .74rem; color: var(--accent-dark); background: var(--accent-soft); border-radius: 999px; padding: 3px 10px; font-weight: 600; white-space: nowrap; }
 .setup-summary__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 14px 0 12px; }
-.setup-summary__grid > div { background: var(--cream-2); border-radius: var(--radius-sm); padding: 10px 12px; }
+.setup-summary__grid > div { background: var(--cream-2); border-radius: var(--radius-sm); padding: 10px 12px; display: flex; flex-direction: column; }
 .setup-summary__grid dt { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); font-weight: 700; display: flex; flex-direction: column; gap: 2px; }
 .setup-summary__hint { font-size: .68rem; letter-spacing: 0; text-transform: none; font-weight: 500; opacity: .85; }
 .setup-summary__grid dd { margin: 6px 0 0; font-size: .95rem; color: var(--ink); font-weight: 600; }
+.setup-summary__edit { align-self: flex-start; margin-top: 10px; }
+/* Editing bar at the top of the wizard: a clear way back to the summary. */
+.wizard-editbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--accent-soft); border-radius: var(--radius-sm); padding: 8px 8px 8px 14px; margin-bottom: 14px; }
+.wizard-editbar__label { font-size: .85rem; font-weight: 700; color: var(--accent-dark); }
 /* Inputs list inside the "Your setup" summary — the actual sources, not a count. */
 .setup-src-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
 .setup-src-list li { display: flex; align-items: center; gap: 7px; font-size: .9rem; font-weight: 600; color: var(--ink); }
@@ -1171,16 +1175,31 @@ p { margin: 0 0 .9rem; }
           <span class="setup-summary__scope">Shared across all your devices</span>
         </div>
         <dl class="setup-summary__grid">
-          <div><dt>Inputs<span class="setup-summary__hint">where photos come from</span></dt><dd id="setupSummaryInputs">—</dd></div>
-          <div><dt>Output<span class="setup-summary__hint">where sorted albums are saved</span></dt><dd id="setupSummaryOutput">—</dd></div>
-          <div><dt>Sorting<span class="setup-summary__hint">how photos with several people are filed</span></dt><dd id="setupSummarySorting">—</dd></div>
+          <div>
+            <dt>Inputs<span class="setup-summary__hint">where photos come from</span></dt>
+            <dd id="setupSummaryInputs">—</dd>
+            <button class="btn btn--ghost btn--sm setup-summary__edit" data-edit-step="sources" type="button">Edit sources</button>
+          </div>
+          <div>
+            <dt>Output<span class="setup-summary__hint">where sorted albums are saved</span></dt>
+            <dd id="setupSummaryOutput">—</dd>
+            <button class="btn btn--ghost btn--sm setup-summary__edit" data-edit-step="output" type="button">Edit output</button>
+          </div>
+          <div>
+            <dt>Sorting<span class="setup-summary__hint">how photos with several people are filed</span></dt>
+            <dd id="setupSummarySorting">—</dd>
+            <button class="btn btn--ghost btn--sm setup-summary__edit" data-edit-step="sorting" type="button">Edit sorting</button>
+          </div>
         </dl>
-        <div class="btn-row">
-          <button class="btn btn--ghost btn--sm" id="editSetupBtn" type="button">Edit inputs, output &amp; sorting</button>
-        </div>
       </div>
 
       <div class="card-plain" id="sourceWizard">
+        <!-- Shown only when editing an existing setup (not first run): a clear way
+             to leave the editor and go back to the "Your setup" summary. -->
+        <div class="wizard-editbar" id="wizardEditBar" hidden>
+          <span class="wizard-editbar__label">Editing your setup</span>
+          <button class="btn btn--primary btn--sm" id="closeSetupBtn" type="button">✓ Done</button>
+        </div>
         <!-- STEP 1 — SOURCES (device folders AND cloud folders together) -->
         <div class="wizard-pane" id="wizPaneSources">
           <div class="wizard-head">
@@ -8624,8 +8643,10 @@ function renderSetupUI() {
   if (hero) hero.hidden = !!state.setupDone;
   if (summary) summary.hidden = !state.setupDone;
   // Before first-run setup, show the stepped wizard; afterwards collapse it
-  // behind the summary's "Edit" button so the screen isn't a wall of steps.
+  // behind the summary's "Edit" buttons so the screen isn't a wall of steps.
   if (wizard && !configEditing) wizard.hidden = !!state.setupDone;
+  const editbar = el("wizardEditBar");
+  if (editbar) editbar.hidden = !(configEditing && state.setupDone);
   if (!state.setupDone) return;
   const outputEl = el("setupSummaryOutput");
   const inputsEl = el("setupSummaryInputs");
@@ -8655,19 +8676,33 @@ function renderSetupUI() {
   if (sortingEl) sortingEl.textContent = state.sortMode === "single" ? "One copy, grouped by main person" : "A folder for each person";
 }
 
-// Reveal the setup wizard for editing (from the summary's "Edit" button). Keeps
-// the three panes available as plain config \u2014 no first-time step pressure.
+// Reveal the setup wizard for editing (from the summary's per-step "Edit"
+// buttons). Keeps the three panes available as plain config — no first-time step
+// pressure — and jumps straight to the step the user asked to edit.
 let configEditing = false;
 // When a logged-out user chooses "set up on this device only", we drop the
 // sign-in gate for the rest of the session so they can use the wizard offline.
 let skipAuthGate = false;
-function openSetupConfig() {
+function openSetupConfig(step) {
   configEditing = true;
   const wizard = el("sourceWizard");
   if (wizard) wizard.hidden = false;
-  showWizardPane("sources");
+  const editbar = el("wizardEditBar");
+  if (editbar) editbar.hidden = false;
+  const pane = step === "output" || step === "sorting" ? step : "sources";
+  showWizardPane(pane);
   wizard?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
+
+// Leave the editor and collapse back to the "Your setup" summary.
+function closeSetupConfig() {
+  configEditing = false;
+  const editbar = el("wizardEditBar");
+  if (editbar) editbar.hidden = true;
+  renderSetupUI(); // hides the wizard again (setup is done) and refreshes the summary
+  el("setupSummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 
 // Home-screen stat tiles. The first three are live shortcuts (photos → Everyone
 // album, people → Albums, duplicates → the duplicate review); the last two are
@@ -10795,8 +10830,13 @@ function wire() {
   el("albumBackupNow").addEventListener("click", () => {
     if (state.activeAlbum) forceBackupAlbum(state.activeAlbum);
   });
-  const editSetupBtn = el("editSetupBtn");
-  if (editSetupBtn) editSetupBtn.addEventListener("click", openSetupConfig);
+  // Per-step edit buttons on the "Your setup" summary open the wizard at the
+  // chosen step; the wizard's "Done" button closes the editor.
+  document.querySelectorAll("[data-edit-step]").forEach((b) =>
+    b.addEventListener("click", () => openSetupConfig(b.dataset.editStep))
+  );
+  const closeSetupBtn = el("closeSetupBtn");
+  if (closeSetupBtn) closeSetupBtn.addEventListener("click", closeSetupConfig);
   const repairBtn = el("albumBackupRepair");
   if (repairBtn)
     repairBtn.addEventListener("click", () => {
