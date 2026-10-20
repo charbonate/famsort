@@ -3400,6 +3400,32 @@ async function renameFolder(itemId, newName) {
   return renameCloudFile(itemId, newName);
 }
 
+// Resolve an EXISTING folder's item id by its path (e.g. "Kinalbum") WITHOUT
+// creating anything. Returns the id, or null if the folder doesn't exist / not
+// signed in. Used to offer renaming the old output folder when the user changes
+// where backups go.
+async function folderIdByPath(folderPath) {
+  if (!oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  const path = String(folderPath || "")
+    .split("/")
+    .filter(Boolean)
+    .map((s) => encodeURIComponent(s.replace(/[\\/:*?"<>|]/g, "_")))
+    .join("/");
+  if (!path) return null;
+  try {
+    const res = await fetch(`${GRAPH}/me/drive/root:/${path}?$select=id,folder`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const item = await res.json();
+    return item.folder ? item.id : null; // only return it when it's actually a folder
+  } catch {
+    return null;
+  }
+}
+
 // Resolve the camera-roll special folder (id + name) so it can be offered as a
 // default, pre-selected source.
 async function cameraRollFolder() {
@@ -3660,7 +3686,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, createFolder, renameFolder, cameraRollFolder, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, createFolder, renameFolder, folderIdByPath, cameraRollFolder, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -3712,6 +3738,7 @@ const state = {
   albumSort: "count", // album index order: "count" (most photos) | "name"
   albumPhotoSort: "added_new", // photo order inside an open album: added_new|added_old|date_new|date_old|name
   favAlbums: [], // album ids pinned to the top of the Albums screen
+  favUpdatedAt: 0, // when favAlbums last changed on THIS account — drives last-write-wins so a stale cloud copy can't wipe a fresh favourite
   specialCovers: {}, // chosen cover thumbnails for the special albums: { "__all__": thumb, "__untagged__": thumb }
   autoBackup: true, // continuously sort new photos and back organised copies to OneDrive
   backupUntagged: false, // by default DON'T back up untagged photos — they only upload once someone is tagged in them
@@ -4160,6 +4187,7 @@ function stopAutoSync() {
 let lastCloudSweep = 0;
 let cloudSweeping = false;
 async function autoSweep(silent = true) {
+  if (configEditing) return; // paused while the user edits their setup (see renderHomeBackup)
   await autoRescanGranted(silent); // device folders
   await cloudSweep(); // cloud folders (rate-limited)
 }
@@ -5004,6 +5032,7 @@ async function cleanupAlbumDuplicates(id) {
 // so "backed up" stays honest without the user pressing anything.
 async function maybeReconcileAlbum(id, force = false) {
   if (reconcileBusy || forceBackupBusy) return;
+  if (configEditing) return; // paused while the user edits their setup
   if (id === ALL_ALBUM || id === UNTAGGED || id === AWAITING) return;
   if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
   if (!force && Date.now() - (reconciledAt.get(id) || 0) < 45000) return;
@@ -5277,6 +5306,35 @@ function setAlbumBackupProgress(done, total) {
   fill.style.width = (total ? Math.round((done / total) * 100) : 0) + "%";
 }
 
+// True when a background job (backup / verify / duplicate tidy-up) is running.
+function backgroundBusy() {
+  return forceBackupBusy || backingUpAll || reconcileBusy || dedupeBusy;
+}
+
+// One plain-English line describing EXACTLY what's happening right now, combining
+// every job in flight with " \u00b7 " and a trailing "\u2026". Replaces the old vague
+// mix of "Syncing\u2026", "Working\u2026" and "Checking\u2026" buttons that didn't say what
+// the app was actually doing. Returns "" when nothing is running.
+function activityStatusText() {
+  const where = state.outputMode === "device" && state.outputHandle ? "this device" : "OneDrive";
+  const parts = [];
+  if (forceBackupBusy || backingUpAll) {
+    const now = backupNowLabel();
+    parts.push(
+      backupLiveTotal > 0
+        ? `backing up ${backupLiveDone} of ${backupLiveTotal} to ${where}${now ? ` (${now})` : ""}`
+        : `backing up to ${where}`
+    );
+  }
+  if (dedupeBusy) {
+    parts.push(dedupeTotal > 0 ? `removing duplicate copies ${dedupeDone} of ${dedupeTotal}` : "removing duplicate copies");
+  }
+  if (reconcileBusy) parts.push(`checking which photos are really in ${where}`);
+  if (!parts.length) return "";
+  const joined = parts.join(" \u00b7 ");
+  return joined.charAt(0).toUpperCase() + joined.slice(1) + "\u2026";
+}
+
 // The "X of Y still to back up" strip + "Back up now" button above an album.
 function renderAlbumBackupBar(id, special) {
   const bar = el("albumBackupBar");
@@ -5296,6 +5354,18 @@ function renderAlbumBackupBar(id, special) {
   const notBacked = photos.filter((p) => !isPhotoBackedUp(p)).length;
   const text = el("albumBackupText");
   const btn = el("albumBackupNow");
+  // Untagged photos are NOT backed up by default (they only upload once someone
+  // is tagged in them). Don't nag with a "N not backed up" banner here or make it
+  // look like something is trying/failing to upload \u2014 say plainly that they're
+  // held back by choice, and point to the toggle to include them.
+  if (id === UNTAGGED && !state.backupUntagged) {
+    if (el("albumBackupRepair")) el("albumBackupRepair").hidden = true;
+    if (el("albumBackupDedup")) el("albumBackupDedup").hidden = true;
+    bar.hidden = false;
+    text.textContent = `These ${photos.length} aren't backed up \u2014 untagged photos stay on your device by choice. Tag someone in a photo to include it, or turn on \u201cBack up untagged too\u201d in Family \u2699\ufe0f.`;
+    btn.hidden = true;
+    return;
+  }
   if (!device && !cloudOK) {
     if (notBacked === 0) {
       bar.hidden = true;
@@ -5356,6 +5426,18 @@ function renderAlbumBackupBar(id, special) {
     dedup.hidden = !cloudOK || photos.length === 0;
     dedup.disabled = busy;
     dedup.textContent = busy ? "Checking…" : extra > 0 ? `🔍 Check ${extra} possible duplicate${extra === 1 ? "" : "s"}` : "🔍 Check for duplicates";
+  }
+  // While ANY background job is running, don't show three separate buttons each
+  // with a vague busy word ("Syncing…", "Working…", "Checking…") — that reads as
+  // "working… working… working…" and you can't tell what's actually happening.
+  // Instead collapse to ONE clear line that names every job in flight, and hide
+  // the (disabled) buttons until it's done.
+  if (backgroundBusy()) {
+    const act = activityStatusText();
+    if (act) text.textContent = act;
+    btn.hidden = true;
+    if (repair) repair.hidden = true;
+    if (dedup) dedup.hidden = true;
   }
 }
 
@@ -5552,6 +5634,7 @@ function buildCloudModel() {
       sortMode: state.sortMode === "single" ? "single" : "perPerson",
       cloudSources: state.cloudSources || [],
       favAlbums: state.favAlbums || [],
+      favUpdatedAt: state.favUpdatedAt || 0,
       kidsOnly: !!state.kidsOnly,
       setupDone: !!state.setupDone,
       specialCovers: state.specialCovers || {}, // chosen covers for Everyone/Untagged
@@ -5704,8 +5787,17 @@ async function restoreCloudModel(silent = false) {
     }
     let albumPrefsChanged = false;
     if (Array.isArray(c.favAlbums)) {
+      // Last-write-wins: only adopt the cloud favourites when they're NEWER than
+      // this device's. Without this, a stale cloud copy (pulled on startup before
+      // our own change has uploaded) would wipe a favourite the user just set.
+      const cloudFavAt = typeof c.favUpdatedAt === "number" ? c.favUpdatedAt : 0;
+      const localFavAt = state.favUpdatedAt || 0;
       const same = JSON.stringify(c.favAlbums) === JSON.stringify(state.favAlbums || []);
-      if (!same) { state.favAlbums = c.favAlbums; albumPrefsChanged = true; }
+      if (!same && cloudFavAt >= localFavAt) {
+        state.favAlbums = c.favAlbums;
+        state.favUpdatedAt = cloudFavAt;
+        albumPrefsChanged = true;
+      }
     }
     if (typeof c.kidsOnly === "boolean" && c.kidsOnly !== state.kidsOnly) {
       state.kidsOnly = c.kidsOnly; albumPrefsChanged = true;
@@ -6211,6 +6303,7 @@ async function loadAlbumPrefs() {
     state.albumPhotoSort = legacy[p.photoSort] || p.photoSort;
   }
   if (Array.isArray(p.fav)) state.favAlbums = p.fav;
+  if (typeof p.favUpdatedAt === "number") state.favUpdatedAt = p.favUpdatedAt;
   if (typeof p.kidsOnly === "boolean") state.kidsOnly = p.kidsOnly;
   if (p.specialCovers && typeof p.specialCovers === "object") state.specialCovers = p.specialCovers;
 }
@@ -6221,6 +6314,7 @@ async function saveAlbumPrefs() {
     sort: state.albumSort,
     photoSort: state.albumPhotoSort,
     fav: state.favAlbums,
+    favUpdatedAt: state.favUpdatedAt || 0,
     kidsOnly: state.kidsOnly,
     specialCovers: state.specialCovers || {},
   });
@@ -7346,11 +7440,57 @@ async function confirmFolderBrowser() {
       .slice(1)
       .map((c) => c.name)
       .join("/");
+    const oldRoot = state.outputRoot;
     state.outputRoot = path || "Famsort";
     await saveCloudPrefs();
     renderOutputLabel();
+    el("folderModal").hidden = true;
+    // If they changed WHERE backups go, offer to rename the old OneDrive folder
+    // to the new name (so what's already backed up moves with it, instead of a
+    // stray old folder + re-uploading everything). Non-blocking.
+    maybeOfferOutputFolderRename(oldRoot, state.outputRoot);
+    return;
   }
   el("folderModal").hidden = true;
+}
+
+// When the output folder name changes, give the user the choice (option 1 from
+// their request): rename the EXISTING OneDrive folder they'd been backing up to,
+// so already-backed-up photos move with it. Only offered when it's safe: cloud
+// output, single top-level folders, the OLD folder still exists, and the NEW
+// name isn't already a different folder (which would collide). Does nothing
+// silently if any check fails.
+async function maybeOfferOutputFolderRename(oldRoot, newRoot) {
+  if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
+  if (!oldRoot || !newRoot || oldRoot === newRoot) return;
+  if (oldRoot.includes("/") || newRoot.includes("/")) return; // only simple top-level renames
+  let oldId = null;
+  try {
+    oldId = await cloud.folderIdByPath(oldRoot);
+  } catch {}
+  if (!oldId) return; // old folder already gone — nothing to rename
+  let newId = null;
+  try {
+    newId = await cloud.folderIdByPath(newRoot);
+  } catch {}
+  if (newId && newId !== oldId) return; // a different folder already owns the new name — can't rename into it
+  const backed = state.photos.filter((p) => isPhotoBackedUp(p)).length;
+  const ok = await uiConfirm(
+    `Your “${oldRoot}” folder in OneDrive is the one Famsort has been backing up to${backed ? ` (${backed} photo${backed === 1 ? "" : "s"} are in there)` : ""}. Rename it to “${newRoot}” in OneDrive so everything already backed up moves with it — instead of starting a fresh “${newRoot}” folder and uploading it all again?`,
+    { okLabel: `Rename to “${newRoot}”`, cancelLabel: "No, start fresh" }
+  );
+  if (!ok) return;
+  let done = false;
+  try {
+    done = await cloud.renameFolder(oldId, newRoot);
+  } catch {}
+  if (done) {
+    setAutoBackupMsg(`✓ Renamed your OneDrive backup folder “${oldRoot}” → “${newRoot}”. Nothing re-uploaded.`);
+    reconciledAt.clear(); // paths changed — let the next verify re-check
+  } else {
+    setAutoBackupMsg(`Couldn't rename “${oldRoot}” in OneDrive — new backups will go to “${newRoot}”.`);
+  }
+  renderAll();
 }
 
 function showCloudMsg(text) {
@@ -8847,6 +8987,7 @@ function openSetupConfig(step) {
   if (editbar) editbar.hidden = false;
   const pane = step === "output" || step === "sorting" ? step : "sources";
   showWizardPane(pane);
+  renderHomeBackup(); // reflect the paused-while-editing state right away
   wizard?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -8857,6 +8998,8 @@ function closeSetupConfig() {
   if (editbar) editbar.hidden = true;
   renderSetupUI(); // hides the wizard again (setup is done) and refreshes the summary
   el("setupSummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Resume backups now that the setup is settled — pick up anything that changed.
+  backupAllAlbums();
 }
 
 
@@ -8908,6 +9051,15 @@ function renderHomeBackup() {
   const fill = el("homeBackupFill");
   const nowBtn = el("homeBackupNow");
   const where = device ? "this device" : "OneDrive";
+  // While the user is editing any of the 3 setup steps, backups are paused so we
+  // never write to the OLD output folder mid-change. Say so plainly.
+  if (configEditing) {
+    wrap.classList.remove("is-busy", "is-done");
+    if (txt) txt.textContent = "⏸ Backups paused while you edit your setup — they'll resume as soon as you tap Done.";
+    if (track) track.hidden = true;
+    if (nowBtn) nowBtn.hidden = true;
+    return;
+  }
   const busy = (forceBackupBusy || backingUpAll) && backupLiveTotal > 0;
   wrap.classList.toggle("is-busy", busy || dedupeBusy);
   wrap.classList.toggle("is-done", !busy && !dedupeBusy && done >= total);
@@ -9073,6 +9225,7 @@ async function toggleFavAlbum(id) {
   state.favAlbums = isFavAlbum(id)
     ? state.favAlbums.filter((x) => x !== id)
     : [...state.favAlbums, id];
+  state.favUpdatedAt = Date.now(); // stamp the change so it wins over older cloud copies
   await saveAlbumPrefs();
   scheduleCloudSync(); // favourites are account-level — mirror to every device
   renderAlbums();
@@ -9256,15 +9409,15 @@ function renderAlbumsBackupSummary() {
 
   const where = device ? "this device" : "OneDrive";
   const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 100;
-  const busy = forceBackupBusy || backingUpAll;
   bar.classList.toggle("is-done", done >= total);
   if (done >= total) {
     if (txt) txt.textContent = `\u2713 All ${total} album photo${total === 1 ? "" : "s"} backed up to ${where}`;
     if (track) track.hidden = true;
   } else {
+    const act = backgroundBusy() ? activityStatusText() : "";
     if (txt)
-      txt.textContent = busy
-        ? `Syncing to ${where}\u2026 ${done} of ${total} backed up, ${total - done} to go`
+      txt.textContent = act
+        ? `${act} ${done} of ${total} done`
         : `${done} of ${total} backed up to ${where} \u2014 ${total - done} still syncing\u2026`;
     if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
   }
@@ -9312,6 +9465,7 @@ async function backupAllAlbums() {
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
   if ((!device && !cloudOK) || !state.autoBackup) return;
+  if (configEditing) return; // don't write to the OLD output folder while it's being changed
   if (backingUpAll || forceBackupBusy) return;
   // Heal any photos that lost their source link first, so the sweep can pull
   // their full-size originals rather than blocking on "needs source".
