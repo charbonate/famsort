@@ -785,6 +785,26 @@ p { margin: 0 0 .9rem; }
 .setup-summary__grid dt { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); font-weight: 700; display: flex; flex-direction: column; gap: 2px; }
 .setup-summary__hint { font-size: .68rem; letter-spacing: 0; text-transform: none; font-weight: 500; opacity: .85; }
 .setup-summary__grid dd { margin: 6px 0 0; font-size: .95rem; color: var(--ink); font-weight: 600; }
+/* Inputs list inside the "Your setup" summary — the actual sources, not a count. */
+.setup-src-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.setup-src-list li { display: flex; align-items: center; gap: 7px; font-size: .9rem; font-weight: 600; color: var(--ink); }
+.setup-src__ico { flex: 0 0 auto; }
+.setup-src__where { margin-left: auto; font-size: .72rem; font-weight: 500; color: var(--ink-soft); white-space: nowrap; }
+
+/* Home-screen live backup banner — always shows whether a backup is running. */
+.home-backup { background: var(--cream-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 11px 14px; margin: 0 0 18px; }
+.home-backup.is-done { background: var(--success-soft); border-color: #cdebd7; }
+.home-backup.is-busy { background: var(--accent-soft); border-color: #d9d3f5; }
+.home-backup__text { display: flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 600; color: var(--ink); }
+.home-backup.is-done .home-backup__text { color: var(--success); }
+.home-backup__track { margin-top: 10px; height: 7px; border-radius: 999px; background: #e6dccb; overflow: hidden; }
+.home-backup__fill { height: 100%; width: 0; border-radius: 999px; background: var(--grad-primary); transition: width .35s ease; }
+.home-backup__spin { flex: 0 0 auto; width: 13px; height: 13px; border: 2px solid rgba(90,76,209,.3); border-top-color: var(--accent); border-radius: 50%; animation: authspin .7s linear infinite; }
+
+/* A source folder that lives on ANOTHER device — shown, clearly marked, read-only. */
+.watched-row--remote .watched-row__main { background: var(--cream-2); opacity: .9; }
+.watched-row--remote .watched-row__name { font-weight: 600; }
+
 
 /* Albums screen: one overall backup/sync status for the whole library */
 .albums-backup { background: var(--cream-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 14px; }
@@ -1288,6 +1308,13 @@ p { margin: 0 0 .9rem; }
         <button type="button" class="stat stat--link" id="statDupesBtn"><span class="stat__num" id="statDupes">0</span><span class="stat__label">duplicates to clean</span></button>
         <div class="stat stat--static" id="statCleanedTile"><span class="stat__num" id="statCleaned">0</span><span class="stat__label">duplicates cleaned</span></div>
         <div class="stat stat--static" id="statBackedUpTile"><span class="stat__num" id="statBackedUp">0</span><span class="stat__label">backed up</span></div>
+      </div>
+
+      <!-- Live backup banner: always makes it clear whether a backup is running
+           and how far it's got, right on the home screen. -->
+      <div class="home-backup" id="homeBackup" hidden>
+        <span class="home-backup__text" id="homeBackupText"></span>
+        <div class="home-backup__track" id="homeBackupTrack" hidden><div class="home-backup__fill" id="homeBackupFill"></div></div>
       </div>
 
       <div class="tips">
@@ -3574,6 +3601,7 @@ const state = {
   keptDistinct: new Set(), // photo ids the user confirmed are NOT duplicates (stop flagging)
   dupesCleaned: 0, // running count of duplicate copies removed (home-screen read-out)
   cloudSources: [], // chosen OneDrive source folders [{id, name}] ([] = camera roll default)
+  remoteSources: {}, // deviceId → {label, folders:[{name}], updatedAt}: on-device source folders on OTHER devices, synced so each device shows the full picture
   outputRoot: "Famsort", // OneDrive folder path where sorted per-person albums are written
   sortMode: "perPerson", // how multi-person photos are filed: "perPerson" = a copy in EVERY tagged person's folder (albums never miss a photo, duplicates across folders); "single" = one copy in the primary person's folder only (no duplicates)
   outputMode: "cloud", // "cloud" = back up albums to OneDrive; "device" = write to a local folder only
@@ -3594,12 +3622,49 @@ let cloudSignedIn = false; // true once OneDrive is connected this session
 // the current name/email used for the initials fallback.
 const AVATAR_KEY = "famsort.avatar";
 const CONNECTED_KEY = "famsort.connectedAt";
+const DEVICE_ID_KEY = "famsort.deviceId";
 let msProfilePhoto = null;
 let accountWho = "";
 const PERSON_GLYPH = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9.3" r="3.1"/><path d="M6 18.4c0-3 2.7-4.8 6-4.8s6 1.8 6 4.8"/></svg>';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
+
+// A STABLE id for this device (browser profile), so each device's on-device
+// source folders can be synced under their own key without clobbering another
+// device's list. Stored in localStorage — survives reloads, unique per device.
+function getDeviceId() {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = "dev-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return "dev-local";
+  }
+}
+
+// A friendly name for this device to show on OTHER devices, e.g. "Sam's Windows
+// PC" — so a folder that lives on the laptop still appears on the phone, clearly
+// marked as being elsewhere. Derived from the user agent + account first name.
+function getDeviceLabel() {
+  const ua = navigator.userAgent || "";
+  let kind = "device";
+  if (/iPhone/i.test(ua)) kind = "iPhone";
+  else if (/iPad/i.test(ua)) kind = "iPad";
+  else if (/Android/i.test(ua)) kind = /Mobile/i.test(ua) ? "Android phone" : "Android tablet";
+  else if (/Macintosh|Mac OS X/i.test(ua)) kind = "Mac";
+  else if (/Windows/i.test(ua)) kind = "Windows PC";
+  else if (/Linux/i.test(ua)) kind = "Linux PC";
+  // Prefix the account's first name when we know it ("Sam's laptop" reads better).
+  const who = String(accountWho || "").trim();
+  let first = "";
+  if (who && !who.includes("@")) first = who.split(/\s+/)[0];
+  return first ? `${first}'s ${kind}` : kind;
+}
+
 
 /* ---------------------------------------------------------------- boot */
 async function boot() {
@@ -3691,6 +3756,7 @@ async function pickFolder() {
   if (!state.watched.some((w) => w.name === handle.name)) {
     state.watched.push({ id: db.uid(), name: handle.name, handle });
     await saveWatched();
+    scheduleCloudSync(); // share this device's source list with the account
     renderWatched();
   }
   await scanHandle(handle);
@@ -3699,6 +3765,7 @@ async function pickFolder() {
 async function forgetFolder(id) {
   state.watched = state.watched.filter((w) => w.id !== id);
   await saveWatched();
+  scheduleCloudSync(); // keep the shared source list in step across devices
   renderWatched();
 }
 
@@ -4194,6 +4261,10 @@ async function getUploadableFile(photo) {
 }
 
 let forceBackupBusy = false;
+// Live backup progress, published while a force-backup runs so the home-screen
+// banner can show "Backing up N of M" in real time (0/0 when idle).
+let backupLiveDone = 0;
+let backupLiveTotal = 0;
 // Cloud reconciliation state: are we mid-verify, and when did we last verify each
 // album (to throttle the background re-checks)?
 let reconcileBusy = false;
@@ -4901,12 +4972,27 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
   let ok = 0;
   let fail = 0;
   let needsSource = 0;
-  for (let i = 0; i < photos.length; i++) {
-    const photo = photos[i];
+  let done = 0;
+  const total = photos.length;
+  // Publish live totals so the home-screen backup banner shows real progress
+  // while this runs (not just a final number).
+  backupLiveTotal = total;
+  backupLiveDone = 0;
+  renderHomeBackup();
+
+  // Advance the progress read-outs after each photo settles.
+  const bump = () => {
+    done++;
+    backupLiveDone = done;
+    setAlbumBackupProgress(done, total);
+    setAutoBackupMsg(`Backing up ${done} of ${total} to ${where}…`);
+    renderHomeBackup();
+  };
+
+  // Back up ONE photo (never throws — it tallies its own result).
+  const backupOne = async (photo) => {
     state.uploadingPhotoId = photo.id;
     setThumbStatus(photo.id, "uploading");
-    setAlbumBackupProgress(i, photos.length);
-    setAutoBackupMsg(`Backing up ${i + 1} of ${photos.length} to ${where}…`);
     const got = await getUploadableFile(photo);
     if (!got || got.lowRes) {
       // FULL QUALITY ONLY. We never store a low-res preview as the "backup": if
@@ -4915,7 +5001,8 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
       // imported from) instead of quietly uploading a smaller copy.
       needsSource++;
       setThumbStatus(photo.id, "pending");
-      continue;
+      bump();
+      return;
     }
     try {
       if (device) {
@@ -4947,9 +5034,26 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
       fail++;
     }
     setThumbStatus(photo.id, isPhotoBackedUp(photo) ? "saved" : "missing");
-  }
+    bump();
+  };
+
+  // Upload several photos AT ONCE so a big backup finishes far quicker — the old
+  // one-at-a-time loop was the main reason it felt slow. OneDrive handles a
+  // handful of parallel PUTs comfortably; device-folder writes we keep lighter.
+  const concurrency = Math.min(device ? 2 : 4, photos.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < photos.length) {
+      const idx = next++;
+      await backupOne(photos[idx]);
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, worker));
+
   state.uploadingPhotoId = null;
-  setAlbumBackupProgress(photos.length, photos.length);
+  setAlbumBackupProgress(total, total);
+  backupLiveTotal = 0;
+  backupLiveDone = 0;
   forceBackupBusy = false;
   await saveBackedUpKeys();
   if (!device) {
@@ -5321,6 +5425,15 @@ async function saveSetupDone() {
 }
 
 function buildCloudModel() {
+  // Merge THIS device's on-device source folders into the shared map (keyed by a
+  // stable device id) WITHOUT dropping other devices' entries — so every device
+  // can show the full list of sources, marking the ones that live elsewhere.
+  const deviceSources = { ...(state.remoteSources || {}) };
+  deviceSources[getDeviceId()] = {
+    label: getDeviceLabel(),
+    folders: state.watched.map((w) => ({ name: w.name })),
+    updatedAt: Date.now(),
+  };
   return {
     version: 1,
     updatedAt: new Date().toISOString(),
@@ -5350,6 +5463,7 @@ function buildCloudModel() {
       favAlbums: state.favAlbums || [],
       kidsOnly: !!state.kidsOnly,
       setupDone: !!state.setupDone,
+      deviceSources, // on-device source folders, per device, so each device sees them all
     },
   };
 }
@@ -5480,6 +5594,12 @@ async function restoreCloudModel(silent = false) {
     if (Array.isArray(c.cloudSources)) {
       const same = JSON.stringify(c.cloudSources) === JSON.stringify(state.cloudSources || []);
       if (!same) { state.cloudSources = c.cloudSources; cfgChanged = true; }
+    }
+    // On-device source folders from EVERY device on this account (so the phone can
+    // list "Sam's laptop" folders even though the handle lives on the laptop).
+    if (c.deviceSources && typeof c.deviceSources === "object") {
+      const same = JSON.stringify(c.deviceSources) === JSON.stringify(state.remoteSources || {});
+      if (!same) { state.remoteSources = c.deviceSources; cfgChanged = true; }
     }
     let albumPrefsChanged = false;
     if (Array.isArray(c.favAlbums)) {
@@ -5717,8 +5837,15 @@ function renderSources() {
   const empty = el("sourceEmpty");
   if (!list) return;
   const cloudSources = state.cloudSources || [];
+  // On-device folders that live on OTHER devices (synced via the cloud model).
+  const myId = getDeviceId();
+  const remote = [];
+  for (const [devId, info] of Object.entries(state.remoteSources || {})) {
+    if (devId === myId || !info || !Array.isArray(info.folders)) continue;
+    for (const f of info.folders) remote.push({ devId, label: info.label || "another device", name: f.name });
+  }
   list.innerHTML = "";
-  const hasAny = state.watched.length > 0 || cloudSources.length > 0;
+  const hasAny = state.watched.length > 0 || cloudSources.length > 0 || remote.length > 0;
   if (empty) empty.hidden = hasAny;
 
   // Folders on this device.
@@ -5749,6 +5876,24 @@ function renderSources() {
     list.appendChild(row);
   }
 
+  // Folders that live on another device. Read-only here — they're watched on that
+  // device, so we just show them (clearly marked) rather than pretending we can
+  // read them. The ✕ removes the whole device's entry from the shared list.
+  const seenDev = new Set();
+  for (const r of remote) {
+    const row = document.createElement("div");
+    row.className = "watched-row watched-row--remote";
+    row.innerHTML = `
+      <div class="watched-row__main watched-row__main--static">
+        <span class="watched-row__icon">💻</span>
+        <span class="watched-row__name">${r.name}</span>
+        <span class="watched-row__hint">On ${r.label} · not on this device</span>
+      </div>
+      ${seenDev.has(r.devId) ? "" : `<button class="watched-row__x" data-remote="${r.devId}" aria-label="Remove ${r.label} from the list">✕</button>`}`;
+    seenDev.add(r.devId);
+    list.appendChild(row);
+  }
+
   // When cloud is connected but no explicit folders are chosen, note the default.
   if (!cloudSources.length && cloudSignedIn) {
     const note = document.createElement("p");
@@ -5765,6 +5910,17 @@ function renderSources() {
       state.cloudSources = (state.cloudSources || []).filter((x) => x.id !== b.dataset.src);
       await saveCloudPrefs();
       renderSources();
+    })
+  );
+  list.querySelectorAll("[data-remote]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const map = { ...(state.remoteSources || {}) };
+      delete map[b.dataset.remote];
+      state.remoteSources = map;
+      await saveCloudPrefs();
+      scheduleCloudSync();
+      renderSources();
+      renderSetupUI();
     })
   );
 
@@ -5805,6 +5961,7 @@ async function addDeviceSource() {
   if (!state.watched.some((w) => w.name === handle.name)) {
     state.watched.push({ id: db.uid(), name: handle.name, handle });
     await saveWatched();
+    scheduleCloudSync(); // share this device's source list with the account
   }
   renderSources();
 }
@@ -5892,6 +6049,8 @@ async function connectCloud(opts) {
 async function loadCloudPrefs() {
   const s = await db.get("meta", "cloudSources");
   state.cloudSources = Array.isArray(s?.list) ? s.list : [];
+  const rs = await db.get("meta", "remoteSources");
+  state.remoteSources = rs && rs.map && typeof rs.map === "object" ? rs.map : {};
   const o = await db.get("meta", "outputRoot");
   if (o?.path) state.outputRoot = o.path;
   const sm = await db.get("meta", "sortMode");
@@ -5924,6 +6083,7 @@ async function loadCloudPrefs() {
 
 async function saveCloudPrefs() {
   await db.put("meta", { id: "cloudSources", list: state.cloudSources });
+  await db.put("meta", { id: "remoteSources", map: state.remoteSources || {} });
   await db.put("meta", { id: "outputRoot", path: state.outputRoot });
   await db.put("meta", { id: "sortMode", mode: state.sortMode });
   await db.put("meta", { id: "outputMode", mode: state.outputMode });
@@ -8456,6 +8616,8 @@ function renderSetupUI() {
     if (tips) tips.hidden = true;
     const statRow = el("statRow");
     if (statRow) statRow.hidden = true;
+    const homeBackup = el("homeBackup");
+    if (homeBackup) homeBackup.hidden = true;
     return;
   }
   if (tips) tips.hidden = false;
@@ -8465,11 +8627,25 @@ function renderSetupUI() {
   // behind the summary's "Edit" button so the screen isn't a wall of steps.
   if (wizard && !configEditing) wizard.hidden = !!state.setupDone;
   if (!state.setupDone) return;
-  const nSrc = state.watched.length + (state.cloudSources?.length || 0);
   const outputEl = el("setupSummaryOutput");
   const inputsEl = el("setupSummaryInputs");
   const sortingEl = el("setupSummarySorting");
-  if (inputsEl) inputsEl.textContent = nSrc ? `${nSrc} source${nSrc === 1 ? "" : "s"}` : "No sources yet \u2014 add one";
+  // List the ACTUAL sources (not just a count): folders on this device, cloud
+  // folders, and folders that live on another device — so the home screen shows
+  // exactly where photos are coming from, and it's editable via the button below.
+  if (inputsEl) {
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const rows = [];
+    for (const w of state.watched) rows.push(`<li><span class="setup-src__ico">📁</span>${esc(w.name)}<span class="setup-src__where">this device</span></li>`);
+    for (const s of state.cloudSources || []) rows.push(`<li><span class="setup-src__ico">☁️</span>${esc(s.name)}<span class="setup-src__where">OneDrive</span></li>`);
+    const myId = getDeviceId();
+    for (const [devId, info] of Object.entries(state.remoteSources || {})) {
+      if (devId === myId || !info || !Array.isArray(info.folders)) continue;
+      for (const f of info.folders) rows.push(`<li><span class="setup-src__ico">💻</span>${esc(f.name)}<span class="setup-src__where">${esc(info.label || "another device")}</span></li>`);
+    }
+    if (!rows.length && !(state.cloudSources || []).length && cloudSignedIn) rows.push(`<li><span class="setup-src__ico">☁️</span>Your OneDrive camera roll<span class="setup-src__where">default</span></li>`);
+    inputsEl.innerHTML = rows.length ? `<ul class="setup-src-list">${rows.join("")}</ul>` : "No sources yet \u2014 add one";
+  }
   if (outputEl) {
     outputEl.textContent =
       state.outputMode === "device"
@@ -8516,7 +8692,47 @@ function renderStats() {
   el("statBackedUp").textContent = canBackup ? done : "\u2014";
 
   el("statRow").hidden = state.photos.length === 0 && people === 0;
+  renderHomeBackup();
 }
+
+// Live backup banner on the home/Add screen so it's always obvious WHETHER a
+// backup is running and HOW FAR it's got — the Albums screen isn't the only
+// place that shows it anymore. Reuses the force-backup live counters when a
+// sweep is in progress, and the verified album totals when it's idle.
+function renderHomeBackup() {
+  const wrap = el("homeBackup");
+  if (!wrap) return;
+  const device = state.outputMode === "device" && !!state.outputHandle;
+  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+  const hasOutput = device || cloudOK;
+  const { total, done } = albumsBackupTotals();
+  // Nothing to say until there's an output, auto-backup is on, and photos exist.
+  if (!hasOutput || !state.autoBackup || !total || !state.setupDone) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  const txt = el("homeBackupText");
+  const track = el("homeBackupTrack");
+  const fill = el("homeBackupFill");
+  const where = device ? "this device" : "OneDrive";
+  const busy = (forceBackupBusy || backingUpAll) && backupLiveTotal > 0;
+  wrap.classList.toggle("is-busy", busy);
+  wrap.classList.toggle("is-done", !busy && done >= total);
+  if (busy) {
+    const pct = backupLiveTotal ? Math.round((backupLiveDone / backupLiveTotal) * 100) : 0;
+    if (txt) txt.innerHTML = `<span class="home-backup__spin"></span> Backing up ${backupLiveDone} of ${backupLiveTotal} to ${where}\u2026`;
+    if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
+  } else if (done >= total) {
+    if (txt) txt.textContent = `\u2713 All ${total} photo${total === 1 ? "" : "s"} backed up to ${where}`;
+    if (track) track.hidden = true;
+  } else {
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    if (txt) txt.textContent = `${done} of ${total} backed up to ${where} \u2014 ${total - done} will sync automatically`;
+    if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
+  }
+}
+
 
 // The "faces to tag" queue — the one piece of the old People screen we kept.
 // It now renders at the top of the Albums index (see renderAlbumIndex). Named
