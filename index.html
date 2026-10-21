@@ -1743,7 +1743,7 @@ p { margin: 0 0 .9rem; }
           <button class="ask__chip" type="button" data-ask-chip="Show me photos on this day">On this day</button>
           <button class="ask__chip" type="button" data-ask-chip="Make me a collage">Make a collage</button>
           <button class="ask__chip" type="button" data-ask-chip="Build me a slideshow">Build a slideshow</button>
-          <button class="ask__chip" type="button" data-ask-chip="Year in review 2024">Year in review</button>
+          <button class="ask__chip" type="button" data-ask-chip="Year in review">Year in review</button>
         </div>
         <p class="ask__msg" id="askMsg" hidden></p>
         <div class="ask-results" id="askResults" hidden></div>
@@ -4350,6 +4350,11 @@ async function boot() {
   }
   renderAll();
   el("boot").hidden = true;
+  // The Add screen is the default visible view, but its memories teaser and
+  // polaroid backdrop are only painted by navTo — paint them now so a returning,
+  // already-signed-in user sees them immediately without toggling tabs first.
+  renderHomeTip();
+  renderHomeMemories();
   // Backfill real capture dates/dimensions/camera for photos imported before
   // metadata capture existed — runs quietly in the background, never blocks boot.
   backfillPhotoMeta();
@@ -12974,7 +12979,7 @@ function openYearReview(year) {
   }
   body.innerHTML = html;
   const playBtn = el("yearReviewPlay");
-  if (playBtn) playBtn.onclick = () => { closeYearReview(); startSlideshow(ids, { title: `${year} in review` }); };
+  if (playBtn) playBtn.onclick = () => { closeYearReview(); startSlideshow(shuffleArr(ids.slice()), { title: `${year} in review` }); };
   modal.hidden = false;
 }
 function closeYearReview() {
@@ -13057,16 +13062,20 @@ function closeSlideshow() {
 
 /* ------------------------------------------------------- collage builder */
 
-// Compose a grid collage from a set of photos onto a canvas, entirely on-device.
-// This is what powers "build me a collage …" in Ask — a real artefact the user
-// can download, no LLM or network needed.
-function drawCover(ctx, im, x, y, w, h) {
-  const ir = im.width / im.height;
-  const cr = w / h;
-  let sw, sh, sx, sy;
-  if (ir > cr) { sh = im.height; sw = sh * cr; sx = (im.width - sw) / 2; sy = 0; }
-  else { sw = im.width; sh = sw / cr; sx = 0; sy = (im.height - sh) / 2; }
-  ctx.drawImage(im, sx, sy, sw, sh, x, y, w, h);
+// Compose a scattered polaroid collage from a set of photos onto a canvas,
+// entirely on-device. This is what powers "make me a collage …" in Ask — a real
+// artefact the user can download, no LLM or network needed. Photos keep their own
+// aspect ratio (never warped), sit in white polaroid frames, and are gently
+// rotated and overlapped for a hand-arranged look.
+function roundRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
 }
 function closeCollage() {
   const m = el("collageModal");
@@ -13088,7 +13097,7 @@ function downloadCollage() {
   }, "image/png");
 }
 async function buildCollage(ids, opts = {}) {
-  ids = (ids || []).filter(Boolean).slice(0, 16);
+  ids = (ids || []).filter(Boolean).slice(0, 14);
   if (ids.length < 2) {
     setAskMsg("I need at least a couple of photos to make a collage.");
     return;
@@ -13108,36 +13117,70 @@ async function buildCollage(ids, opts = {}) {
     return;
   }
   const n = loaded.length;
-  const cols = Math.ceil(Math.sqrt(n));
+  const cols = Math.max(2, Math.round(Math.sqrt(n * 1.35)));
   const rows = Math.ceil(n / cols);
-  const cell = 300;
-  const gap = 10;
-  const pad = 24;
-  const titleH = opts.title ? 64 : pad;
-  const W = pad * 2 + cols * cell + (cols - 1) * gap;
-  const H = titleH + pad + rows * cell + (rows - 1) * gap + pad;
+  // Longest edge of each photo (varies a touch for a scrapbook feel).
+  const photoMax = 300;
+  const framePad = 16;        // white border around the photo
+  const captionPad = 46;      // taller bottom lip, polaroid-style
+  const cell = photoMax * 0.82; // < photoMax so neighbours overlap
+  const jitter = photoMax * 0.12;
+  const margin = 70;
+  const titleH = opts.title ? 72 : 24;
+  const W = Math.round(margin * 2 + (cols - 1) * cell + photoMax + framePad * 2);
+  const H = Math.round(titleH + margin * 2 + (rows - 1) * cell + photoMax + framePad * 2 + captionPad);
   const canvas = el("collageCanvas");
   if (!canvas) return;
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#fbf7f0";
+  // Warm paper background with a soft vignette.
+  ctx.fillStyle = "#efe7d9";
+  ctx.fillRect(0, 0, W, H);
+  const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.2, W / 2, H / 2, Math.max(W, H) * 0.7);
+  grad.addColorStop(0, "rgba(255,255,255,0.35)");
+  grad.addColorStop(1, "rgba(120,100,70,0.12)");
+  ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
   if (opts.title) {
     ctx.fillStyle = "#2a2440";
-    ctx.font = "600 34px Georgia, 'Fraunces', serif";
+    ctx.font = "600 38px Georgia, 'Fraunces', serif";
     ctx.textBaseline = "middle";
-    ctx.fillText(opts.title, pad, titleH / 2 + 8);
+    ctx.textAlign = "center";
+    ctx.fillText(opts.title, W / 2, titleH / 2 + 18);
+    ctx.textAlign = "left";
   }
+  const rnd = (a, b) => a + Math.random() * (b - a);
   loaded.forEach((im, i) => {
-    const r = Math.floor(i / cols);
     const c = i % cols;
-    const x = pad + c * (cell + gap);
-    const y = titleH + pad + r * (cell + gap);
-    drawCover(ctx, im, x, y, cell, cell);
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 6;
-    ctx.strokeRect(x + 3, y + 3, cell - 6, cell - 6);
+    const r = Math.floor(i / cols);
+    // Centre of this cell, plus a little jitter so the grid doesn't show.
+    const baseX = margin + photoMax / 2 + framePad + c * cell;
+    const baseY = titleH + margin + photoMax / 2 + framePad + r * cell;
+    const cx = baseX + rnd(-jitter, jitter);
+    const cy = baseY + rnd(-jitter, jitter);
+    const rot = rnd(-0.17, 0.17); // ~±10°
+    // Fit the photo into photoMax on its longest side — NEVER distort it.
+    const scale = photoMax / Math.max(im.width, im.height) * rnd(0.9, 1.05);
+    const pw = im.width * scale;
+    const ph = im.height * scale;
+    const fw = pw + framePad * 2;
+    const fh = ph + framePad * 2 + captionPad;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    // Drop shadow + white polaroid frame.
+    ctx.shadowColor = "rgba(30,20,50,0.3)";
+    ctx.shadowBlur = 22;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 10;
+    ctx.fillStyle = "#fff";
+    roundRectPath(ctx, -fw / 2, -fh / 2, fw, fh, 6);
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+    // The photo sits in the upper area, leaving the classic bottom lip.
+    ctx.drawImage(im, -pw / 2, -fh / 2 + framePad, pw, ph);
+    ctx.restore();
   });
   const titleEl = el("collageTitle");
   if (titleEl) titleEl.textContent = opts.title || "Your collage";
@@ -13218,10 +13261,16 @@ function runAsk(query) {
   const wantMemories = /(on this day|memor|throwback)/.test(low);
   const wantCollage = /(collage|mosaic|photo ?grid|grid of|poster|montage board|picture grid)/.test(low);
 
-  if (wantYearReview && year) {
-    navTo("memories");
-    openYearReview(year);
-    return;
+  if (wantYearReview) {
+    // Default to the current year when none was named ("year in review" chip).
+    const yr = year || (datedPhotos().some((p) => photoYear(p) === new Date().getFullYear())
+      ? new Date().getFullYear()
+      : Math.max(0, ...datedPhotos().map(photoYear)));
+    if (yr) {
+      navTo("memories");
+      openYearReview(yr);
+      return;
+    }
   }
   if (wantMemories && !person && !year) {
     setAskMsg("Here are your memories.");
@@ -13231,7 +13280,12 @@ function runAsk(query) {
   let ids = state.photos.slice();
   if (person) ids = ids.filter((p) => (p.personIds || []).includes(person.id));
   if (year) ids = ids.filter((p) => photoYear(p) === year);
-  const photoIds = ids.sort((a, b) => photoTakenAt(a) - photoTakenAt(b)).map((p) => p.id);
+  // A slideshow or collage should feel fresh every time, so order randomly rather
+  // than always the same chronological run; plain "find" results stay chronological.
+  const randomOrder = wantSlideshow || wantCollage;
+  const photoIds = randomOrder
+    ? shuffleArr(ids.slice()).map((p) => p.id)
+    : ids.sort((a, b) => photoTakenAt(a) - photoTakenAt(b)).map((p) => p.id);
 
   const who = person ? ` of ${person.relationship === "Me" ? "you" : person.name}` : "";
   const when = year ? ` from ${year}` : "";
@@ -13242,7 +13296,7 @@ function runAsk(query) {
   }
   if (wantCollage) {
     const title = `${person ? (person.relationship === "Me" ? "You" : person.name) : "Memories"}${year ? ` · ${year}` : ""}`;
-    buildCollage(shuffleArr(photoIds.slice()).slice(0, 16), { title });
+    buildCollage(photoIds.slice(0, 14), { title });
     return;
   }
   if (wantSlideshow) {
