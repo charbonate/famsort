@@ -1536,6 +1536,8 @@ p { margin: 0 0 .9rem; }
 
           <p class="card-plain__fine" id="rescanLine" hidden>After an app update, <button class="linkbtn" id="rebuildBtn">re-scan everything with the latest AI</button> to apply improvements without re-choosing folders.</p>
 
+          <p class="card-plain__fine" id="cloudRescanLine" hidden>Connected to OneDrive. <button class="linkbtn" id="rescanCloudBtn">Scan all my OneDrive photos now</button> — pulls your whole camera roll with live progress (handy if some photos are missing).</p>
+
           <div class="btn-row btn-row--split">
             <span class="btn-row__spacer"></span>
             <button class="btn btn--primary" id="toOutputBtn">Next: choose output →</button>
@@ -7388,6 +7390,10 @@ function renderSources() {
   // "Re-scan with latest AI" only makes sense when device folders exist.
   const rl = el("rescanLine");
   if (rl) rl.hidden = state.watched.length === 0;
+
+  // "Scan all my OneDrive photos now" only shows when OneDrive is set up.
+  const crl = el("cloudRescanLine");
+  if (crl) crl.hidden = !cloud.oneDriveConfigured();
 }
 
 // Back-compat alias — older call sites render the unified source list now.
@@ -7449,6 +7455,32 @@ async function ensureSignedIn() {
 async function addCloudSource() {
   if (!(await ensureSignedIn())) return;
   openFolderBrowser("sources");
+}
+
+// Force a FULL, VISIBLE OneDrive scan right now. The background sweep is silent
+// and rate-limited to once per 10 min, which hides problems (e.g. a camera roll
+// that only partly imported). This button bypasses both: it re-walks the chosen
+// sources (or the camera roll by default) and streams live progress to the user
+// so they can see exactly how many photos are found and sorted.
+async function rescanCloudNow() {
+  if (!(await ensureSignedIn())) return;
+  const btn = el("rescanCloudBtn");
+  if (btn) btn.disabled = true;
+  lastCloudSweep = Date.now(); // this pass counts; don't let the timer double up
+  try {
+    cloudSignedIn = true;
+    const ids = (state.cloudSources || []).map((s) => s.id);
+    showScanMsg("Starting a full OneDrive scan…");
+    const ran = await withScanLock(async () => {
+      await cloud.importFromFolders(ids, showScanMsg, handleFiles);
+    }, false);
+    if (!ran) showScanMsg("A scan is already running — give it a moment.");
+    renderAll();
+  } catch {
+    showScanMsg("Couldn't complete the OneDrive scan. Please try again.");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // Add photos from GOOGLE PHOTOS. Google locked library-wide reads in 2025, so
@@ -14154,6 +14186,8 @@ function wire() {
   const addGoogleBtn = el("addGoogleBtn");
   if (addGoogleBtn) addGoogleBtn.addEventListener("click", addGoogleSource);
   el("rebuildBtn").addEventListener("click", rebuildFromWatched);
+  const rescanCloudBtn = el("rescanCloudBtn");
+  if (rescanCloudBtn) rescanCloudBtn.addEventListener("click", rescanCloudNow);
   el("toOutputBtn").addEventListener("click", () => showWizardPane("output"));
   el("backToSourcesBtn").addEventListener("click", () => showWizardPane("sources"));
   el("toSortingBtn").addEventListener("click", () => showWizardPane("sorting"));
