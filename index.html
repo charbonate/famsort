@@ -3087,6 +3087,53 @@ function cloudFileKey(uniqueKey) {
   return tok.slice(0, 10) || "x";
 }
 
+// Build the exact content-keyed filename uploadFileToOneDrive would use for a
+// photo (same rules), so we can ASK OneDrive whether that file already exists
+// before re-sending its bytes.
+function contentKeyedName(originalName, uniqueKey) {
+  let base = String(originalName || "photo.jpg").replace(/[\\/:*?"<>|]/g, "_") || "photo.jpg";
+  if (uniqueKey) {
+    const key = cloudFileKey(uniqueKey);
+    if (!base.includes(`-${key}.`) && !base.endsWith(`-${key}`)) {
+      const dot = base.lastIndexOf(".");
+      base = dot > 0 ? `${base.slice(0, dot)}-${key}${base.slice(dot)}` : `${base}-${key}`;
+    }
+  }
+  return base;
+}
+
+// Cheap existence check: does this photo's organised file ALREADY sit in `folder`
+// under its content-keyed name? One small metadata GET (no download, no upload).
+// Returns the existing {id, size, width, height} or null (missing / unreadable).
+// Because the filename is keyed to the photo's content hash, a file with that
+// exact name IS this same photo — so the caller can reuse it instead of
+// re-uploading identical bytes. This is what makes "it's already there, don't
+// upload again" true rather than relying on an optimistic local flag.
+async function getFileByContentKey(folderPath, originalName, uniqueKey) {
+  if (!oneDriveConfigured()) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  const segs = String(folderPath || "Famsort")
+    .split("/")
+    .filter(Boolean)
+    .map((s) => encodeURIComponent(s.replace(/[\\/:*?"<>|]/g, "_")));
+  const name = encodeURIComponent(contentKeyedName(originalName, uniqueKey));
+  const path = [...segs, name].join("/");
+  try {
+    const it = await graphGet(`${GRAPH}/me/drive/root:/${path}?$select=id,name,size,file,image`, token);
+    if (!it || !it.id || !it.file) return null;
+    return {
+      id: it.id,
+      name: it.name,
+      size: it.size || 0,
+      width: (it.image && it.image.width) || 0,
+      height: (it.image && it.image.height) || 0,
+    };
+  } catch {
+    return null; // 404 (not there) or unreadable → caller uploads as normal
+  }
+}
+
 // List the FILES directly inside one of our organised folders (e.g.
 // "Famsort/Mary"). Returns [{id, name, size, hash}] on success (hash = OneDrive's
 // content hash, used for SAFE byte-identical de-duplication), [] if the folder
@@ -3994,7 +4041,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, createFolder, renameFolder, folderIdByPath, cameraRollFolder, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, getFileByContentKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, createFolder, renameFolder, folderIdByPath, cameraRollFolder, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -4630,8 +4677,29 @@ function setPhotoCloudCopy(p, folder, itemId) {
 // true only when every target folder succeeded.
 async function uploadPhotoToAllFolders(photo, file, onProgress) {
   const folders = backupFoldersFor(photo.personIds);
+  const existing = photoCloudCopies(photo);
+  // If this photo was backed up before (it already carries a cloud pointer),
+  // its file is probably already sitting in these folders under its content-keyed
+  // name — e.g. after a second device pulled a slightly-stale manifest, or when a
+  // photo gains a NEW person-folder but is already in the others. In that case ASK
+  // OneDrive first (one tiny metadata GET) and REUSE the existing file instead of
+  // re-sending identical bytes. Brand-new photos (no pointer) skip the check and
+  // upload straight away, so a fresh bulk import isn't slowed by extra round-trips.
+  const mightExist =
+    !photo.backupLowRes && (photo.cloudId || photo.backupId || Object.keys(existing).length > 0);
   let allOk = folders.length > 0;
   for (const folder of folders) {
+    if (mightExist) {
+      try {
+        const found = await cloud.getFileByContentKey(folder, file.name, photo.hash || photo.id);
+        if (found && found.id) {
+          setPhotoCloudCopy(photo, folder, found.id); // already there — don't re-upload
+          continue;
+        }
+      } catch {
+        /* couldn't check — fall through and upload normally */
+      }
+    }
     let item = null;
     try {
       item = await cloud.uploadFileToOneDrive(file, folder, photo.hash || photo.id, onProgress);
