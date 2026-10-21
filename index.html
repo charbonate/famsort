@@ -1082,11 +1082,11 @@ p { margin: 0 0 .9rem; }
   z-index: -1; opacity: .42; user-select: none;
 }
 .polaroid {
-  position: absolute; width: 150px; padding: 9px 9px 26px;
+  position: absolute; width: 186px; padding: 11px 11px 32px;
   background: #fff; border-radius: 2px; box-shadow: 0 10px 22px rgba(30, 20, 60, .22);
   will-change: transform; animation: polaroidFloat var(--dur, 24s) ease-in-out infinite;
 }
-.polaroid img { display: block; width: 100%; height: 128px; object-fit: cover; background: #eee; }
+.polaroid img { display: block; width: 100%; height: 160px; object-fit: cover; background: #eee; }
 @keyframes polaroidFloat {
   0%   { transform: translate(var(--x0), var(--y0)) rotate(var(--r0)); }
   50%  { transform: translate(var(--x1), var(--y1)) rotate(var(--r1)); }
@@ -13057,12 +13057,16 @@ function renderPolaroids() {
   // Already drifting? Leave it — the backdrop persists across every page and
   // shouldn't jump to a new layout each time the user switches tabs.
   if (polaroidsOn && box.children.length) return;
-  const pool = state.photos.filter((p) => p && p.thumb);
+  // Only tagged photos (someone recognised in them) belong in the backdrop —
+  // untagged shots shouldn't drift behind the UI.
+  let pool = state.photos.filter((p) => p && p.thumb && (p.personIds || []).length);
+  // Fall back to any thumbnailed photo only if nothing is tagged yet.
+  if (pool.length < 4) pool = state.photos.filter((p) => p && p.thumb);
   if (pool.length < 4) {
     box.innerHTML = "";
     return;
   }
-  const picks = shuffleArr(pool.slice()).slice(0, Math.min(26, pool.length));
+  const picks = shuffleArr(pool.slice()).slice(0, Math.min(40, pool.length));
   const frag = document.createDocumentFragment();
   for (const p of picks) {
     const d = document.createElement("div");
