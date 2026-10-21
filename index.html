@@ -4540,10 +4540,23 @@ function hasGoogleToken() {
 }
 
 async function pickerFetch(path, token, opts = {}) {
-  const res = await fetch(`${PICKER_API}${path}`, {
-    ...opts,
-    headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) },
-  });
+  // Guard every Picker call with a timeout so a silent network/CORS hang can't
+  // leave the picker tab stuck forever — it becomes a visible, reportable error.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs || 25000);
+  let res;
+  try {
+    res = await fetch(`${PICKER_API}${path}`, {
+      ...opts,
+      signal: ctrl.signal,
+      headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) },
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    if (e && e.name === "AbortError") throw new Error(`Picker request timed out (${path})`);
+    throw new Error(`Picker request failed: ${e && e.message ? e.message : e}`);
+  }
+  clearTimeout(timer);
   if (!res.ok) {
     // Surface Google's actual reason (e.g. "PERMISSION_DENIED" when the Photos
     // Picker API isn't enabled or the user isn't a Test user) instead of a bare
@@ -4593,7 +4606,9 @@ function durationMs(d, fallback) {
 // Google's own UI, then we poll our session until they're done.
 async function runPickerSession(token, onStatus, pickerWindow) {
   onStatus?.("Opening the Google Photos picker…");
-  writeWindow(pickerWindow, "Connecting to Google Photos…");
+  // Distinct from the earlier "sign-in" message so a stuck tab tells us the exact
+  // stage: if it's stuck HERE, the /sessions request (not sign-in) is the problem.
+  writeWindow(pickerWindow, "Signed in \u2713 — preparing your Google Photos picker…");
   let session;
   try {
     session = await pickerFetch("/sessions", token, { method: "POST" });
@@ -4742,12 +4757,19 @@ async function connectGooglePhotos(onStatus, onFiles, pickerWindow) {
     if (pickerWindow && !pickerWindow.closed) pickerWindow.close();
     return;
   }
+  // Tell the user to look for Google's sign-in popup — it can open BEHIND this
+  // picker tab, which is the usual reason a connect appears to "hang".
+  writeWindow(
+    pickerWindow,
+    "Waiting for Google sign-in… approve in the Google popup window (it may have opened behind this tab)."
+  );
   let token;
   try {
     token = await getToken(true);
   } catch (e) {
-    onStatus?.("Google sign-in was cancelled or blocked.");
-    if (pickerWindow && !pickerWindow.closed) pickerWindow.close();
+    const msg = `Google sign-in was cancelled or blocked${e && e.message ? ` — ${e.message}` : ""}.`;
+    onStatus?.(msg);
+    writeWindow(pickerWindow, msg, true);
     return;
   }
   let sessionId;
@@ -7645,7 +7667,7 @@ async function addGoogleSource() {
     if (pickerWindow && !pickerWindow.closed) {
       pickerWindow.document.write(
         '<!doctype html><meta charset="utf-8"><title>Google Photos</title>' +
-        '<body style="font:16px/1.6 system-ui,Segoe UI,Roboto,sans-serif;margin:0;padding:28px;color:#222">Connecting to Google Photos…</body>'
+        '<body style="font:16px/1.6 system-ui,Segoe UI,Roboto,sans-serif;margin:0;padding:28px;color:#222">Starting Google Photos…</body>'
       );
       pickerWindow.document.close();
     }
