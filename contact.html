@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Contact — FamSort</title>
+  <meta name="description" content="Get in touch with the FamSort team." />
+  <style>
+    :root{
+      --accent:#5a4cd1;
+      --ink:#1e1b2e;
+      --muted:#5c5870;
+      --cream:#fbf7f0;
+      --card:#ffffff;
+      --line:#e7e1d6;
+      --ok:#1f8a54;
+      --err:#b42318;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0}
+    body{
+      background:var(--cream);
+      color:var(--ink);
+      font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      -webkit-font-smoothing:antialiased;
+    }
+    .wrap{max-width:620px;margin:0 auto;padding:40px 22px 80px}
+    .brand{
+      font-family:"Fraunces",Georgia,"Times New Roman",serif;
+      font-weight:600;font-size:26px;letter-spacing:.2px;margin:0 0 4px
+    }
+    .brand .fam{color:var(--accent)}
+    .brand .sort{color:var(--ink)}
+    .eyebrow{color:var(--muted);font-size:13px;margin:0 0 28px}
+    h1{
+      font-family:"Fraunces",Georgia,serif;font-weight:600;
+      font-size:34px;line-height:1.15;margin:0 0 10px
+    }
+    .lede{color:var(--muted);font-size:15px;margin:0 0 26px}
+    .card{
+      background:var(--card);border:1px solid var(--line);border-radius:16px;
+      padding:24px;box-shadow:0 1px 2px rgba(30,27,46,.04)
+    }
+    .field{margin:0 0 16px}
+    label{display:block;font-weight:600;font-size:14px;margin:0 0 6px;color:var(--ink)}
+    input,textarea{
+      width:100%;font:inherit;color:var(--ink);background:#fff;
+      border:1px solid var(--line);border-radius:10px;padding:11px 13px;
+      transition:border-color .15s,box-shadow .15s;
+    }
+    input:focus,textarea:focus{
+      outline:none;border-color:var(--accent);
+      box-shadow:0 0 0 3px rgba(90,76,209,.15)
+    }
+    textarea{min-height:130px;resize:vertical}
+    .hp{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0}
+    button{
+      width:100%;font:inherit;font-weight:600;color:#fff;cursor:pointer;
+      background:var(--accent);border:0;border-radius:10px;padding:13px 16px;
+      transition:filter .15s,opacity .15s;
+    }
+    button:hover{filter:brightness(1.07)}
+    button:disabled{opacity:.6;cursor:default}
+    .status{margin:16px 0 0;font-size:14px;border-radius:10px;padding:12px 14px;display:none}
+    .status.show{display:block}
+    .status.ok{background:rgba(31,138,84,.1);color:var(--ok)}
+    .status.err{background:rgba(180,35,24,.1);color:var(--err)}
+    .fine{color:var(--muted);font-size:12.5px;margin:14px 0 0;text-align:center}
+    .fine svg{width:13px;height:13px;vertical-align:-2px;margin-right:3px}
+    .foot{color:var(--muted);font-size:13px;text-align:center;margin-top:28px}
+    .foot a{color:var(--muted);text-decoration:underline}
+    .setup{background:rgba(90,76,209,.06);border:1px dashed rgba(90,76,209,.35);border-radius:12px;padding:14px 16px;color:var(--muted);font-size:13.5px;margin:0 0 22px}
+    .setup code{background:#fff;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:12.5px}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <p class="brand"><span class="fam">Fam</span><span class="sort">Sort</span></p>
+    <p class="eyebrow">Family Photo Sorter</p>
+
+    <h1>Get in touch</h1>
+    <p class="lede">Questions, feedback, or a privacy request? Send us a message and we&rsquo;ll get back to you.</p>
+
+    <!-- ⚠ SETUP (remove this box once done): this form uses Web3Forms to deliver
+         messages to your inbox WITHOUT putting your email address on the page.
+         1. Go to https://web3forms.com, enter charbel.germanos@hotmail.com, and
+            copy the free Access Key they email you.
+         2. Paste it below where it says PASTE_YOUR_WEB3FORMS_ACCESS_KEY_HERE.
+         Your email stays on Web3Forms' servers — only the access key is in this
+         page, so no visitor or page-source viewer ever sees your address. -->
+    <div class="setup" id="setupNote">
+      <strong>One-time setup:</strong> get a free access key at
+      <code>web3forms.com</code> (enter your private email there), then paste it
+      into this file where it says <code>PASTE_YOUR_WEB3FORMS_ACCESS_KEY_HERE</code>.
+      Until then the form won&rsquo;t send. Your email address never appears on this page.
+    </div>
+
+    <div class="card">
+      <form id="contactForm" novalidate>
+        <!-- Public form key. Maps to your email on Web3Forms' server; NOT your address. -->
+        <input type="hidden" name="access_key" value="PASTE_YOUR_WEB3FORMS_ACCESS_KEY_HERE" />
+        <input type="hidden" name="from_name" value="FamSort contact form" />
+        <!-- Honeypot: real people leave this empty; bots fill it and get rejected. -->
+        <input type="text" name="botcheck" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+
+        <div class="field">
+          <label for="cfName">Your name</label>
+          <input id="cfName" name="name" type="text" required autocomplete="name" />
+        </div>
+        <div class="field">
+          <label for="cfEmail">Your email <span style="color:var(--muted);font-weight:400">(so we can reply)</span></label>
+          <input id="cfEmail" name="email" type="email" required autocomplete="email" />
+        </div>
+        <div class="field">
+          <label for="cfSubject">Subject</label>
+          <input id="cfSubject" name="subject" type="text" required />
+        </div>
+        <div class="field">
+          <label for="cfMessage">Message</label>
+          <textarea id="cfMessage" name="message" required></textarea>
+        </div>
+
+        <button type="submit" id="cfSend">Send message</button>
+        <div class="status" id="cfStatus" role="status" aria-live="polite"></div>
+      </form>
+
+      <p class="fine">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Your message goes straight to us. We never show our email address on this page.
+      </p>
+    </div>
+
+    <p class="foot">
+      <a href="./index.html">&larr; Back to FamSort</a> &nbsp;·&nbsp;
+      <a href="./privacy.html">Privacy Policy</a> &nbsp;·&nbsp;
+      <a href="./terms.html">Terms &amp; Conditions</a>
+    </p>
+  </main>
+
+  <script>
+    (function () {
+      var form = document.getElementById("contactForm");
+      var statusEl = document.getElementById("cfStatus");
+      var btn = document.getElementById("cfSend");
+      var keyField = form.elements["access_key"];
+
+      function setStatus(kind, msg) {
+        statusEl.textContent = msg;
+        statusEl.className = "status show " + kind;
+      }
+
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+
+        if (!form.checkValidity()) {
+          form.reportValidity();
+          return;
+        }
+        if (!keyField.value || keyField.value.indexOf("PASTE_YOUR") === 0) {
+          setStatus("err", "This form isn't connected yet. (Add your Web3Forms access key to enable sending.)");
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = "Sending…";
+        statusEl.className = "status";
+
+        try {
+          var res = await fetch("https://api.web3forms.com/submit", {
+            method: "POST",
+            headers: { Accept: "application/json" },
+            body: new FormData(form),
+          });
+          var json = await res.json().catch(function () { return {}; });
+          if (res.ok && json.success) {
+            form.reset();
+            setStatus("ok", "Thanks — your message has been sent. We'll get back to you soon.");
+          } else {
+            setStatus("err", (json && json.message) || "Something went wrong. Please try again.");
+          }
+        } catch (err) {
+          setStatus("err", "Couldn't send right now. Please check your connection and try again.");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Send message";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
