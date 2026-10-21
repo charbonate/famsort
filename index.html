@@ -1082,11 +1082,11 @@ p { margin: 0 0 .9rem; }
   z-index: -1; opacity: .42; user-select: none;
 }
 .polaroid {
-  position: absolute; width: 118px; padding: 7px 7px 20px;
+  position: absolute; width: 150px; padding: 9px 9px 26px;
   background: #fff; border-radius: 2px; box-shadow: 0 10px 22px rgba(30, 20, 60, .22);
   will-change: transform; animation: polaroidFloat var(--dur, 24s) ease-in-out infinite;
 }
-.polaroid img { display: block; width: 100%; height: 100px; object-fit: cover; background: #eee; }
+.polaroid img { display: block; width: 100%; height: 128px; object-fit: cover; background: #eee; }
 @keyframes polaroidFloat {
   0%   { transform: translate(var(--x0), var(--y0)) rotate(var(--r0)); }
   50%  { transform: translate(var(--x1), var(--y1)) rotate(var(--r1)); }
@@ -1096,6 +1096,18 @@ p { margin: 0 0 .9rem; }
   .polaroid { animation: none; }
 }
 
+/* First-run consent gate (Terms & Privacy). Sits above everything; the only way
+   forward is to accept. */
+.consent { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(20, 14, 40, .72); padding: 20px; }
+.consent__card { background: #fff; border-radius: 18px; max-width: 460px; width: 100%; padding: 28px 26px; box-shadow: 0 24px 60px rgba(0, 0, 0, .4); text-align: center; }
+.consent__title { margin: 0 0 10px; font-size: 22px; font-family: 'Fraunces', Georgia, serif; color: var(--ink, #2a2440); }
+.consent__body { margin: 0 0 16px; color: var(--ink-soft); font-size: 15px; line-height: 1.5; }
+.consent__links { margin: 0 0 20px; font-size: 14px; }
+.consent__links a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.consent__links a:hover { text-decoration: underline; }
+.consent__agree { width: 100%; }
+.consent__fine { margin: 14px 0 0; font-size: 12px; color: var(--ink-soft); line-height: 1.45; }
+
 /* Collage result modal. */
 .collage { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(20, 14, 40, .6); padding: 16px; }
 .collage__card { background: #fff; border-radius: 16px; max-width: 760px; width: 100%; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
@@ -1104,11 +1116,15 @@ p { margin: 0 0 .9rem; }
 .collage__close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--ink-soft); }
 .collage__stage { padding: 16px; overflow: auto; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); }
 .collage__canvas { max-width: 100%; height: auto; align-self: center; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
-.collage__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--line); }
+.collage__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--line); flex-wrap: wrap; }
 .collage__hint { font-size: 13px; color: var(--ink-soft); }
 .collage__count { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
 .collage__count-lab { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
 .collage__count input[type=range] { flex: 1; min-width: 90px; max-width: 220px; accent-color: var(--accent); cursor: pointer; }
+.collage__style { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; flex: none; }
+.collage__style-btn { border: none; background: #fff; color: var(--ink-soft); font-size: 13px; font-weight: 600; padding: 7px 15px; cursor: pointer; transition: background .15s, color .15s; }
+.collage__style-btn + .collage__style-btn { border-left: 1px solid var(--line); }
+.collage__style-btn.is-on { background: var(--accent); color: #fff; }
 
 /* Home-screen memories teaser. */
 .home-mem {
@@ -2123,6 +2139,21 @@ p { margin: 0 0 .9rem; }
   </div>
 
   <!-- Collage result -->
+  <!-- First-run consent gate: Terms & Privacy must be accepted before using FamSort. -->
+  <div class="consent" id="consentModal" hidden>
+    <div class="consent__card" role="dialog" aria-modal="true" aria-labelledby="consentTitle">
+      <h2 class="consent__title" id="consentTitle">Welcome to FamSort</h2>
+      <p class="consent__body">FamSort sorts your photos by face <strong>on your device</strong> — nothing is uploaded for face-finding. Before you start, please review and accept our terms.</p>
+      <p class="consent__links">
+        <a href="./terms.html" target="_blank" rel="noopener">Terms &amp; Conditions</a> &nbsp;·&nbsp;
+        <a href="./privacy.html" target="_blank" rel="noopener">Privacy Policy</a> &nbsp;·&nbsp;
+        <a href="./contact.html" target="_blank" rel="noopener">Contact</a>
+      </p>
+      <button class="btn btn--primary consent__agree" id="consentAgreeBtn" type="button">I agree — continue</button>
+      <p class="consent__fine">By continuing you confirm you have read and agree to the Terms &amp; Conditions and Privacy Policy. We keep a dated record of your agreement.</p>
+    </div>
+  </div>
+
   <div class="collage" id="collageModal" hidden>
     <div class="collage__card">
       <div class="collage__head">
@@ -2133,9 +2164,13 @@ p { margin: 0 0 .9rem; }
         <canvas id="collageCanvas" class="collage__canvas"></canvas>
       </div>
       <div class="collage__foot">
+        <div class="collage__style" role="group" aria-label="Collage style">
+          <button type="button" class="collage__style-btn is-on" id="collageStylePolaroid" data-collage-style="polaroid">Polaroid</button>
+          <button type="button" class="collage__style-btn" id="collageStyleSquare" data-collage-style="square">Square</button>
+        </div>
         <label class="collage__count">
           <span class="collage__count-lab">Photos</span>
-          <input type="range" id="collageCount" min="2" max="14" value="9" aria-label="Number of photos in the collage" />
+          <input type="range" id="collageCount" min="2" max="60" value="9" aria-label="Number of photos in the collage" />
           <span class="collage__hint" id="collageHint"></span>
         </label>
         <button class="btn btn--primary" id="collageDownload" type="button">⤓ Download</button>
@@ -4317,6 +4352,81 @@ function getDeviceLabel() {
   return first ? `${first}'s ${kind}` : kind;
 }
 
+/* --------------------------------------------------------- legal consent */
+// Users must accept the Terms & Privacy before using FamSort. We keep a dated
+// record on THIS device (localStorage) AND email a one-time consent receipt to the
+// owner's inbox via Web3Forms, so there's an off-device diary of who agreed and
+// when. Bump CONSENT_VERSION whenever the Terms/Privacy change materially to
+// re-prompt everyone.
+const CONSENT_VERSION = "2026-10-21";
+const CONSENT_KEY = "famsort.consent";
+const CONSENT_RECEIPT_KEY = "famsort.consentReceiptSent";
+const CONSENT_FORM_KEY = "53006b53-931a-4d7b-96bf-33585dccedc7"; // public Web3Forms key (same as the contact form)
+
+function consentRecord() {
+  try { return JSON.parse(localStorage.getItem(CONSENT_KEY) || "null"); } catch { return null; }
+}
+function hasValidConsent() {
+  const r = consentRecord();
+  return !!(r && r.version === CONSENT_VERSION);
+}
+// Shown once per policy version at boot. If consent already exists but the owner's
+// email receipt never got through (e.g. first launch was offline), quietly retry.
+function maybeShowConsent() {
+  if (hasValidConsent()) {
+    if (localStorage.getItem(CONSENT_RECEIPT_KEY) !== CONSENT_VERSION) sendConsentReceipt(consentRecord());
+    return;
+  }
+  const modal = el("consentModal");
+  if (!modal) return;
+  modal.hidden = false;
+  const btn = el("consentAgreeBtn");
+  if (btn) btn.focus();
+}
+function acceptConsent() {
+  const record = {
+    version: CONSENT_VERSION,
+    acceptedAt: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+  };
+  try { localStorage.setItem(CONSENT_KEY, JSON.stringify(record)); } catch {}
+  const modal = el("consentModal");
+  if (modal) modal.hidden = true;
+  sendConsentReceipt(record); // fire-and-forget email diary to the owner
+}
+// Email a dated consent receipt to the owner via Web3Forms. Sends at most once per
+// policy version (guarded by a localStorage flag), including the signed-in identity
+// when available so the owner knows who agreed.
+async function sendConsentReceipt(record) {
+  if (!record) return;
+  if (localStorage.getItem(CONSENT_RECEIPT_KEY) === record.version) return;
+  let who = "Not signed in (device-only user)";
+  try {
+    if (cloud.oneDriveConfigured()) {
+      const info = await cloud.accountInfo();
+      if (info) who = `${info.name || ""} ${info.username ? "<" + info.username + ">" : ""}`.trim() || who;
+    }
+  } catch { /* identity unavailable — send with the device-only label */ }
+  const data = {
+    access_key: CONSENT_FORM_KEY,
+    subject: "FamSort — Terms & Privacy accepted",
+    from_name: "FamSort consent log",
+    user: who,
+    policy_version: record.version,
+    accepted_at: record.acceptedAt,
+    device: record.userAgent || navigator.userAgent,
+  };
+  try {
+    const res = await fetch("https://api.web3forms.com/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.success) localStorage.setItem(CONSENT_RECEIPT_KEY, record.version);
+  } catch { /* offline — retried on the next launch until it succeeds */ }
+}
+
 
 /* ---------------------------------------------------------------- boot */
 async function boot() {
@@ -4380,6 +4490,8 @@ async function boot() {
   // already-signed-in user sees them immediately without toggling tabs first.
   renderHomeTip();
   renderHomeMemories();
+  // Require (and record) agreement to the Terms & Privacy before use.
+  maybeShowConsent();
   // Backfill real capture dates/dimensions/camera for photos imported before
   // metadata capture existed — runs quietly in the background, never blocks boot.
   backfillPhotoMeta();
@@ -12950,7 +13062,7 @@ function renderPolaroids() {
     box.innerHTML = "";
     return;
   }
-  const picks = shuffleArr(pool.slice()).slice(0, Math.min(16, pool.length));
+  const picks = shuffleArr(pool.slice()).slice(0, Math.min(26, pool.length));
   const frag = document.createDocumentFragment();
   for (const p of picks) {
     const d = document.createElement("div");
@@ -13140,9 +13252,12 @@ function downloadCollage() {
 // slider re-draw instantly — adding or removing photos — without reloading or
 // re-randomising the ones already placed.
 let collageState = null;
+// Which look the collage uses: "polaroid" (scattered framed photos, default) or
+// "square" (tidy cover-fit grid — the original standard style).
+let collageStyle = "polaroid";
 
 async function buildCollage(ids, opts = {}) {
-  ids = (ids || []).filter(Boolean).slice(0, 24); // generous pool; the slider picks how many show
+  ids = (ids || []).filter(Boolean).slice(0, 60); // generous pool (up to everyone's photos); the slider picks how many show
   if (ids.length < 2) {
     setAskMsg("I need at least a couple of photos to make a collage.");
     return;
@@ -13198,6 +13313,13 @@ function drawCollage(count) {
   if (!canvas) return;
   const n = Math.max(2, Math.min(count | 0, collageState.pairs.length));
   const pairs = collageState.pairs.slice(0, n);
+  if (collageStyle === "square") drawSquareCollage(canvas, pairs, n);
+  else drawPolaroidCollage(canvas, pairs, n);
+  const hintEl = el("collageHint");
+  if (hintEl) hintEl.textContent = `${n} photo${n === 1 ? "" : "s"}`;
+}
+
+function drawPolaroidCollage(canvas, pairs, n) {
   const cols = Math.max(2, Math.round(Math.sqrt(n * 1.35)));
   const rows = Math.ceil(n / cols);
   // Longest edge of each photo — scales up when there are fewer photos.
@@ -13258,8 +13380,52 @@ function drawCollage(count) {
     ctx.drawImage(im, -pw / 2, -fh / 2 + framePad, pw, ph);
     ctx.restore();
   });
-  const hintEl = el("collageHint");
-  if (hintEl) hintEl.textContent = `${n} photo${n === 1 ? "" : "s"}`;
+}
+
+// The original "standard" collage: a tidy grid of cover-fit squares on a cream
+// background with a soft title. Photos are cropped to squares (classic mosaic).
+function drawSquareCollage(canvas, pairs, n) {
+  const cols = Math.ceil(Math.sqrt(n));
+  const rows = Math.ceil(n / cols);
+  const tile = Math.round(Math.max(150, Math.min(360, 1200 / Math.sqrt(n))));
+  const gap = Math.max(4, Math.round(tile * 0.03));
+  const pad = Math.round(tile * 0.14);
+  const titleH = collageState.title ? Math.round(tile * 0.5) : pad;
+  const W = pad * 2 + cols * tile + (cols - 1) * gap;
+  const H = titleH + pad + rows * tile + (rows - 1) * gap + pad;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fbf7f0"; // cream brand background
+  ctx.fillRect(0, 0, W, H);
+  if (collageState.title) {
+    ctx.fillStyle = "#2a2440";
+    ctx.font = `600 ${Math.round(tile * 0.26)}px Georgia, 'Fraunces', serif`;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.fillText(collageState.title, W / 2, titleH / 2 + pad / 2);
+    ctx.textAlign = "left";
+  }
+  pairs.forEach((pr, i) => {
+    const im = pr.im;
+    const c = i % cols;
+    const r = Math.floor(i / cols);
+    const x = pad + c * (tile + gap);
+    const y = titleH + pad + r * (tile + gap);
+    // Cover-fit crop into the square cell (never distorted).
+    const s = Math.max(tile / im.width, tile / im.height);
+    const dw = im.width * s;
+    const dh = im.height * s;
+    ctx.save();
+    roundRectPath(ctx, x, y, tile, tile, 8);
+    ctx.clip();
+    ctx.drawImage(im, x + (tile - dw) / 2, y + (tile - dh) / 2, dw, dh);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    ctx.lineWidth = Math.max(2, Math.round(tile * 0.02));
+    roundRectPath(ctx, x, y, tile, tile, 8);
+    ctx.stroke();
+  });
 }
 
 /* ------------------------------------------------------------ ask famsort */
@@ -13382,7 +13548,7 @@ function runAsk(query) {
   }
   if (wantCollage) {
     const title = `${person ? (person.relationship === "Me" ? "You" : person.name) : "Memories"}${year ? ` · ${year}` : ""}`;
-    buildCollage(photoIds.slice(0, 14), { title });
+    buildCollage(photoIds, { title });
     return;
   }
   if (wantSlideshow) {
@@ -13845,6 +14011,18 @@ function wire() {
   if (collageDownload) collageDownload.addEventListener("click", downloadCollage);
   const collageCount = el("collageCount");
   if (collageCount) collageCount.addEventListener("input", (e) => drawCollage(Number(e.target.value)));
+  const consentAgree = el("consentAgreeBtn");
+  if (consentAgree) consentAgree.addEventListener("click", acceptConsent);
+  const collageStyleBtns = document.querySelectorAll("[data-collage-style]");
+  collageStyleBtns.forEach((b) =>
+    b.addEventListener("click", () => {
+      collageStyle = b.dataset.collageStyle;
+      collageStyleBtns.forEach((x) => x.classList.toggle("is-on", x === b));
+      const slider = el("collageCount");
+      const count = slider ? Number(slider.value) : (collageState ? Math.min(collageState.pairs.length, 9) : 9);
+      drawCollage(count);
+    })
+  );
   // Slideshow overlay.
   const slideClose = el("slideClose");
   if (slideClose) slideClose.addEventListener("click", closeSlideshow);
