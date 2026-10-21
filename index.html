@@ -4539,6 +4539,30 @@ function hasGoogleToken() {
   return !!accessToken && Date.now() < tokenExpiresAt - 60000;
 }
 
+// Warm up Google Identity Services ahead of the user's click so that, when they
+// do click, requestAccessToken runs inside the gesture (GIS script already
+// loaded) and its consent popup isn't blocked. Safe to call repeatedly.
+function preloadGoogle() {
+  if (!googlePhotosConfigured()) return;
+  loadGis().catch(() => {});
+}
+
+// Sign in to Google ONLY (get consent + a token) without opening the picker.
+// This is deliberately a separate, popup-free step: opening the picker tab in the
+// same click consumes the browser's one-popup allowance and silently blocks
+// Google's consent popup. So we sign in first (nothing else open → consent popup
+// is allowed), then the NEXT click opens the picker with the token already cached.
+// Returns true on success.
+async function signInGoogle() {
+  if (!googlePhotosConfigured()) return false;
+  try {
+    await getToken(true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function pickerFetch(path, token, opts = {}) {
   // Guard every Picker call with a timeout so a silent network/CORS hang can't
   // leave the picker tab stuck forever — it becomes a visible, reportable error.
@@ -4787,7 +4811,7 @@ async function connectGooglePhotos(onStatus, onFiles, pickerWindow) {
   await downloadAndFeed(items, onStatus, onFiles);
 }
 
-return { getGoogleClientId, setGoogleClientId, googlePhotosConfigured, hasGoogleToken, connectGooglePhotos };
+return { getGoogleClientId, setGoogleClientId, googlePhotosConfigured, hasGoogleToken, preloadGoogle, signInGoogle, connectGooglePhotos };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -7655,19 +7679,41 @@ async function addGoogleSource() {
     return;
   }
   const btn = el("addGoogleBtn");
+  // STEP 1 — sign in FIRST, with NO tab pre-opened. Opening the picker tab in the
+  // same click uses up the browser's single popup allowance and silently BLOCKS
+  // Google's consent popup (the "stuck on Waiting for sign-in, nothing appears"
+  // bug). So we do sign-in alone here; Google's popup is then allowed to show.
+  if (!gphotos.hasGoogleToken()) {
+    if (btn) btn.disabled = true;
+    showScanMsg("Opening Google sign-in… approve it in the Google popup, then press “Add from Google Photos” again.");
+    let ok = false;
+    try {
+      ok = await gphotos.signInGoogle();
+    } catch {
+      ok = false;
+    }
+    if (btn) btn.disabled = false;
+    if (!ok) {
+      showScanMsg("Google sign-in didn’t complete (popup blocked or cancelled). Allow pop-ups for this site, then try again.");
+      return;
+    }
+    showScanMsg("Signed in to Google ✓ — press “Add from Google Photos” again to choose your photos.");
+    return;
+  }
+  // STEP 2 — already signed in (token cached). Now open the picker. Only ONE popup
+  // is needed this time (the picker), and the token call returns instantly without
+  // its own popup, so nothing is blocked.
   if (btn) btn.disabled = true;
   // Pre-open a tab DURING the click so the picker isn't blocked by the popup
-  // blocker (the session/token round-trips are async and would otherwise orphan
-  // the open). gphotos navigates this window to Google's picker.
+  // blocker (the session round-trip is async and would otherwise orphan the open).
   const pickerWindow = window.open("", "_blank");
-  // Paint something immediately so the tab isn't a confusing blank page during
-  // the OAuth consent round-trip (gphotos replaces this with the picker or an
-  // error message).
+  // Paint something immediately so the tab isn't a confusing blank page while we
+  // create the picker session (gphotos replaces this with the picker or an error).
   try {
     if (pickerWindow && !pickerWindow.closed) {
       pickerWindow.document.write(
         '<!doctype html><meta charset="utf-8"><title>Google Photos</title>' +
-        '<body style="font:16px/1.6 system-ui,Segoe UI,Roboto,sans-serif;margin:0;padding:28px;color:#222">Starting Google Photos…</body>'
+        '<body style="font:16px/1.6 system-ui,Segoe UI,Roboto,sans-serif;margin:0;padding:28px;color:#222">Preparing your Google Photos picker…</body>'
       );
       pickerWindow.document.close();
     }
@@ -14366,7 +14412,12 @@ function wire() {
   el("addDeviceBtn").addEventListener("click", addDeviceSource);
   el("addCloudBtn").addEventListener("click", addCloudSource);
   const addGoogleBtn = el("addGoogleBtn");
-  if (addGoogleBtn) addGoogleBtn.addEventListener("click", addGoogleSource);
+  if (addGoogleBtn) {
+    addGoogleBtn.addEventListener("click", addGoogleSource);
+    // Warm up Google Identity Services ahead of the click so the consent popup
+    // opens inside the user gesture (script already loaded) and isn't blocked.
+    try { gphotos.preloadGoogle?.(); } catch { /* ignore */ }
+  }
   el("rebuildBtn").addEventListener("click", rebuildFromWatched);
   const rescanCloudBtn = el("rescanCloudBtn");
   if (rescanCloudBtn) rescanCloudBtn.addEventListener("click", rescanCloudNow);
