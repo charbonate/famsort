@@ -1508,6 +1508,7 @@ p { margin: 0 0 .9rem; }
           <div class="btn-row">
             <button class="btn btn--ghost" id="addDeviceBtn"><span class="btn__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.2h7A1.5 1.5 0 0 1 19 9.7v8A1.5 1.5 0 0 1 17.5 19h-13A1.5 1.5 0 0 1 3 17.5z"/></svg></span> Add folder on this device</button>
             <button class="btn btn--ghost" id="addCloudBtn"><span class="btn__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18h10a3.5 3.5 0 0 0 .5-6.96A5 5 0 0 0 8 9.3 4 4 0 0 0 7 18z"/></svg></span> Add from OneDrive</button>
+            <button class="btn btn--ghost" id="addGoogleBtn"><span class="btn__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v6l4.5 2.6M12 3a9 9 0 1 0 9 9"/><circle cx="12" cy="12" r="2.3"/></svg></span> Add from Google Photos</button>
             <label class="btn btn--ghost" id="addManualBtn"><span class="btn__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5h3l1.3-2h7.4l1.3 2H20a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3"/></svg></span> Add photos &amp; videos
               <input type="file" id="fileInput" accept="image/*,video/*" multiple hidden />
             </label>
@@ -1521,6 +1522,15 @@ p { margin: 0 0 .9rem; }
             <div class="field-row">
               <input class="text-input" id="clientIdInput" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="00000000-0000-0000-0000-000000000000" />
               <button class="btn btn--ghost" id="clientIdSave">Save</button>
+            </div>
+          </div>
+
+          <!-- One-time Google Photos client-ID setup (revealed when needed). -->
+          <div class="cloud-setup" id="googleSetup" hidden>
+            <p class="card-plain__fine">One-time setup: paste your Google <strong>OAuth Client ID</strong> to enable Google Photos. It's not secret. (Google Cloud Console → Credentials → Web application, with the Photos Picker API enabled.)</p>
+            <div class="field-row">
+              <input class="text-input" id="googleClientIdInput" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="…apps.googleusercontent.com" />
+              <button class="btn btn--ghost" id="googleClientIdSave">Save</button>
             </div>
           </div>
 
@@ -2238,8 +2248,15 @@ const DB_VERSION = 3;
 // "media" holds original video blobs (keyed by photo id) so videos can be played back.
 const STORES = ["people", "photos", "faces", "meta", "media"];
 
+// Cache the single open connection. Previously every put/get/getAll re-ran the
+// full indexedDB.open() handshake — on a library with thousands of photos that's
+// a huge amount of redundant open/close churn. We open once and reuse; if the
+// connection is ever force-closed (tab eviction, or another tab upgrading the
+// DB version) we drop the cache so the next call reopens cleanly.
+let dbPromise = null;
 function openDb() {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -2247,9 +2264,15 @@ function openDb() {
         if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: "id" });
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onclose = () => { dbPromise = null; };
+      db.onversionchange = () => { db.close(); dbPromise = null; };
+      resolve(db);
+    };
+    req.onerror = () => { dbPromise = null; reject(req.error); };
   });
+  return dbPromise;
 }
 
 async function tx(store, mode, fn) {
@@ -3149,6 +3172,16 @@ async function graphGet(url, token, attempt = 0) {
       return graphGet(url, token, attempt + 1);
     }
   }
+  // Token expired MID-SCAN. Walking a 10k+ camera roll can take many minutes —
+  // longer than an access token lives — so the first 401 used to silently abort
+  // the walk with only a partial set of photos. Refresh silently and keep going.
+  if (res.status === 401 && attempt < 4) {
+    const fresh = await getTokenSilent();
+    if (fresh) {
+      await sleep(backoffMs(Math.min(attempt, 2)));
+      return graphGet(url, fresh, attempt + 1);
+    }
+  }
   if (!res.ok) throw new Error(`Graph ${res.status}`);
   return res.json();
 }
@@ -3918,7 +3951,7 @@ async function renameFolder(itemId, newName) {
   return renameCloudFile(itemId, newName);
 }
 
-// Resolve an EXISTING folder's item id by its path (e.g. "Kinalbum") WITHOUT
+// Resolve an EXISTING folder's item id by its path (e.g. "FamSort") WITHOUT
 // creating anything. Returns the id, or null if the folder doesn't exist / not
 // signed in. Used to offer renaming the old output folder when the user changes
 // where backups go.
@@ -3992,8 +4025,14 @@ async function getItemMeta(id) {
 async function collectMediaItems(folderId, token, items, onStatus) {
   if (items.length >= MAX_FILES) return;
   const subfolders = [];
-  // $expand thumbnails so we scan small previews, not multi-MB originals.
-  let next = `${GRAPH}/me/drive/items/${folderId}/children?$top=200&$expand=thumbnails`;
+  // Enumerate LIGHTWEIGHT: we deliberately do NOT $expand=thumbnails here. For a
+  // big camera roll (10k+) expanding a thumbnail for every item on every page is
+  // the single biggest Microsoft-Graph throttle trigger and made large libraries
+  // give up part-way with only a few hundred photos. The default children
+  // response already carries @microsoft.graph.downloadUrl + the photo/image/file
+  // facets we need; the actual thumbnail is fetched per-item later, during
+  // download, so a slow thumbnail never blocks enumerating the whole library.
+  let next = `${GRAPH}/me/drive/items/${folderId}/children?$top=200`;
   while (next && items.length < MAX_FILES) {
     let page;
     try {
@@ -4030,15 +4069,42 @@ async function downloadAndFeed(items, token, onStatus, onFiles) {
   let done = 0;
   let fed = 0;
 
+  // The token passed in was minted when the scan STARTED. Downloading tens of
+  // thousands of photos can outlive it, so refresh on demand (de-duped so a
+  // burst of 401s triggers just one silent refresh) and keep going.
+  let authToken = token;
+  let refreshing = null;
+  async function refreshToken() {
+    if (!refreshing) {
+      refreshing = getTokenSilent().then((t) => {
+        if (t) authToken = t;
+        refreshing = null;
+        return authToken;
+      });
+    }
+    return refreshing;
+  }
+  // GET a Graph bearer URL as a blob, refreshing the token once on a 401.
+  async function authedBlob(url) {
+    let res = await fetch(url, { headers: { Authorization: `Bearer ${authToken}` } });
+    if (res.status === 401) {
+      await refreshToken();
+      res = await fetch(url, { headers: { Authorization: `Bearer ${authToken}` } });
+    }
+    return res.ok ? res.blob() : null;
+  }
+
   async function fetchOne(it) {
     let blob = null;
-    const thumbUrl = it.thumbnails?.[0]?.large?.url;
-    if (thumbUrl) {
-      try {
-        blob = await (await fetch(thumbUrl)).blob();
-      } catch {
-        /* fall through to original */
-      }
+    // Prefer the pre-generated LARGE thumbnail (small, fast, plenty for face
+    // detection) over the multi-MB original. We fetch it per-item here instead
+    // of $expand-ing it during enumeration, so enumerating a huge library stays
+    // light and reliable. The /content endpoint 302-redirects to a pre-authed
+    // blob URL (fetch drops the Authorization header on that cross-origin hop).
+    try {
+      blob = await authedBlob(`${GRAPH}/me/drive/items/${it.id}/thumbnails/0/large/content`);
+    } catch {
+      /* fall through to original */
     }
     if (!blob) {
       const url = it["@microsoft.graph.downloadUrl"];
@@ -4052,10 +4118,7 @@ async function downloadAndFeed(items, token, onStatus, onFiles) {
     }
     if (!blob) {
       try {
-        const res = await fetch(`${GRAPH}/me/drive/items/${it.id}/content`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) blob = await res.blob();
+        blob = await authedBlob(`${GRAPH}/me/drive/items/${it.id}/content`);
       } catch {
         /* give up on this one */
       }
@@ -4276,7 +4339,321 @@ async function loadCloudLibrary() {
 return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, getFileByContentKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, createFolder, renameFolder, folderIdByPath, cameraRollFolder, getItemMeta, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
+const gphotos = (function () {
+// gphotos.js — optional Google Photos input source. Like cloud.js (OneDrive),
+// faces are still matched ON-DEVICE; we only download the picked image bytes and
+// hand them to the local sorter. Nothing is ever uploaded.
+//
+// WHY THE PICKER API (not the old Library API): since March 2025 Google removed
+// broad library-wide read access for third-party apps. The sanctioned way to let
+// a user bring their Google Photos in is the **Photos Picker API** — the user
+// picks photos in a Google-hosted picker, and the app may read ONLY those picked
+// items. That's a perfect fit here: Google Photos is an INPUT source only (we
+// never write back to it), and the user stays in control of exactly what's shared.
+//
+// One-time setup to enable Google Photos:
+//   1. https://console.cloud.google.com → create/select a project.
+//   2. APIs & Services → Library → enable "Photos Picker API".
+//   3. APIs & Services → Credentials → Create OAuth client ID → "Web application".
+//   4. Authorised JavaScript origins = this app's origin (e.g. http://localhost:3000
+//      or your deployed https origin).
+//   5. OAuth consent screen → add the scope
+//      https://www.googleapis.com/auth/photospicker.mediaitems.readonly
+//   6. Copy the "Client ID" and either bake it into BAKED_GOOGLE_CLIENT_ID below
+//      OR paste it into the app's "Add from Google Photos" setup field at runtime
+//      (handy for a hosted build — no rebuild needed).
+
+const BAKED_GOOGLE_CLIENT_ID = ""; // paste a "...apps.googleusercontent.com" id to bake it in
+const GOOGLE_CLIENT_ID_KEY = "famsort_google_client_id";
+const GIS_SRC = "https://accounts.google.com/gsi/client";
+const PICKER_SCOPE = "https://www.googleapis.com/auth/photospicker.mediaitems.readonly";
+const PICKER_API = "https://photospicker.googleapis.com/v1";
+// Same safety ceiling as OneDrive — a guard against a runaway selection, not a
+// product limit. downloadAndFeed streams in small chunks so memory stays bounded.
+const MAX_FILES = 25000;
+
+// Effective client ID: a value saved in this browser wins over the baked default,
+// so a deployed copy can be configured on any device without rebuilding.
+function getGoogleClientId() {
+  try {
+    const saved = localStorage.getItem(GOOGLE_CLIENT_ID_KEY);
+    if (saved && saved.trim()) return saved.trim();
+  } catch {
+    /* storage blocked */
+  }
+  return BAKED_GOOGLE_CLIENT_ID;
+}
+
+// Save (or clear) the Google client ID at runtime. Drops the cached token client.
+function setGoogleClientId(id) {
+  try {
+    if (id && id.trim()) localStorage.setItem(GOOGLE_CLIENT_ID_KEY, id.trim());
+    else localStorage.removeItem(GOOGLE_CLIENT_ID_KEY);
+  } catch {
+    /* storage blocked */
+  }
+  tokenClient = null;
+}
+
+// Google Photos needs a client ID AND a secure context (OAuth + cross-origin).
+function googlePhotosConfigured() {
+  return !!getGoogleClientId() && window.isSecureContext;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Lazily load Google Identity Services (GIS) once. Resolves when window.google
+// is ready, rejects if the script can't load (blocked / offline).
+let gisPromise = null;
+function loadGis() {
+  if (window.google?.accounts?.oauth2) return Promise.resolve();
+  if (gisPromise) return gisPromise;
+  gisPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${GIS_SRC}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("GIS failed to load")));
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = GIS_SRC;
+    s.async = true;
+    s.defer = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("GIS failed to load"));
+    document.head.appendChild(s);
+  });
+  return gisPromise;
+}
+
+let tokenClient = null;
+let accessToken = "";
+let tokenExpiresAt = 0;
+
+// Get a Google OAuth access token for the Picker scope, prompting the user the
+// first time (and silently refreshing when we already have consent).
+async function getToken(interactive = true) {
+  if (accessToken && Date.now() < tokenExpiresAt - 60000) return accessToken;
+  await loadGis();
+  const clientId = getGoogleClientId();
+  if (!clientId) throw new Error("No Google client ID configured");
+  if (!tokenClient) {
+    tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: PICKER_SCOPE,
+      callback: () => {}, // replaced per-request below
+    });
+  }
+  return new Promise((resolve, reject) => {
+    tokenClient.callback = (resp) => {
+      if (resp.error) {
+        reject(new Error(resp.error));
+        return;
+      }
+      accessToken = resp.access_token;
+      // expires_in is seconds; keep a local clock so we can refresh proactively.
+      tokenExpiresAt = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
+      resolve(accessToken);
+    };
+    try {
+      tokenClient.requestAccessToken({ prompt: interactive ? "" : "none" });
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+// True if we already hold a (non-expired) token — lets the app show "connected".
+function hasGoogleToken() {
+  return !!accessToken && Date.now() < tokenExpiresAt - 60000;
+}
+
+async function pickerFetch(path, token, opts = {}) {
+  const res = await fetch(`${PICKER_API}${path}`, {
+    ...opts,
+    headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) },
+  });
+  if (!res.ok) throw new Error(`Picker ${res.status}`);
+  return res.json();
+}
+
+// Parse a Google duration string like "5s" / "2.5s" into milliseconds.
+function durationMs(d, fallback) {
+  if (typeof d !== "string") return fallback;
+  const n = parseFloat(d);
+  return Number.isFinite(n) ? Math.round(n * 1000) : fallback;
+}
+
+// Open the Google-hosted picker, wait for the user to choose, and return the
+// finished session id. Opens the picker in a new tab so the user selects in
+// Google's own UI, then we poll our session until they're done.
+async function runPickerSession(token, onStatus, pickerWindow) {
+  onStatus?.("Opening the Google Photos picker…");
+  const session = await pickerFetch("/sessions", token, { method: "POST" });
+  const sessionId = session.id;
+  const pickerUri = session.pickerUri;
+  // Navigate the pre-opened window (opened during the user's click, so it isn't
+  // blocked) to Google's picker. If we couldn't pre-open one, fall back to a
+  // direct open (may be blocked by the popup blocker on some browsers).
+  if (pickerWindow && !pickerWindow.closed) pickerWindow.location = pickerUri;
+  else window.open(pickerUri, "_blank", "noopener");
+
+  onStatus?.("Waiting for you to pick photos in Google Photos…");
+  let interval = durationMs(session.pollingConfig?.pollInterval, 3000);
+  const deadline = Date.now() + durationMs(session.pollingConfig?.timeoutIn, 10 * 60 * 1000);
+  while (Date.now() < deadline) {
+    await sleep(Math.max(1500, interval));
+    let s;
+    try {
+      s = await pickerFetch(`/sessions/${sessionId}`, token);
+    } catch {
+      continue; // transient — keep polling until the deadline
+    }
+    if (s.mediaItemsSet) return sessionId;
+    interval = durationMs(s.pollingConfig?.pollInterval, interval);
+  }
+  throw new Error("Timed out waiting for a Google Photos selection");
+}
+
+// List every media item the user picked in a finished session (paginated).
+async function listPickedItems(sessionId, token, onStatus) {
+  const items = [];
+  let pageToken = "";
+  do {
+    const qs = new URLSearchParams({ sessionId, pageSize: "100" });
+    if (pageToken) qs.set("pageToken", pageToken);
+    let page;
+    try {
+      page = await pickerFetch(`/mediaItems?${qs.toString()}`, token);
+    } catch {
+      break; // keep whatever we already listed
+    }
+    for (const it of page.mediaItems || []) {
+      if (items.length >= MAX_FILES) break;
+      items.push(it);
+    }
+    pageToken = page.nextPageToken || "";
+    if (items.length) onStatus?.(`Found ${items.length} picked photo${items.length === 1 ? "" : "s"}…`);
+  } while (pageToken && items.length < MAX_FILES);
+  return items;
+}
+
+// Download picked items' pixels and hand File objects to onFiles, streaming in
+// small chunks so memory stays bounded for big selections. Mirrors cloud.js.
+async function downloadAndFeed(items, onStatus, onFiles) {
+  const slice = items.slice(0, MAX_FILES);
+  const total = slice.length;
+  onStatus?.(`Scanning 0 of ${total}…`);
+  let failed = 0;
+  let done = 0;
+  let fed = 0;
+
+  async function fetchOne(it) {
+    const token = await getToken(false).catch(() => accessToken);
+    const mf = it.mediaFile || {};
+    const base = mf.baseUrl;
+    if (!base) return null;
+    const isVideo = String(mf.mimeType || "").startsWith("video/");
+    // Picker baseUrls require the OAuth header. "=d" = full download; for photos
+    // we cap the long edge so a huge original isn't pulled just for face-finding.
+    const url = isVideo ? `${base}=dv` : `${base}=d`;
+    let blob = null;
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) blob = await res.blob();
+    } catch {
+      /* give up on this one */
+    }
+    done++;
+    if (done % 3 === 0 || done === total) onStatus?.(`Scanning ${done} of ${total}…`);
+    if (!blob) {
+      failed++;
+      return null;
+    }
+    const name = mf.filename || `google-${it.id || done}.jpg`;
+    const f = new File([blob], name, { type: blob.type || mf.mimeType || "image/jpeg" });
+    try {
+      f.googleId = it.id;
+      const meta = mf.mediaFileMetadata || {};
+      const toMs = (s) => { const t = s ? Date.parse(s) : 0; return Number.isFinite(t) ? t : 0; };
+      f.sourceMeta = {
+        takenAt: toMs(meta.creationTime || it.createTime),
+        fileCreated: toMs(meta.creationTime || it.createTime),
+        fileModified: toMs(meta.creationTime || it.createTime),
+        width: (meta.width || 0) | 0,
+        height: (meta.height || 0) | 0,
+        bytes: 0,
+        cameraMake: meta.photoMetadata?.cameraMake || "",
+        cameraModel: meta.photoMetadata?.cameraModel || "",
+      };
+    } catch {
+      /* File props are writable in practice; ignore if not */
+    }
+    return f;
+  }
+
+  const CONCURRENCY = 5;
+  const FEED_CHUNK = 80;
+  let buffer = [];
+  const feed = async () => {
+    if (!buffer.length) return;
+    const chunk = buffer;
+    buffer = [];
+    fed += chunk.length;
+    await onFiles(chunk);
+  };
+  for (let i = 0; i < slice.length; i += CONCURRENCY) {
+    const batch = slice.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(batch.map(fetchOne));
+    for (const f of results) if (f) buffer.push(f);
+    if (buffer.length >= FEED_CHUNK) await feed();
+  }
+  await feed();
+  if (!fed) {
+    onStatus?.(`Couldn't read any photos (${failed} failed). Try again, or check Google Photos is reachable.`);
+    return;
+  }
+  onStatus?.(`Scanned ${fed} photo${fed === 1 ? "" : "s"}${failed ? ` (${failed} skipped)` : ""} — sorting them on this device…`);
+}
+
+// Full flow: sign in (consent), open the picker, wait for a selection, then
+// download the picked photos and feed them to the on-device sorter via onFiles.
+// `pickerWindow` is an optional window pre-opened during the user's click so the
+// picker tab isn't swallowed by the popup blocker.
+async function connectGooglePhotos(onStatus, onFiles, pickerWindow) {
+  if (!googlePhotosConfigured()) {
+    onStatus?.("Add your Google client ID first to enable Google Photos.");
+    if (pickerWindow && !pickerWindow.closed) pickerWindow.close();
+    return;
+  }
+  let token;
+  try {
+    token = await getToken(true);
+  } catch (e) {
+    onStatus?.("Google sign-in was cancelled or blocked.");
+    if (pickerWindow && !pickerWindow.closed) pickerWindow.close();
+    return;
+  }
+  let sessionId;
+  try {
+    sessionId = await runPickerSession(token, onStatus, pickerWindow);
+  } catch (e) {
+    onStatus?.(e.message || "Couldn't open the Google Photos picker.");
+    return;
+  }
+  const items = await listPickedItems(sessionId, token, onStatus);
+  if (!items.length) {
+    onStatus?.("No photos were picked from Google Photos.");
+    return;
+  }
+  await downloadAndFeed(items, onStatus, onFiles);
+}
+
+return { getGoogleClientId, setGoogleClientId, googlePhotosConfigured, hasGoogleToken, connectGooglePhotos };
+})();
+
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
+
 
 
 
@@ -7004,6 +7381,38 @@ async function ensureSignedIn() {
 async function addCloudSource() {
   if (!(await ensureSignedIn())) return;
   openFolderBrowser("sources");
+}
+
+// Add photos from GOOGLE PHOTOS. Google locked library-wide reads in 2025, so
+// this uses the sanctioned Picker: the user chooses photos in Google's own UI
+// and we import ONLY those, straight into the on-device sorter (input only — we
+// never write back to Google Photos). Google Photos is not synced as a watched
+// source; it's a one-off pick, like "Add photos & videos".
+async function addGoogleSource() {
+  if (!window.isSecureContext) {
+    showScanMsg("Google Photos needs the hosted app (https). Open the installed/website version to connect it.");
+    return;
+  }
+  if (!gphotos.googlePhotosConfigured()) {
+    el("googleSetup").hidden = false;
+    showScanMsg("Paste your Google client ID above to enable Google Photos, then press “Add from Google Photos” again.");
+    return;
+  }
+  const btn = el("addGoogleBtn");
+  if (btn) btn.disabled = true;
+  // Pre-open a tab DURING the click so the picker isn't blocked by the popup
+  // blocker (the session/token round-trips are async and would otherwise orphan
+  // the open). gphotos navigates this window to Google's picker.
+  const pickerWindow = window.open("", "_blank");
+  try {
+    await gphotos.connectGooglePhotos(showScanMsg, handleFiles, pickerWindow);
+    renderAll();
+  } catch (e) {
+    showScanMsg("Couldn't import from Google Photos. Please try again.");
+    if (pickerWindow && !pickerWindow.closed) pickerWindow.close();
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function showScanMsg(text) {
@@ -10176,7 +10585,7 @@ async function dedupeAlbumRecords(personId) {
 
 // Make a photo's OneDrive copies match EXACTLY the folders it should live in now
 // (one per tagged person, under the CURRENT output root). Any copy sitting in a
-// wrong folder — a stale output root like "Kinalbum/Dominic", or a renamed
+// wrong folder — a stale output root like "FamSort/Dominic", or a renamed
 // person — is MOVED into a still-needed folder (no re-upload), or deleted when
 // it's just a leftover duplicate. Never deletes the only copy of a photo.
 async function consolidatePhotoCloudCopies(photo) {
@@ -13717,6 +14126,8 @@ function wire() {
   // Unified source → output wizard (device folders + cloud folders together).
   el("addDeviceBtn").addEventListener("click", addDeviceSource);
   el("addCloudBtn").addEventListener("click", addCloudSource);
+  const addGoogleBtn = el("addGoogleBtn");
+  if (addGoogleBtn) addGoogleBtn.addEventListener("click", addGoogleSource);
   el("rebuildBtn").addEventListener("click", rebuildFromWatched);
   el("toOutputBtn").addEventListener("click", () => showWizardPane("output"));
   el("backToSourcesBtn").addEventListener("click", () => showWizardPane("sources"));
@@ -13830,6 +14241,26 @@ function wire() {
           : "Client ID cleared."
       );
     });
+  }
+
+  // Runtime Google Photos client-ID setup (same idea as OneDrive's). Revealed
+  // from "Add from Google Photos" when no ID is set.
+  if (window.isSecureContext) {
+    const gInput = el("googleClientIdInput");
+    const gSave = el("googleClientIdSave");
+    if (gInput && gSave) {
+      gInput.value = gphotos.getGoogleClientId() || "";
+      if (gphotos.getGoogleClientId()) el("googleSetup").hidden = true;
+      gSave.addEventListener("click", () => {
+        gphotos.setGoogleClientId(gInput.value);
+        el("googleSetup").hidden = !!gphotos.getGoogleClientId();
+        showScanMsg(
+          gphotos.getGoogleClientId()
+            ? "Saved. Make sure this page's origin is an Authorised JavaScript origin in your Google OAuth client, then press “Add from Google Photos”."
+            : "Google client ID cleared."
+        );
+      });
+    }
   }
 
   // Drag & drop (desktop testing). The wizard card is the drop target.
@@ -14140,5 +14571,17 @@ try {
 boot().catch((e) => showFatal("boot()", e));
 })();
 </script>
+
+  <!-- Register the speed/offline service worker. Best-effort: it needs a secure
+       context (https or localhost) and a real origin, so it silently no-ops when
+       the single built file is opened straight off disk (file://). It only caches
+       the heavy face model + fonts and the app shell — no behaviour change. -->
+  <script>
+    if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:") {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function () {});
+      });
+    }
+  </script>
 </body>
 </html>
