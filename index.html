@@ -2237,6 +2237,70 @@ p { margin: 0 0 .9rem; }
   <script>
 (function () {
 "use strict";
+const util = (function () {
+// util.js — pure, dependency-free helpers (no app state, no DOM, no I/O).
+// Extracted from app.js as the first step of breaking up that monolith. These
+// are referenced throughout app.js; it imports them and destructures them back
+// into its own scope, so every existing call site keeps working unchanged.
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June", "July",
+  "August", "September", "October", "November", "December",
+];
+
+// Escape a string for safe interpolation into innerHTML.
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+// Seconds → "m:ss".
+function fmtDur(s) {
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// Timestamp(ms) → "3 July 2025" (or "Unknown").
+function fmtDate(ts) {
+  if (!ts) return "Unknown";
+  const d = new Date(ts);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// Timestamp(ms) → "3 July 2025, 14:08" (or "Unknown").
+function fmtDateTime(ts) {
+  if (!ts) return "Unknown";
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${fmtDate(ts)}, ${hh}:${mm}`;
+}
+
+// Byte count → "1.5 MB" ("" for falsy/0).
+function fmtBytes(n) {
+  if (!n) return "";
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
+// In-place Fisher–Yates shuffle; returns the same array.
+function shuffleArr(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+return { MONTHS, escapeHtml, fmtDur, fmtDate, fmtDateTime, fmtBytes, shuffleArr };
+})();
+
 const db = (function () {
 // db.js — local persistence via IndexedDB. Nothing here leaves the device.
 // Stores: people (named persons + face descriptors), photos (thumbnail + face labels),
@@ -4363,7 +4427,7 @@ const gphotos = (function () {
 //      OR paste it into the app's "Add from Google Photos" setup field at runtime
 //      (handy for a hosted build — no rebuild needed).
 
-const BAKED_GOOGLE_CLIENT_ID = ""; // paste a "...apps.googleusercontent.com" id to bake it in
+const BAKED_GOOGLE_CLIENT_ID = "628654647866-6pfbv3ea69lu2nqukbtpmcb3ic8shrub.apps.googleusercontent.com"; // paste a "...apps.googleusercontent.com" id to bake it in
 const GOOGLE_CLIENT_ID_KEY = "famsort_google_client_id";
 const GIS_SRC = "https://accounts.google.com/gsi/client";
 const PICKER_SCOPE = "https://www.googleapis.com/auth/photospicker.mediaitems.readonly";
@@ -4657,6 +4721,10 @@ return { getGoogleClientId, setGoogleClientId, googlePhotosConfigured, hasGoogle
 
 
 
+
+// Pure helpers live in util.js now; pull them into scope so the rest of this
+// file keeps calling them by their bare names (no call-site churn).
+const { MONTHS, escapeHtml, fmtDur, fmtDate, fmtDateTime, fmtBytes, shuffleArr } = util;
 
 const DUP_STRICT_FRAC = 0.03; // hamming/len below this = certain duplicate
 const DUP_LOOSE_FRAC = 0.09; // and below this = duplicate only if aspect ratios match too
@@ -9253,13 +9321,6 @@ function outputDest() {
   return "app";
 }
 
-function escapeHtml(s) {
-  return String(s == null ? "" : s).replace(
-    /[&<>"']/g,
-    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
-  );
-}
-
 // Record one auto-sort action (newest first, capped) and persist it (debounced).
 let activitySaveTimer = null;
 function logActivity(entry) {
@@ -9358,11 +9419,6 @@ function findDuplicate(result, pool) {
     }
   }
   return null;
-}
-
-function fmtDur(s) {
-  const m = Math.floor(s / 60);
-  return `${m}:${String(s % 60).padStart(2, "0")}`;
 }
 
 /* ------------------------------------------- duplicate review (library) */
@@ -13106,9 +13162,6 @@ function renderHomeTip() {
  *  ask-famsort. All local, privacy-first (no network, no backend LLM).  *
  * ===================================================================== */
 
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July",
-  "August", "September", "October", "November", "December"];
-
 // Best available "when this happened" time for a photo: the true capture date
 // (EXIF DateTimeOriginal or OneDrive's takenDateTime) when we have it, else the
 // original file's own modified date, else when it was added to FamSort.
@@ -13118,27 +13171,6 @@ function photoTakenAt(p) {
 function photoYear(p) {
   const t = photoTakenAt(p);
   return t ? new Date(t).getFullYear() : 0;
-}
-function fmtDate(ts) {
-  if (!ts) return "Unknown";
-  const d = new Date(ts);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-}
-function fmtDateTime(ts) {
-  if (!ts) return "Unknown";
-  const d = new Date(ts);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${fmtDate(ts)}, ${hh}:${mm}`;
-}
-function fmtBytes(n) {
-  if (!n) return "";
-  if (n < 1024) return `${n} B`;
-  const units = ["KB", "MB", "GB"];
-  let v = n / 1024;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
 
 /* --------------------------------------------------------- photo details */
@@ -13429,13 +13461,6 @@ function renderMemories() {
 // screen is visible — so it's never the same 98-of-one-person strip twice.
 let homeMemTimer = null;
 let homeMemPool = [];
-function shuffleArr(a) {
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
 function stopHomeMemories() {
   if (homeMemTimer) { clearInterval(homeMemTimer); homeMemTimer = null; }
 }
