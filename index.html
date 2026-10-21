@@ -1074,11 +1074,12 @@ p { margin: 0 0 .9rem; }
    GPU-friendly transforms only. A fresh random set is rendered each home visit. */
 #view-add { position: relative; }
 /* Full-page fixed backdrop so the drifting collage fills the WHOLE viewport (not
-   just the narrow content column), on any device. A negative z-index keeps it
-   behind all content; JS empties it when the user leaves the home screen. */
+   just the narrow content column), on every screen. It extends past the viewport
+   edges so some photos sit off-screen and appear when the user zooms out. A
+   negative z-index keeps it behind all content. */
 .polaroid-bg {
-  position: fixed; inset: 0; overflow: hidden; pointer-events: none;
-  z-index: -1; opacity: .2; user-select: none;
+  position: fixed; inset: -14vh -12vw; overflow: hidden; pointer-events: none;
+  z-index: -1; opacity: .42; user-select: none;
 }
 .polaroid {
   position: absolute; width: 118px; padding: 7px 7px 20px;
@@ -12928,8 +12929,9 @@ function renderHomeMemories() {
 
 /* ----------------------------------------------- polaroid collage backdrop */
 
-// A slowly drifting collage of random photos behind the home screen. Rebuilt with
-// a fresh random set on each home visit. Capped at a handful of GPU-animated
+// A slowly drifting collage of random photos behind the WHOLE app (every screen).
+// Rendered once and then left alone, so it keeps floating in place as the user
+// moves between pages instead of resetting. Capped at a handful of GPU-animated
 // elements so it stays smooth; disabled automatically for reduced-motion users.
 let polaroidsOn = false;
 function stopPolaroids() {
@@ -12940,19 +12942,24 @@ function stopPolaroids() {
 function renderPolaroids() {
   const box = el("polaroidBg");
   if (!box) return;
+  // Already drifting? Leave it — the backdrop persists across every page and
+  // shouldn't jump to a new layout each time the user switches tabs.
+  if (polaroidsOn && box.children.length) return;
   const pool = state.photos.filter((p) => p && p.thumb);
   if (pool.length < 4) {
     box.innerHTML = "";
     return;
   }
-  const picks = shuffleArr(pool.slice()).slice(0, Math.min(12, pool.length));
+  const picks = shuffleArr(pool.slice()).slice(0, Math.min(16, pool.length));
   const frag = document.createDocumentFragment();
   for (const p of picks) {
     const d = document.createElement("div");
     d.className = "polaroid";
     const rnd = (a, b) => a + Math.random() * (b - a);
-    d.style.left = Math.round(rnd(2, 86)) + "%";
-    d.style.top = Math.round(rnd(2, 86)) + "%";
+    // Spread across (and a little beyond) the page so some sit in the margins /
+    // off-screen — visible when the user zooms out.
+    d.style.left = Math.round(rnd(-4, 100)) + "%";
+    d.style.top = Math.round(rnd(-4, 100)) + "%";
     d.style.setProperty("--x0", "0px");
     d.style.setProperty("--y0", "0px");
     d.style.setProperty("--x1", Math.round(rnd(-26, 26)) + "px");
@@ -13400,7 +13407,8 @@ function navTo(view) {
   if (view === "family") renderFamily();
   if (view === "memories") renderMemories();
   if (view === "add") { renderHomeTip(); renderHomeMemories(); }
-  else { stopHomeMemories(); stopPolaroids(); }
+  else { stopHomeMemories(); }
+  renderPolaroids(); // the drifting backdrop lives on every screen and persists
   // Both the home (Add) and Albums screens kick off a background back-up of
   // anything still outstanding, so it keeps moving on its own wherever the user
   // is — not only when they open Albums (which is why it could look stuck).
