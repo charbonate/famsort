@@ -4131,9 +4131,10 @@ async function collectMediaItems(folderId, token, items, onStatus, knownIds) {
 // Download a batch of driveItems' pixels (preferring the pre-generated LARGE
 // thumbnail over the full original) and hand File objects to onFiles for
 // on-device sorting. Shared by camera-roll and multi-folder import.
-async function downloadAndFeed(items, token, onStatus, onFiles) {
+async function downloadAndFeed(items, token, onStatus, onFiles, onTotal) {
   const slice = items.slice(0, MAX_FILES);
   const total = slice.length;
+  onTotal?.(total); // tell the app the TRUE grand total so progress + ETA span the whole import, not each 80-item chunk
   onStatus?.(`Scanning 0 of ${total}…`);
   let failed = 0;
   let done = 0;
@@ -4254,7 +4255,7 @@ async function downloadAndFeed(items, token, onStatus, onFiles) {
 
 // Import photos/videos from one or more chosen OneDrive folders (recursively).
 // An empty list defaults to the camera roll, preserving the original behaviour.
-async function importFromFolders(folderIds, onStatus, onFiles, knownIds) {
+async function importFromFolders(folderIds, onStatus, onFiles, knownIds, onTotal) {
   const token = await getTokenSilent();
   if (!token) {
     onStatus?.("Please connect OneDrive first.");
@@ -4284,7 +4285,7 @@ async function importFromFolders(folderIds, onStatus, onFiles, knownIds) {
     onStatus?.("No photos found in the selected folders.");
     return;
   }
-  await downloadAndFeed(items, token, onStatus, onFiles);
+  await downloadAndFeed(items, token, onStatus, onFiles, onTotal);
 }
 
 // Assuming we're signed in, import the camera roll (the default source).
@@ -4543,8 +4544,41 @@ async function pickerFetch(path, token, opts = {}) {
     ...opts,
     headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) },
   });
-  if (!res.ok) throw new Error(`Picker ${res.status}`);
+  if (!res.ok) {
+    // Surface Google's actual reason (e.g. "PERMISSION_DENIED" when the Photos
+    // Picker API isn't enabled or the user isn't a Test user) instead of a bare
+    // status code — makes a failed connect diagnosable rather than a blank tab.
+    let detail = "";
+    try {
+      const j = await res.json();
+      detail = j?.error?.message || j?.error?.status || "";
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(`Picker ${res.status}${detail ? `: ${detail}` : ""}`);
+  }
   return res.json();
+}
+
+// Paint a readable message into the pre-opened picker tab so it's never a blank
+// "about:blank" page while we connect — and so any error is actually visible.
+function writeWindow(win, msg, isError = false) {
+  try {
+    if (!win || win.closed) return;
+    win.document.open();
+    win.document.write(
+      `<!doctype html><meta charset="utf-8"><title>Google Photos</title>` +
+      `<body style="font:16px/1.6 system-ui,Segoe UI,Roboto,sans-serif;margin:0;padding:28px;color:${isError ? "#b00020" : "#222"}">` +
+      `<div style="max-width:30rem">${String(msg).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}` +
+      (isError
+        ? `<p style="color:#666;margin-top:1rem">You can close this tab and try again.</p>`
+        : `<p style="color:#888;margin-top:1rem">This tab will open the Google Photos picker…</p>`) +
+      `</div></body>`
+    );
+    win.document.close();
+  } catch {
+    /* already navigated cross-origin — ignore */
+  }
 }
 
 // Parse a Google duration string like "5s" / "2.5s" into milliseconds.
@@ -4559,9 +4593,21 @@ function durationMs(d, fallback) {
 // Google's own UI, then we poll our session until they're done.
 async function runPickerSession(token, onStatus, pickerWindow) {
   onStatus?.("Opening the Google Photos picker…");
-  const session = await pickerFetch("/sessions", token, { method: "POST" });
+  writeWindow(pickerWindow, "Connecting to Google Photos…");
+  let session;
+  try {
+    session = await pickerFetch("/sessions", token, { method: "POST" });
+  } catch (e) {
+    writeWindow(pickerWindow, `Couldn't start Google Photos — ${e.message}`, true);
+    throw e;
+  }
   const sessionId = session.id;
   const pickerUri = session.pickerUri;
+  if (!pickerUri) {
+    const m = "Google didn't return a picker link (pickerUri missing). Check the Photos Picker API is enabled for this client ID.";
+    writeWindow(pickerWindow, m, true);
+    throw new Error(m);
+  }
   // Navigate the pre-opened window (opened during the user's click, so it isn't
   // blocked) to Google's picker. If we couldn't pre-open one, fall back to a
   // direct open (may be blocked by the popup blocker on some browsers).
@@ -5154,6 +5200,44 @@ async function withScanLock(fn, silent = false) {
     scanBusy = false;
   }
   return true;
+}
+
+// ---- whole-import progress session (one honest tally across the WHOLE library) ----
+// A big cloud import downloads + face-scans in chunks of 80. Without this, the
+// floating progress card counted "1 of 80" and reset every chunk. These module
+// counters let it show "3,200 of 14,000 — about 8 minutes left" across the whole
+// run. Set by onTotal from the import (visible paths only); the silent 90s sweep
+// leaves scanTotal at 0 so the card stays hidden.
+let scanTotal = 0;
+let scanDone = 0;
+let scanStartAt = 0;
+function beginScanSession(total) {
+  scanTotal = Number(total) || 0;
+  scanDone = 0;
+  scanStartAt = Date.now();
+}
+// Clear the session and, if a visible import just finished, finalise the card
+// with a single summary (chunks suppress their own "All done" while active).
+function endScanSession() {
+  const n = scanDone;
+  const wasActive = scanTotal > 0;
+  scanTotal = 0;
+  scanDone = 0;
+  scanStartAt = 0;
+  if (wasActive && !autoScanning && n > 0) {
+    showProgressDone(`Imported ${n.toLocaleString()} photo${n === 1 ? "" : "s"}`);
+  }
+}
+// "— about 8 minutes left", once we have enough samples for a stable estimate.
+function scanEtaText() {
+  if (!scanStartAt || scanDone < 8 || scanTotal <= 0) return "";
+  const elapsed = Date.now() - scanStartAt;
+  if (elapsed < 1500) return "";
+  const perItem = elapsed / scanDone;
+  const etaMs = Math.max(0, scanTotal - scanDone) * perItem;
+  if (etaMs < 60000) return " — under a minute left";
+  const mins = Math.round(etaMs / 60000);
+  return ` — about ${mins} minute${mins === 1 ? "" : "s"} left`;
 }
 
 // Read a folder and return only the files we haven't ingested yet (recording
@@ -7253,13 +7337,40 @@ async function cloudStartup() {
   verifyAllAlbums().then(() => backupAllAlbums());
   // Auto-backup is "set up once and forget": resume the watch loop on EVERY
   // launch (it otherwise only starts after a manual sort) and kick an immediate
-  // catch-up so photos added to the camera roll since last time import on their
-  // own — no button needed. knownCloudIds() makes this skip what's already in,
-  // so it's cheap when there's nothing new and resumes a big backlog across
-  // successive launches.
+  // VISIBLE catch-up so photos added to the camera roll since last time import on
+  // their own — with a live "N of TOTAL — about X min left" card, no button.
+  // knownCloudIds() makes this skip what's already in, so it's cheap when there's
+  // nothing new and resumes a big backlog across successive launches.
   if (state.autoBackup) {
+    cloudBootCatchUp();
     startAutoSync();
-    autoSweep(true);
+  }
+}
+
+// One VISIBLE cloud catch-up at launch: pulls any camera-roll photos not yet
+// imported and shows real progress + ETA in the floating card. Silent no-op when
+// there's nothing new (enumeration skips already-imported items). The ongoing
+// 90s sweep stays silent for small deltas; this is just the launch catch-up.
+async function cloudBootCatchUp() {
+  if (
+    !(
+      window.isSecureContext &&
+      cloud.oneDriveConfigured() &&
+      (cloudSignedIn || (await cloud.hasCloudAccount()))
+    )
+  )
+    return;
+  cloudSignedIn = true;
+  lastCloudSweep = Date.now(); // this pass counts; don't let the 90s timer double up
+  try {
+    const ids = (state.cloudSources || []).map((s) => s.id);
+    await withScanLock(async () => {
+      await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds(), beginScanSession);
+    }, false); // VISIBLE — the floating card shows the whole-library tally + ETA
+  } catch {
+    /* offline — the silent 90s loop retries */
+  } finally {
+    endScanSession();
   }
 }
 
@@ -7494,13 +7605,14 @@ async function rescanCloudNow() {
     const ids = (state.cloudSources || []).map((s) => s.id);
     showScanMsg("Starting a full OneDrive scan…");
     const ran = await withScanLock(async () => {
-      await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds());
+      await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds(), beginScanSession);
     }, false);
     if (!ran) showScanMsg("A scan is already running — give it a moment.");
     renderAll();
   } catch {
     showScanMsg("Couldn't complete the OneDrive scan. Please try again.");
   } finally {
+    endScanSession();
     if (btn) btn.disabled = false;
   }
 }
@@ -7526,6 +7638,20 @@ async function addGoogleSource() {
   // blocker (the session/token round-trips are async and would otherwise orphan
   // the open). gphotos navigates this window to Google's picker.
   const pickerWindow = window.open("", "_blank");
+  // Paint something immediately so the tab isn't a confusing blank page during
+  // the OAuth consent round-trip (gphotos replaces this with the picker or an
+  // error message).
+  try {
+    if (pickerWindow && !pickerWindow.closed) {
+      pickerWindow.document.write(
+        '<!doctype html><meta charset="utf-8"><title>Google Photos</title>' +
+        '<body style="font:16px/1.6 system-ui,Segoe UI,Roboto,sans-serif;margin:0;padding:28px;color:#222">Connecting to Google Photos…</body>'
+      );
+      pickerWindow.document.close();
+    }
+  } catch {
+    /* ignore */
+  }
   try {
     await gphotos.connectGooglePhotos(showScanMsg, handleFiles, pickerWindow);
     renderAll();
@@ -9208,8 +9334,17 @@ async function processFiles(fileList, opts = {}) {
     if (scanCancelRequested) break; // user tapped ✕ on the overlay — stop here
     const isVid = files[i].type.startsWith("video/") || (isVideoName(files[i].name) && !isImageName(files[i].name));
     el("processingText").textContent = isVid ? "Scanning video…" : "Looking for faces…";
-    el("procCount").textContent = `${i + 1} of ${files.length}`;
-    el("procBar").style.width = Math.round(((i + 1) / files.length) * 100) + "%";
+    if (scanTotal > 0) {
+      // Big cloud import: show ONE running tally across the WHOLE library plus an
+      // ETA, instead of a per-80-chunk count that keeps resetting.
+      scanDone++;
+      const shown = Math.min(scanDone, scanTotal);
+      el("procCount").textContent = `${shown.toLocaleString()} of ${scanTotal.toLocaleString()}${scanEtaText()}`;
+      el("procBar").style.width = Math.round((shown / scanTotal) * 100) + "%";
+    } else {
+      el("procCount").textContent = `${i + 1} of ${files.length}`;
+      el("procBar").style.width = Math.round(((i + 1) / files.length) * 100) + "%";
+    }
 
     let result;
     try {
@@ -9326,7 +9461,10 @@ async function processFiles(fileList, opts = {}) {
 
   await flush(); // final partial batch
 
-  if (!autoScanning) {
+  // During a big multi-chunk cloud import (scanTotal > 0) each 80-chunk would
+  // otherwise flash its own "All done" and bounce the bar to 100% and back. Let
+  // the import's caller finalise ONCE via endScanSession instead.
+  if (!autoScanning && scanTotal === 0) {
     if (scanCancelRequested) {
       const parts = [`Stopped — sorted ${added} photo${added === 1 ? "" : "s"}`];
       if (dupes) parts.push(`${dupes} duplicate${dupes === 1 ? "" : "s"} skipped`);
