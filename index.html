@@ -178,6 +178,11 @@ p { margin: 0 0 .9rem; }
 
 /* Screens */
 .screen { max-width: 680px; margin-inline: auto; padding: 18px 16px 30px; }
+/* Use more of the page on bigger devices (laptop/desktop) while phones stay
+   edge-to-edge. Grids inside use auto-fill/auto-fit, so they add columns to fill
+   the extra width automatically. */
+@media (min-width: 900px)  { .screen { max-width: 960px;  padding-inline: 28px; } }
+@media (min-width: 1280px) { .screen { max-width: 1120px; } }
 .view__title { font-size: 1.6rem; }
 .view__sub { color: var(--ink-soft); margin-bottom: 1.2rem; }
 
@@ -941,6 +946,14 @@ p { margin: 0 0 .9rem; }
 .tabbar__btn.is-active { color: var(--accent-dark); }
 .tabbar__btn.is-active .tabbar__ico { background: var(--accent-soft); }
 .tabbar__btn:active .tabbar__ico { transform: scale(.88); }
+/* On wider screens the bottom bar becomes a centered floating pill instead of a
+   full-width strip, so it matches the content and doesn't stretch edge-to-edge. */
+@media (min-width: 900px) {
+  .tabbar {
+    left: 50%; right: auto; transform: translateX(-50%); width: min(520px, 94%);
+    border: 1px solid var(--line); border-radius: 18px 18px 0 0;
+  }
+}
 
 /* Boot overlay */
 .boot {
@@ -1060,10 +1073,12 @@ p { margin: 0 0 .9rem; }
 /* Drifting polaroid collage behind the home screen. Low opacity, non-interactive,
    GPU-friendly transforms only. A fresh random set is rendered each home visit. */
 #view-add { position: relative; }
-#view-add > :not(.polaroid-bg) { position: relative; z-index: 1; }
+/* Full-page fixed backdrop so the drifting collage fills the WHOLE viewport (not
+   just the narrow content column), on any device. A negative z-index keeps it
+   behind all content; JS empties it when the user leaves the home screen. */
 .polaroid-bg {
-  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
-  z-index: 0; opacity: .13; user-select: none;
+  position: fixed; inset: 0; overflow: hidden; pointer-events: none;
+  z-index: -1; opacity: .2; user-select: none;
 }
 .polaroid {
   position: absolute; width: 118px; padding: 7px 7px 20px;
@@ -1086,10 +1101,13 @@ p { margin: 0 0 .9rem; }
 .collage__head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--line); }
 .collage__title { margin: 0; font-size: 18px; }
 .collage__close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--ink-soft); }
-.collage__stage { padding: 16px; overflow: auto; display: flex; justify-content: center; background: var(--accent-soft); }
-.collage__canvas { max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.collage__stage { padding: 16px; overflow: auto; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); }
+.collage__canvas { max-width: 100%; height: auto; align-self: center; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
 .collage__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--line); }
 .collage__hint { font-size: 13px; color: var(--ink-soft); }
+.collage__count { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.collage__count-lab { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.collage__count input[type=range] { flex: 1; min-width: 90px; max-width: 220px; accent-color: var(--accent); cursor: pointer; }
 
 /* Home-screen memories teaser. */
 .home-mem {
@@ -1375,13 +1393,15 @@ p { margin: 0 0 .9rem; }
     <input type="file" id="avatarPicker" accept="image/*" hidden />
   </header>
 
+  <!-- Slowly drifting polaroid collage behind the whole app on the home screen.
+       Fixed to the full viewport; populated at runtime with a fresh random set
+       each home visit and emptied on every other screen. Purely decorative. -->
+  <div class="polaroid-bg" id="polaroidBg" aria-hidden="true"></div>
+
   <main class="screen" id="screens">
 
     <!-- ADD SCREEN -->
     <section class="view" id="view-add" data-view="add">
-      <!-- Slowly drifting polaroid collage behind the home content. Populated at
-           runtime with a fresh random set each visit; purely decorative. -->
-      <div class="polaroid-bg" id="polaroidBg" aria-hidden="true"></div>
       <div class="hero-mini">
         <h1>Sort your photos by <em>the people you love</em> — automatically.</h1>
         <p>Point FamSort at a folder (like your OneDrive camera roll). It finds the faces <strong>on this device</strong>, groups them, and keeps watching for new photos. Nothing is uploaded.</p>
@@ -2112,7 +2132,11 @@ p { margin: 0 0 .9rem; }
         <canvas id="collageCanvas" class="collage__canvas"></canvas>
       </div>
       <div class="collage__foot">
-        <span class="collage__hint" id="collageHint"></span>
+        <label class="collage__count">
+          <span class="collage__count-lab">Photos</span>
+          <input type="range" id="collageCount" min="2" max="14" value="9" aria-label="Number of photos in the collage" />
+          <span class="collage__hint" id="collageHint"></span>
+        </label>
         <button class="btn btn--primary" id="collageDownload" type="button">⤓ Download</button>
       </div>
     </div>
@@ -12629,6 +12653,13 @@ function datedPhotos() {
   return state.photos.filter((p) => photoTakenAt(p));
 }
 
+// Photos that have been SORTED into at least one named person's album. The
+// Tools/AI features (slideshows, collages, on this day, year in review) only ever
+// work with these — never the untagged pile the user hasn't organised yet.
+function sortedPhotos() {
+  return state.photos.filter((p) => hasNamedPerson(p.personIds));
+}
+
 // "On this day": photos from the same calendar day (month + date) in earlier
 // years, grouped newest year first.
 function onThisDayPhotos() {
@@ -12636,7 +12667,8 @@ function onThisDayPhotos() {
   const m = now.getMonth();
   const d = now.getDate();
   const todayStart = new Date(now.getFullYear(), m, d).getTime();
-  return datedPhotos()
+  return sortedPhotos()
+    .filter((p) => photoTakenAt(p))
     .filter((p) => {
       const dt = new Date(photoTakenAt(p));
       return dt.getMonth() === m && dt.getDate() === d && dt.getTime() < todayStart;
@@ -12913,14 +12945,14 @@ function renderPolaroids() {
     box.innerHTML = "";
     return;
   }
-  const picks = shuffleArr(pool.slice()).slice(0, Math.min(7, pool.length));
+  const picks = shuffleArr(pool.slice()).slice(0, Math.min(12, pool.length));
   const frag = document.createDocumentFragment();
   for (const p of picks) {
     const d = document.createElement("div");
     d.className = "polaroid";
     const rnd = (a, b) => a + Math.random() * (b - a);
-    d.style.left = Math.round(rnd(3, 80)) + "%";
-    d.style.top = Math.round(rnd(2, 82)) + "%";
+    d.style.left = Math.round(rnd(2, 86)) + "%";
+    d.style.top = Math.round(rnd(2, 86)) + "%";
     d.style.setProperty("--x0", "0px");
     d.style.setProperty("--y0", "0px");
     d.style.setProperty("--x1", Math.round(rnd(-26, 26)) + "px");
@@ -12945,7 +12977,7 @@ function openYearReview(year) {
   const modal = el("yearReviewModal");
   const body = el("yearReviewBody");
   if (!modal || !body) return;
-  const list = datedPhotos().filter((p) => photoYear(p) === year).sort((a, b) => photoTakenAt(a) - photoTakenAt(b));
+  const list = sortedPhotos().filter((p) => photoYear(p) === year).sort((a, b) => photoTakenAt(a) - photoTakenAt(b));
   if (!list.length) return;
   const ids = list.map((p) => p.id);
 
@@ -13096,8 +13128,14 @@ function downloadCollage() {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }, "image/png");
 }
+// The current collage's photo pool, with each photo's loaded image and a fixed
+// per-photo rotation/jitter/scale. Keeping these stable lets the photo-count
+// slider re-draw instantly — adding or removing photos — without reloading or
+// re-randomising the ones already placed.
+let collageState = null;
+
 async function buildCollage(ids, opts = {}) {
-  ids = (ids || []).filter(Boolean).slice(0, 14);
+  ids = (ids || []).filter(Boolean).slice(0, 24); // generous pool; the slider picks how many show
   if (ids.length < 2) {
     setAskMsg("I need at least a couple of photos to make a collage.");
     return;
@@ -13111,26 +13149,60 @@ async function buildCollage(ids, opts = {}) {
       im.src = p.thumb;
     }))
   );
-  const loaded = imgs.filter(Boolean);
-  if (loaded.length < 2) {
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const pairs = photos
+    .map((p, i) => ({ im: imgs[i] }))
+    .filter((x) => x.im)
+    .map((x) => ({
+      im: x.im,
+      rot: rnd(-0.17, 0.17), // ~±10°, fixed per photo so it doesn't jump while dragging
+      jx: rnd(-1, 1),
+      jy: rnd(-1, 1),
+      sv: rnd(0.9, 1.05),
+    }));
+  if (pairs.length < 2) {
     setAskMsg("Those photos couldn't be loaded into a collage.");
     return;
   }
-  const n = loaded.length;
-  const cols = Math.max(2, Math.round(Math.sqrt(n * 1.35)));
-  const rows = Math.ceil(n / cols);
-  // Longest edge of each photo (varies a touch for a scrapbook feel).
-  const photoMax = 300;
-  const framePad = 16;        // white border around the photo
-  const captionPad = 46;      // taller bottom lip, polaroid-style
-  const cell = photoMax * 0.82; // < photoMax so neighbours overlap
-  const jitter = photoMax * 0.12;
-  const margin = 70;
-  const titleH = opts.title ? 72 : 24;
-  const W = Math.round(margin * 2 + (cols - 1) * cell + photoMax + framePad * 2);
-  const H = Math.round(titleH + margin * 2 + (rows - 1) * cell + photoMax + framePad * 2 + captionPad);
+  collageState = { pairs, title: opts.title || "Your collage" };
+  const def = Math.min(pairs.length, 9);
+  const slider = el("collageCount");
+  if (slider) {
+    slider.min = 2;
+    slider.max = pairs.length;
+    slider.value = def;
+    slider.disabled = pairs.length <= 2;
+  }
+  drawCollage(def);
+  const titleEl = el("collageTitle");
+  if (titleEl) titleEl.textContent = collageState.title;
+  const modal = el("collageModal");
+  if (modal) modal.hidden = false;
+  setAskMsg("Made you a collage. Drag the slider to add or remove photos, then tap Download.");
+}
+
+// Draw `count` photos from the current collage pool. Fewer photos → each is drawn
+// larger; more photos → they tuck in smaller. Photos overlap with a gentle jitter
+// and rotation for a hand-arranged, polaroid look, and aspect ratios are ALWAYS
+// preserved (the canvas is sized to the artwork, so the preview is never skewed).
+function drawCollage(count) {
+  if (!collageState) return;
   const canvas = el("collageCanvas");
   if (!canvas) return;
+  const n = Math.max(2, Math.min(count | 0, collageState.pairs.length));
+  const pairs = collageState.pairs.slice(0, n);
+  const cols = Math.max(2, Math.round(Math.sqrt(n * 1.35)));
+  const rows = Math.ceil(n / cols);
+  // Longest edge of each photo — scales up when there are fewer photos.
+  const photoMax = Math.round(Math.max(210, Math.min(470, 1360 / Math.sqrt(n))));
+  const framePad = Math.round(photoMax * 0.055); // white border around the photo
+  const captionPad = Math.round(photoMax * 0.15); // polaroid bottom lip
+  const cell = photoMax * 0.82; // < photoMax so neighbours overlap
+  const jitter = photoMax * 0.12;
+  const margin = Math.round(photoMax * 0.23);
+  const titleH = collageState.title ? Math.round(photoMax * 0.24) + 24 : 24;
+  const W = Math.round(margin * 2 + (cols - 1) * cell + photoMax + framePad * 2);
+  const H = Math.round(titleH + margin * 2 + (rows - 1) * cell + photoMax + framePad * 2 + captionPad);
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d");
@@ -13142,33 +13214,30 @@ async function buildCollage(ids, opts = {}) {
   grad.addColorStop(1, "rgba(120,100,70,0.12)");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
-  if (opts.title) {
+  if (collageState.title) {
     ctx.fillStyle = "#2a2440";
-    ctx.font = "600 38px Georgia, 'Fraunces', serif";
+    ctx.font = `600 ${Math.round(photoMax * 0.13) + 10}px Georgia, 'Fraunces', serif`;
     ctx.textBaseline = "middle";
     ctx.textAlign = "center";
-    ctx.fillText(opts.title, W / 2, titleH / 2 + 18);
+    ctx.fillText(collageState.title, W / 2, titleH / 2 + 14);
     ctx.textAlign = "left";
   }
-  const rnd = (a, b) => a + Math.random() * (b - a);
-  loaded.forEach((im, i) => {
+  pairs.forEach((pr, i) => {
+    const im = pr.im;
     const c = i % cols;
     const r = Math.floor(i / cols);
-    // Centre of this cell, plus a little jitter so the grid doesn't show.
-    const baseX = margin + photoMax / 2 + framePad + c * cell;
-    const baseY = titleH + margin + photoMax / 2 + framePad + r * cell;
-    const cx = baseX + rnd(-jitter, jitter);
-    const cy = baseY + rnd(-jitter, jitter);
-    const rot = rnd(-0.17, 0.17); // ~±10°
+    // Centre of this cell, plus the photo's own fixed jitter so the grid doesn't show.
+    const cx = margin + photoMax / 2 + framePad + c * cell + pr.jx * jitter;
+    const cy = titleH + margin + photoMax / 2 + framePad + r * cell + pr.jy * jitter;
     // Fit the photo into photoMax on its longest side — NEVER distort it.
-    const scale = photoMax / Math.max(im.width, im.height) * rnd(0.9, 1.05);
+    const scale = photoMax / Math.max(im.width, im.height) * pr.sv;
     const pw = im.width * scale;
     const ph = im.height * scale;
     const fw = pw + framePad * 2;
     const fh = ph + framePad * 2 + captionPad;
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.rotate(rot);
+    ctx.rotate(pr.rot);
     // Drop shadow + white polaroid frame.
     ctx.shadowColor = "rgba(30,20,50,0.3)";
     ctx.shadowBlur = 22;
@@ -13182,13 +13251,8 @@ async function buildCollage(ids, opts = {}) {
     ctx.drawImage(im, -pw / 2, -fh / 2 + framePad, pw, ph);
     ctx.restore();
   });
-  const titleEl = el("collageTitle");
-  if (titleEl) titleEl.textContent = opts.title || "Your collage";
   const hintEl = el("collageHint");
-  if (hintEl) hintEl.textContent = `${loaded.length} photo${loaded.length === 1 ? "" : "s"}`;
-  const modal = el("collageModal");
-  if (modal) modal.hidden = false;
-  setAskMsg(`Made you a collage of ${loaded.length} photo${loaded.length === 1 ? "" : "s"}. Tap Download to save it.`);
+  if (hintEl) hintEl.textContent = `${n} photo${n === 1 ? "" : "s"}`;
 }
 
 /* ------------------------------------------------------------ ask famsort */
@@ -13258,26 +13322,41 @@ function runAsk(query) {
 
   const wantSlideshow = /(slideshow|slide show|montage|play|build me)/.test(low);
   const wantYearReview = /(year in review|wrap|recap|rewind|year review)/.test(low);
-  const wantMemories = /(on this day|memor|throwback)/.test(low);
+  const wantOnThisDay = /(on this day|this day)/.test(low);
+  const wantMemories = /(memor|throwback)/.test(low);
   const wantCollage = /(collage|mosaic|photo ?grid|grid of|poster|montage board|picture grid)/.test(low);
 
   if (wantYearReview) {
     // Default to the current year when none was named ("year in review" chip).
-    const yr = year || (datedPhotos().some((p) => photoYear(p) === new Date().getFullYear())
+    const yr = year || (sortedPhotos().some((p) => photoYear(p) === new Date().getFullYear())
       ? new Date().getFullYear()
-      : Math.max(0, ...datedPhotos().map(photoYear)));
+      : Math.max(0, ...sortedPhotos().map(photoYear)));
     if (yr) {
       navTo("memories");
       openYearReview(yr);
       return;
     }
   }
+  // "On this day" is its own thing — the same calendar day in earlier years — not a
+  // plain "photos of me" search (the word "me" in the chip used to hijack it).
+  if (wantOnThisDay) {
+    const otd = onThisDayPhotos();
+    if (!otd.length) {
+      setAskMsg(`Nothing from ${new Date().getDate()}/${new Date().getMonth() + 1} in earlier years yet — add some older photos, or check back another day.`);
+      renderAskResults([]);
+      return;
+    }
+    const otdIds = shuffleArr(otd.slice()).map((p) => p.id);
+    setAskMsg(`On this day: ${otdIds.length} photo${otdIds.length === 1 ? "" : "s"} from ${new Date().getDate()}/${new Date().getMonth() + 1} in earlier years. Tap one to view, or play them all.`);
+    renderAskResults(otdIds);
+    return;
+  }
   if (wantMemories && !person && !year) {
     setAskMsg("Here are your memories.");
     return;
   }
 
-  let ids = state.photos.slice();
+  let ids = sortedPhotos();
   if (person) ids = ids.filter((p) => (p.personIds || []).includes(person.id));
   if (year) ids = ids.filter((p) => photoYear(p) === year);
   // A slideshow or collage should feel fresh every time, so order randomly rather
@@ -13756,6 +13835,8 @@ function wire() {
   if (collageModal) collageModal.addEventListener("click", (e) => { if (e.target === collageModal) closeCollage(); });
   const collageDownload = el("collageDownload");
   if (collageDownload) collageDownload.addEventListener("click", downloadCollage);
+  const collageCount = el("collageCount");
+  if (collageCount) collageCount.addEventListener("input", (e) => drawCollage(Number(e.target.value)));
   // Slideshow overlay.
   const slideClose = el("slideClose");
   if (slideClose) slideClose.addEventListener("click", closeSlideshow);
