@@ -1057,6 +1057,40 @@ p { margin: 0 0 .9rem; }
 .view__head-row .view__title { margin: 0; }
 .fam-edit-btn.is-on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+/* Drifting polaroid collage behind the home screen. Low opacity, non-interactive,
+   GPU-friendly transforms only. A fresh random set is rendered each home visit. */
+#view-add { position: relative; }
+#view-add > :not(.polaroid-bg) { position: relative; z-index: 1; }
+.polaroid-bg {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  z-index: 0; opacity: .13; user-select: none;
+}
+.polaroid {
+  position: absolute; width: 118px; padding: 7px 7px 20px;
+  background: #fff; border-radius: 2px; box-shadow: 0 10px 22px rgba(30, 20, 60, .22);
+  will-change: transform; animation: polaroidFloat var(--dur, 24s) ease-in-out infinite;
+}
+.polaroid img { display: block; width: 100%; height: 100px; object-fit: cover; background: #eee; }
+@keyframes polaroidFloat {
+  0%   { transform: translate(var(--x0), var(--y0)) rotate(var(--r0)); }
+  50%  { transform: translate(var(--x1), var(--y1)) rotate(var(--r1)); }
+  100% { transform: translate(var(--x0), var(--y0)) rotate(var(--r0)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .polaroid { animation: none; }
+}
+
+/* Collage result modal. */
+.collage { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(20, 14, 40, .6); padding: 16px; }
+.collage__card { background: #fff; border-radius: 16px; max-width: 760px; width: 100%; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+.collage__head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.collage__title { margin: 0; font-size: 18px; }
+.collage__close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--ink-soft); }
+.collage__stage { padding: 16px; overflow: auto; display: flex; justify-content: center; background: var(--accent-soft); }
+.collage__canvas { max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.collage__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--line); }
+.collage__hint { font-size: 13px; color: var(--ink-soft); }
+
 /* Home-screen memories teaser. */
 .home-mem {
   display: block; width: 100%; text-align: left; cursor: pointer;
@@ -1068,7 +1102,8 @@ p { margin: 0 0 .9rem; }
 .home-mem__title { display: block; font-size: 18px; margin-top: 2px; }
 .home-mem__sub { display: block; font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
 .home-mem__strip { display: flex; gap: 6px; margin: 12px 0 4px; overflow: hidden; }
-.home-mem__thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; flex: 0 0 auto; }
+.home-mem__thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; flex: 0 0 auto; transition: opacity .26s ease, transform .26s ease; }
+.home-mem__thumb--fading { opacity: 0; transform: scale(.92); }
 .home-mem__go { display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--accent-dark); }
 
 /* Ask Famsort. */
@@ -1344,6 +1379,9 @@ p { margin: 0 0 .9rem; }
 
     <!-- ADD SCREEN -->
     <section class="view" id="view-add" data-view="add">
+      <!-- Slowly drifting polaroid collage behind the home content. Populated at
+           runtime with a fresh random set each visit; purely decorative. -->
+      <div class="polaroid-bg" id="polaroidBg" aria-hidden="true"></div>
       <div class="hero-mini">
         <h1>Sort your photos by <em>the people you love</em> — automatically.</h1>
         <p>Point FamSort at a folder (like your OneDrive camera roll). It finds the faces <strong>on this device</strong>, groups them, and keeps watching for new photos. Nothing is uploaded.</p>
@@ -1698,11 +1736,12 @@ p { margin: 0 0 .9rem; }
       <div class="ask">
         <label class="ask__label" for="askInput">✨ Ask FamSort</label>
         <div class="ask__row">
-          <input class="ask__input" id="askInput" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. build me a slideshow of Mia from 2019" />
+          <input class="ask__input" id="askInput" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. make me a collage of Mia from 2019" />
           <button class="btn btn--primary ask__go" id="askGoBtn" type="button">Ask</button>
         </div>
         <div class="ask__chips">
           <button class="ask__chip" type="button" data-ask-chip="Show me photos on this day">On this day</button>
+          <button class="ask__chip" type="button" data-ask-chip="Make me a collage">Make a collage</button>
           <button class="ask__chip" type="button" data-ask-chip="Build me a slideshow">Build a slideshow</button>
           <button class="ask__chip" type="button" data-ask-chip="Year in review 2024">Year in review</button>
         </div>
@@ -2058,6 +2097,23 @@ p { margin: 0 0 .9rem; }
       <div class="yrev__body" id="yearReviewBody"></div>
       <div class="yrev__foot">
         <button class="btn btn--primary" id="yearReviewPlay" type="button">▶ Play slideshow</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Collage result -->
+  <div class="collage" id="collageModal" hidden>
+    <div class="collage__card">
+      <div class="collage__head">
+        <h3 class="collage__title" id="collageTitle">Your collage</h3>
+        <button class="collage__close" id="collageClose" aria-label="Close">✕</button>
+      </div>
+      <div class="collage__stage">
+        <canvas id="collageCanvas" class="collage__canvas"></canvas>
+      </div>
+      <div class="collage__foot">
+        <span class="collage__hint" id="collageHint"></span>
+        <button class="btn btn--primary" id="collageDownload" type="button">⤓ Download</button>
       </div>
     </div>
   </div>
@@ -3800,10 +3856,37 @@ async function cameraRollFolder() {
   }
 }
 
+// Fetch the real metadata (taken date, dimensions, camera, created/modified) for
+// a single OneDrive item by id. Used to backfill photos imported before metadata
+// capture existed, so their dates stop reading "unknown".
+async function getItemMeta(id) {
+  if (!id) return null;
+  const token = await getTokenSilent();
+  if (!token) return null;
+  try {
+    const it = await graphGet(
+      `${GRAPH}/me/drive/items/${id}?$select=id,name,size,image,photo,fileSystemInfo`,
+      token
+    );
+    const toMs = (s) => { const t = s ? Date.parse(s) : 0; return Number.isFinite(t) ? t : 0; };
+    return {
+      takenAt: toMs(it.photo?.takenDateTime),
+      fileCreated: toMs(it.fileSystemInfo?.createdDateTime),
+      fileModified: toMs(it.fileSystemInfo?.lastModifiedDateTime),
+      width: (it.image?.width || it.photo?.width || 0) | 0,
+      height: (it.image?.height || it.photo?.height || 0) | 0,
+      bytes: it.size || 0,
+      cameraMake: it.photo?.cameraMake || "",
+      cameraModel: it.photo?.cameraModel || "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Recursively gather image/video driveItems under a folder, bounded by MAX_FILES
 // total across the whole import so a huge tree can't run away.
-async function collectMediaItems(folderId, token, items) {
-  if (items.length >= MAX_FILES) return;
+async function collectMediaItems(folderId, token, items) {  if (items.length >= MAX_FILES) return;
   const subfolders = [];
   // $expand thumbnails so we scan small previews, not multi-MB originals.
   let next = `${GRAPH}/me/drive/items/${folderId}/children?$top=200&$expand=thumbnails`;
@@ -3873,6 +3956,20 @@ async function downloadAndFeed(items, token, onStatus, onFiles) {
     const f = new File([blob], it.name, { type: blob.type || "image/jpeg" });
     try {
       f.cloudId = it.id;
+      // Attach the ORIGINAL item's real metadata from Microsoft Graph. The File
+      // we build from a thumbnail has no EXIF and its lastModified is "now", so
+      // without this every date/dimension/camera field would read "unknown".
+      const toMs = (s) => { const t = s ? Date.parse(s) : 0; return Number.isFinite(t) ? t : 0; };
+      f.sourceMeta = {
+        takenAt: toMs(it.photo?.takenDateTime),
+        fileCreated: toMs(it.fileSystemInfo?.createdDateTime),
+        fileModified: toMs(it.fileSystemInfo?.lastModifiedDateTime),
+        width: (it.image?.width || it.photo?.width || 0) | 0,
+        height: (it.image?.height || it.photo?.height || 0) | 0,
+        bytes: it.size || 0,
+        cameraMake: it.photo?.cameraMake || "",
+        cameraModel: it.photo?.cameraModel || "",
+      };
     } catch {
       /* File props are writable in practice; ignore if not */
     }
@@ -4063,7 +4160,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, getFileByContentKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, createFolder, renameFolder, folderIdByPath, cameraRollFolder, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, getFileByContentKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, createFolder, renameFolder, folderIdByPath, cameraRollFolder, getItemMeta, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 // app.js — Famsort controller. Orchestrates UI, the on-device face engine, and local storage.
@@ -4253,9 +4350,59 @@ async function boot() {
   }
   renderAll();
   el("boot").hidden = true;
+  // Backfill real capture dates/dimensions/camera for photos imported before
+  // metadata capture existed — runs quietly in the background, never blocks boot.
+  backfillPhotoMeta();
 }
 
-/* ----------------------------------------------------- watched folders */
+// One-time-ish background pass: for photos that have no true capture date yet but
+// DO point at a OneDrive original, pull the real metadata and heal them so the
+// date/timeline/memory features stop reading "unknown". Throttled and resumable
+// (a `metaBackfilled` flag per photo means we never re-fetch the same item).
+let backfillRunning = false;
+async function backfillPhotoMeta() {
+  if (backfillRunning) return;
+  if (!cloud.oneDriveConfigured()) return;
+  const pending = state.photos.filter(
+    (p) => p && !p.metaBackfilled && !p.takenAt && (p.sourceId || p.cloudId)
+  );
+  if (!pending.length) return;
+  backfillRunning = true;
+  let changed = 0;
+  try {
+    for (const p of pending) {
+      let meta = null;
+      try {
+        meta = await cloud.getItemMeta(p.sourceId || p.cloudId);
+      } catch {
+        /* token expired / offline — stop; next launch retries */
+        break;
+      }
+      p.metaBackfilled = true;
+      if (meta) {
+        if (meta.takenAt) p.takenAt = meta.takenAt;
+        if (meta.fileCreated) p.fileCreated = meta.fileCreated;
+        if (meta.fileModified && !p.fileModified) p.fileModified = meta.fileModified;
+        if (meta.width && !(p.dims && p.dims.w)) p.dims = { w: meta.width, h: meta.height };
+        if (meta.bytes && !p.bytes) p.bytes = meta.bytes;
+        if (meta.cameraMake && !p.cameraMake) p.cameraMake = meta.cameraMake;
+        if (meta.cameraModel && !p.cameraModel) p.cameraModel = meta.cameraModel;
+      }
+      try { await db.put("photos", p); } catch { /* ignore single write failure */ }
+      changed++;
+      // Repaint periodically so dates appear progressively without hammering the UI.
+      if (changed % 25 === 0) {
+        try { renderHomeMemories(); } catch { /* view may not be mounted */ }
+      }
+      await new Promise((r) => setTimeout(r, 40)); // gentle throttle on Graph
+    }
+  } finally {
+    backfillRunning = false;
+    if (changed) {
+      try { renderHomeMemories(); } catch { /* ignore */ }
+    }
+  }
+}
 async function loadWatched() {
   const folders = await db.get("meta", "watched");
   state.watched = (folders?.list || []).filter((w) => w.handle);
@@ -8174,6 +8321,129 @@ function showProgressDone(summary) {
   }, 3400);
 }
 
+// A tiny, dependency-free JPEG EXIF reader. Reads only the first slice of the
+// file and pulls out the original capture date (DateTimeOriginal / DateTime) and
+// the camera make/model. Returns null for non-JPEG or when no EXIF is present —
+// local gallery photos then fall back to the file's own modified date.
+async function extractLocalExif(file) {
+  try {
+    if (!(/image\/jpe?g/i.test(file.type || "")) && !(/\.jpe?g$/i.test(file.name || ""))) return null;
+    const slice = file.slice(0, 256 * 1024);
+    const buf = await slice.arrayBuffer();
+    const view = new DataView(buf);
+    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null; // not a JPEG
+    let off = 2;
+    // Walk JPEG markers to find APP1 (0xFFE1) carrying "Exif\0\0".
+    while (off + 4 < view.byteLength) {
+      if (view.getUint8(off) !== 0xff) break;
+      const marker = view.getUint8(off + 1);
+      const size = view.getUint16(off + 2);
+      if (marker === 0xe1) {
+        if (view.getUint32(off + 4) === 0x45786966 && view.getUint16(off + 8) === 0x0000) {
+          return parseExifTiff(view, off + 10);
+        }
+      }
+      if (marker === 0xda || size < 2) break; // start of scan — no metadata beyond
+      off += 2 + size;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Parse the TIFF block of an EXIF segment starting at `base`. Pulls Make/Model
+// from IFD0 and DateTimeOriginal (falling back to DateTime) from the Exif sub-IFD.
+function parseExifTiff(view, base) {
+  if (base + 8 > view.byteLength) return null;
+  const le = view.getUint16(base) === 0x4949; // "II" little-endian, "MM" big-endian
+  const u16 = (o) => view.getUint16(o, le);
+  const u32 = (o) => view.getUint32(o, le);
+  if (view.getUint16(base + 2, le) !== 0x002a) return null;
+  const ifd0 = base + u32(base + 4);
+  const out = { takenAt: 0, cameraMake: "", cameraModel: "" };
+  const readAscii = (entryOff) => {
+    const count = u32(entryOff + 4);
+    let valOff = entryOff + 8;
+    if (count > 4) valOff = base + u32(entryOff + 8);
+    if (valOff + count > view.byteLength) return "";
+    let s = "";
+    for (let i = 0; i < count; i++) {
+      const c = view.getUint8(valOff + i);
+      if (!c) break;
+      s += String.fromCharCode(c);
+    }
+    return s.trim();
+  };
+  const exifDateToMs = (s) => {
+    // "YYYY:MM:DD HH:MM:SS" (local time, no zone info in base EXIF)
+    const m = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(s || "");
+    if (!m) return 0;
+    const t = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+  const walkIfd = (ifdOff, onTag) => {
+    if (ifdOff + 2 > view.byteLength) return;
+    const n = u16(ifdOff);
+    for (let i = 0; i < n; i++) {
+      const e = ifdOff + 2 + i * 12;
+      if (e + 12 > view.byteLength) break;
+      onTag(u16(e), e);
+    }
+  };
+  let exifIfdPtr = 0;
+  walkIfd(ifd0, (tag, e) => {
+    if (tag === 0x010f) out.cameraMake = readAscii(e);
+    else if (tag === 0x0110) out.cameraModel = readAscii(e);
+    else if (tag === 0x8769) exifIfdPtr = base + u32(e + 8);
+  });
+  let dtOriginal = "", dt = "";
+  if (exifIfdPtr) {
+    walkIfd(exifIfdPtr, (tag, e) => {
+      if (tag === 0x9003) dtOriginal = readAscii(e);
+      else if (tag === 0x0132) dt = readAscii(e);
+    });
+  }
+  if (!dt) walkIfd(ifd0, (tag, e) => { if (tag === 0x0132) dt = readAscii(e); });
+  out.takenAt = exifDateToMs(dtOriginal) || exifDateToMs(dt);
+  return out;
+}
+
+// Merge the best available metadata for one imported file: OneDrive's own
+// metadata when present (attached in cloud.js), else inline EXIF for local JPEGs.
+// Always keeps dimensions from decode and the file's modified date as a fallback.
+async function metaForImport(file, result) {
+  const m = {
+    takenAt: 0,
+    fileCreated: 0,
+    fileModified: file && file.lastModified ? file.lastModified : 0,
+    width: (result && result.width) || 0,
+    height: (result && result.height) || 0,
+    bytes: (file && file.size) || 0,
+    cameraMake: "",
+    cameraModel: "",
+  };
+  const src = file && file.sourceMeta;
+  if (src) {
+    if (src.takenAt) m.takenAt = src.takenAt;
+    if (src.fileCreated) m.fileCreated = src.fileCreated;
+    if (src.fileModified) m.fileModified = src.fileModified;
+    if (src.width) m.width = src.width;
+    if (src.height) m.height = src.height;
+    if (src.bytes) m.bytes = src.bytes;
+    if (src.cameraMake) m.cameraMake = src.cameraMake;
+    if (src.cameraModel) m.cameraModel = src.cameraModel;
+  } else {
+    const ex = await extractLocalExif(file);
+    if (ex) {
+      if (ex.takenAt) m.takenAt = ex.takenAt;
+      if (ex.cameraMake) m.cameraMake = ex.cameraMake;
+      if (ex.cameraModel) m.cameraModel = ex.cameraModel;
+    }
+  }
+  return m;
+}
+
 async function processFiles(fileList, opts = {}) {
   // faceOnly: this is a shared-album pull-in. Download is temporary — run face
   // detection, keep only the lightweight thumbnail + face data, and never leave
@@ -8255,6 +8525,7 @@ async function processFiles(fileList, opts = {}) {
     }
 
     const photoId = db.uid();
+    const meta = await metaForImport(files[i], result);
     const personIds = new Set();
     for (const f of result.faces) {
       const match = face.matchPerson(f.descriptor, state.people);
@@ -8293,7 +8564,12 @@ async function processFiles(fileList, opts = {}) {
       dims: { w: result.width || 0, h: result.height || 0 },
       addedAt: Date.now(), // when it was imported into Famsort (for sorting)
       updatedAt: Date.now(), // last change to albums/pointers — drives last-write-wins sync
-      fileModified: files[i] && files[i].lastModified ? files[i].lastModified : 0, // original file's own date
+      fileModified: meta.fileModified || (files[i] && files[i].lastModified) || 0, // original file's own modified date (OneDrive metadata when available)
+      takenAt: meta.takenAt || 0, // true capture date (EXIF / OneDrive), 0 if unknown
+      fileCreated: meta.fileCreated || 0, // when the original file was created in its source
+      bytes: meta.bytes || (files[i] && files[i].size) || 0,
+      cameraMake: meta.cameraMake || "",
+      cameraModel: meta.cameraModel || "",
       sourceId: (files[i] && files[i].cloudId) || null, // OneDrive item id of the ORIGINAL in the linked source — lets ANY device pull full quality to back up
     };
     state.photos.push(photoRec);
@@ -12224,11 +12500,11 @@ function renderHomeTip() {
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July",
   "August", "September", "October", "November", "December"];
 
-// Best available "when this happened" time for a photo: the original file's own
-// modified date (our closest proxy for when it was taken, since no EXIF date is
-// captured at import), else when it was added to Famsort.
+// Best available "when this happened" time for a photo: the true capture date
+// (EXIF DateTimeOriginal or OneDrive's takenDateTime) when we have it, else the
+// original file's own modified date, else when it was added to FamSort.
 function photoTakenAt(p) {
-  return (p && (p.fileModified || p.addedAt)) || 0;
+  return (p && (p.takenAt || p.fileModified || p.addedAt)) || 0;
 }
 function photoYear(p) {
   const t = photoTakenAt(p);
@@ -12245,6 +12521,15 @@ function fmtDateTime(ts) {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${fmtDate(ts)}, ${hh}:${mm}`;
+}
+function fmtBytes(n) {
+  if (!n) return "";
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
 
 /* --------------------------------------------------------- photo details */
@@ -12263,9 +12548,14 @@ function openPhotoDetails(photo) {
   const isVid = photoIsVideo(photo);
   rows.push(["Type", isVid ? (photo.duration ? `Video · ${fmtDur(photo.duration)}` : "Video") : "Photo"]);
   if (photo.dims && photo.dims.w) rows.push(["Dimensions", `${photo.dims.w} × ${photo.dims.h}`]);
-  rows.push(["Photo date", photo.fileModified ? fmtDateTime(photo.fileModified) : "Not recorded"]);
+  const takenTs = photo.takenAt || photo.fileModified;
+  rows.push(["Photo taken", takenTs ? fmtDateTime(takenTs) : "Not recorded"]);
+  if (photo.fileCreated && photo.fileCreated !== takenTs) rows.push(["File created", fmtDateTime(photo.fileCreated)]);
   rows.push(["Added to FamSort", photo.addedAt ? fmtDateTime(photo.addedAt) : "Unknown"]);
   if (photo.updatedAt) rows.push(["Last updated", fmtDateTime(photo.updatedAt)]);
+  const cam = [photo.cameraMake, photo.cameraModel].filter(Boolean).join(" ").trim();
+  if (cam) rows.push(["Camera", cam]);
+  if (photo.bytes) rows.push(["File size", fmtBytes(photo.bytes)]);
   rows.push(["Backed up", isPhotoSaved(photo) ? (state.outputMode === "device" ? "Yes · this device" : "Yes · OneDrive") : "Not yet"]);
   if (people.length) rows.push(["People", people.join(", ")]);
   rows.push(["File name", photo.name || "—"]);
@@ -12516,14 +12806,54 @@ function renderMemories() {
   for (const mem of mems) grid.appendChild(memoryCard(mem));
 }
 
-// Home-screen teaser: a compact strip that nudges people into the Memories
-// screen, highlighting any "on this day" finds for the current date.
+// Home-screen teaser: an auto-playing, freshly-randomised mix of memories. Each
+// time the home screen is shown it reshuffles the whole library (leading with any
+// "on this day" finds), shows a handful, then gently rolls new photos in while the
+// screen is visible — so it's never the same 98-of-one-person strip twice.
+let homeMemTimer = null;
+let homeMemPool = [];
+function shuffleArr(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function stopHomeMemories() {
+  if (homeMemTimer) { clearInterval(homeMemTimer); homeMemTimer = null; }
+}
+function startHomeMemories() {
+  stopHomeMemories();
+  if (homeMemPool.length <= 6) return; // nothing extra to cycle through
+  let cursor = 0;
+  homeMemTimer = setInterval(() => {
+    const strip = el("homeMemoriesStrip");
+    const wrap = el("homeMemories");
+    if (!strip || !wrap || wrap.hidden) return;
+    const addView = document.querySelector('.view[data-view="add"]');
+    if (addView && addView.hidden) return; // don't animate off-screen
+    const imgs = strip.querySelectorAll(".home-mem__thumb");
+    if (!imgs.length) return;
+    const slot = cursor % imgs.length;
+    const next = homeMemPool[(6 + cursor) % homeMemPool.length];
+    cursor++;
+    const img = imgs[slot];
+    if (!img || !next) return;
+    img.classList.add("home-mem__thumb--fading");
+    setTimeout(() => {
+      img.src = next.thumb;
+      img.classList.remove("home-mem__thumb--fading");
+    }, 260);
+  }, 1700);
+}
 function renderHomeMemories() {
   const wrap = el("homeMemories");
   if (!wrap) return;
-  const hasPhotos = datedPhotos().length > 0;
-  if (!hasPhotos) {
+  const dated = datedPhotos();
+  const pool = dated.length ? dated.slice() : state.photos.slice();
+  if (!pool.length) {
     wrap.hidden = true;
+    stopHomeMemories();
     return;
   }
   wrap.hidden = false;
@@ -12534,24 +12864,77 @@ function renderHomeMemories() {
   if (title) title.textContent = otd.length ? "On this day" : "Your memories";
   if (sub) {
     sub.textContent = otd.length
-      ? `${otd.length} photo${otd.length === 1 ? "" : "s"} from years gone by`
-      : "On this day, year-in-review, slideshows and Ask FamSort";
+      ? `${otd.length} photo${otd.length === 1 ? "" : "s"} from years gone by · playing now`
+      : "A fresh mix every time you open — tap to explore";
   }
+  // Reshuffle the whole library each load; lead with on-this-day finds.
+  let mixed = shuffleArr(pool);
+  if (otd.length) {
+    const otdSet = new Set(otd.map((p) => p.id));
+    mixed = [...shuffleArr(otd.slice()), ...mixed.filter((p) => !otdSet.has(p.id))];
+  }
+  homeMemPool = mixed;
   if (strip) {
     strip.innerHTML = "";
-    const preview = (otd.length ? otd : datedPhotos().slice().sort((a, b) => photoTakenAt(b) - photoTakenAt(a))).slice(0, 6);
-    for (const p of preview) {
+    for (let i = 0; i < Math.min(6, homeMemPool.length); i++) {
       const img = document.createElement("img");
       img.className = "home-mem__thumb";
-      img.src = p.thumb;
+      img.src = homeMemPool[i].thumb;
       img.alt = "";
       img.loading = "lazy";
       strip.appendChild(img);
     }
   }
+  startHomeMemories();
+  renderPolaroids();
 }
 
-/* --------------------------------------------------------- year in review */
+/* ----------------------------------------------- polaroid collage backdrop */
+
+// A slowly drifting collage of random photos behind the home screen. Rebuilt with
+// a fresh random set on each home visit. Capped at a handful of GPU-animated
+// elements so it stays smooth; disabled automatically for reduced-motion users.
+let polaroidsOn = false;
+function stopPolaroids() {
+  const box = el("polaroidBg");
+  if (box) box.innerHTML = "";
+  polaroidsOn = false;
+}
+function renderPolaroids() {
+  const box = el("polaroidBg");
+  if (!box) return;
+  const pool = state.photos.filter((p) => p && p.thumb);
+  if (pool.length < 4) {
+    box.innerHTML = "";
+    return;
+  }
+  const picks = shuffleArr(pool.slice()).slice(0, Math.min(7, pool.length));
+  const frag = document.createDocumentFragment();
+  for (const p of picks) {
+    const d = document.createElement("div");
+    d.className = "polaroid";
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    d.style.left = Math.round(rnd(3, 80)) + "%";
+    d.style.top = Math.round(rnd(2, 82)) + "%";
+    d.style.setProperty("--x0", "0px");
+    d.style.setProperty("--y0", "0px");
+    d.style.setProperty("--x1", Math.round(rnd(-26, 26)) + "px");
+    d.style.setProperty("--y1", Math.round(rnd(-26, 26)) + "px");
+    d.style.setProperty("--r0", rnd(-8, 8).toFixed(1) + "deg");
+    d.style.setProperty("--r1", rnd(-8, 8).toFixed(1) + "deg");
+    d.style.setProperty("--dur", rnd(20, 40).toFixed(1) + "s");
+    d.style.animationDelay = (-rnd(0, 14)).toFixed(1) + "s";
+    const img = document.createElement("img");
+    img.src = p.thumb;
+    img.alt = "";
+    img.loading = "lazy";
+    d.appendChild(img);
+    frag.appendChild(d);
+  }
+  box.innerHTML = "";
+  box.appendChild(frag);
+  polaroidsOn = true;
+}
 
 function openYearReview(year) {
   const modal = el("yearReviewModal");
@@ -12672,6 +13055,99 @@ function closeSlideshow() {
   slideIds = [];
 }
 
+/* ------------------------------------------------------- collage builder */
+
+// Compose a grid collage from a set of photos onto a canvas, entirely on-device.
+// This is what powers "build me a collage …" in Ask — a real artefact the user
+// can download, no LLM or network needed.
+function drawCover(ctx, im, x, y, w, h) {
+  const ir = im.width / im.height;
+  const cr = w / h;
+  let sw, sh, sx, sy;
+  if (ir > cr) { sh = im.height; sw = sh * cr; sx = (im.width - sw) / 2; sy = 0; }
+  else { sw = im.width; sh = sw / cr; sx = 0; sy = (im.height - sh) / 2; }
+  ctx.drawImage(im, sx, sy, sw, sh, x, y, w, h);
+}
+function closeCollage() {
+  const m = el("collageModal");
+  if (m) m.hidden = true;
+}
+function downloadCollage() {
+  const canvas = el("collageCanvas");
+  if (!canvas) return;
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "famsort-collage.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }, "image/png");
+}
+async function buildCollage(ids, opts = {}) {
+  ids = (ids || []).filter(Boolean).slice(0, 16);
+  if (ids.length < 2) {
+    setAskMsg("I need at least a couple of photos to make a collage.");
+    return;
+  }
+  const photos = ids.map((id) => state.photos.find((p) => p.id === id)).filter(Boolean);
+  const imgs = await Promise.all(
+    photos.map((p) => new Promise((res) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = () => res(null);
+      im.src = p.thumb;
+    }))
+  );
+  const loaded = imgs.filter(Boolean);
+  if (loaded.length < 2) {
+    setAskMsg("Those photos couldn't be loaded into a collage.");
+    return;
+  }
+  const n = loaded.length;
+  const cols = Math.ceil(Math.sqrt(n));
+  const rows = Math.ceil(n / cols);
+  const cell = 300;
+  const gap = 10;
+  const pad = 24;
+  const titleH = opts.title ? 64 : pad;
+  const W = pad * 2 + cols * cell + (cols - 1) * gap;
+  const H = titleH + pad + rows * cell + (rows - 1) * gap + pad;
+  const canvas = el("collageCanvas");
+  if (!canvas) return;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fbf7f0";
+  ctx.fillRect(0, 0, W, H);
+  if (opts.title) {
+    ctx.fillStyle = "#2a2440";
+    ctx.font = "600 34px Georgia, 'Fraunces', serif";
+    ctx.textBaseline = "middle";
+    ctx.fillText(opts.title, pad, titleH / 2 + 8);
+  }
+  loaded.forEach((im, i) => {
+    const r = Math.floor(i / cols);
+    const c = i % cols;
+    const x = pad + c * (cell + gap);
+    const y = titleH + pad + r * (cell + gap);
+    drawCover(ctx, im, x, y, cell, cell);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(x + 3, y + 3, cell - 6, cell - 6);
+  });
+  const titleEl = el("collageTitle");
+  if (titleEl) titleEl.textContent = opts.title || "Your collage";
+  const hintEl = el("collageHint");
+  if (hintEl) hintEl.textContent = `${loaded.length} photo${loaded.length === 1 ? "" : "s"}`;
+  const modal = el("collageModal");
+  if (modal) modal.hidden = false;
+  setAskMsg(`Made you a collage of ${loaded.length} photo${loaded.length === 1 ? "" : "s"}. Tap Download to save it.`);
+}
+
 /* ------------------------------------------------------------ ask famsort */
 
 function setAskMsg(text) {
@@ -12740,6 +13216,7 @@ function runAsk(query) {
   const wantSlideshow = /(slideshow|slide show|montage|play|build me)/.test(low);
   const wantYearReview = /(year in review|wrap|recap|rewind|year review)/.test(low);
   const wantMemories = /(on this day|memor|throwback)/.test(low);
+  const wantCollage = /(collage|mosaic|photo ?grid|grid of|poster|montage board|picture grid)/.test(low);
 
   if (wantYearReview && year) {
     navTo("memories");
@@ -12761,6 +13238,11 @@ function runAsk(query) {
 
   if (!photoIds.length) {
     setAskMsg(`I couldn't find any photos${who}${when}. Try a different name or year.`);
+    return;
+  }
+  if (wantCollage) {
+    const title = `${person ? (person.relationship === "Me" ? "You" : person.name) : "Memories"}${year ? ` · ${year}` : ""}`;
+    buildCollage(shuffleArr(photoIds.slice()).slice(0, 16), { title });
     return;
   }
   if (wantSlideshow) {
@@ -12785,6 +13267,7 @@ function navTo(view) {
   if (view === "family") renderFamily();
   if (view === "memories") renderMemories();
   if (view === "add") { renderHomeTip(); renderHomeMemories(); }
+  else { stopHomeMemories(); stopPolaroids(); }
   // Both the home (Add) and Albums screens kick off a background back-up of
   // anything still outstanding, so it keeps moving on its own wherever the user
   // is — not only when they open Albums (which is why it could look stuck).
@@ -13212,6 +13695,13 @@ function wire() {
   if (yrevClose) yrevClose.addEventListener("click", closeYearReview);
   const yrevModal = el("yearReviewModal");
   if (yrevModal) yrevModal.addEventListener("click", (e) => { if (e.target === yrevModal) closeYearReview(); });
+  // Collage result modal.
+  const collageClose = el("collageClose");
+  if (collageClose) collageClose.addEventListener("click", closeCollage);
+  const collageModal = el("collageModal");
+  if (collageModal) collageModal.addEventListener("click", (e) => { if (e.target === collageModal) closeCollage(); });
+  const collageDownload = el("collageDownload");
+  if (collageDownload) collageDownload.addEventListener("click", downloadCollage);
   // Slideshow overlay.
   const slideClose = el("slideClose");
   if (slideClose) slideClose.addEventListener("click", closeSlideshow);
