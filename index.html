@@ -3119,8 +3119,36 @@ async function hasCloudAccount() {
   return msal.getAllAccounts().length > 0;
 }
 
-async function graphGet(url, token) {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Exponential backoff with jitter: ~0.6s, 1.2s, 2.4s, 4.8s, 9.6s … (capped).
+const backoffMs = (attempt) => Math.min(30000, 600 * 2 ** attempt) + Math.floor(Math.random() * 400);
+
+// GET a Graph URL as JSON, RETRYING through throttling and transient blips.
+// Large OneDrive libraries (thousands of camera-roll photos) WILL hit HTTP 429
+// (throttle) and 503/504 part-way through paging — without this, the very first
+// throttle used to abort the whole scan and only a few hundred photos came in.
+// We honour Retry-After when Microsoft sends it, otherwise back off and keep
+// going, so the full library is eventually walked.
+async function graphGet(url, token, attempt = 0) {
+  let res;
+  try {
+    res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  } catch (e) {
+    // Network dropped mid-scan — retry a few times before surfacing the error.
+    if (attempt < 5) {
+      await sleep(backoffMs(attempt));
+      return graphGet(url, token, attempt + 1);
+    }
+    throw e;
+  }
+  if (res.status === 429 || res.status === 503 || res.status === 504) {
+    if (attempt < 8) {
+      const ra = Number(res.headers.get("Retry-After"));
+      const wait = Number.isFinite(ra) && ra > 0 ? ra * 1000 : backoffMs(attempt);
+      await sleep(wait);
+      return graphGet(url, token, attempt + 1);
+    }
+  }
   if (!res.ok) throw new Error(`Graph ${res.status}`);
   return res.json();
 }
@@ -3958,13 +3986,23 @@ async function getItemMeta(id) {
 }
 
 // Recursively gather image/video driveItems under a folder, bounded by MAX_FILES
-// total across the whole import so a huge tree can't run away.
-async function collectMediaItems(folderId, token, items) {  if (items.length >= MAX_FILES) return;
+// total across the whole import so a huge tree can't run away. RESILIENT: if a
+// page request ultimately fails (after graphGet's own retries), we keep whatever
+// was already collected and move on, rather than throwing away the entire scan.
+async function collectMediaItems(folderId, token, items, onStatus) {
+  if (items.length >= MAX_FILES) return;
   const subfolders = [];
   // $expand thumbnails so we scan small previews, not multi-MB originals.
   let next = `${GRAPH}/me/drive/items/${folderId}/children?$top=200&$expand=thumbnails`;
   while (next && items.length < MAX_FILES) {
-    const page = await graphGet(next, token);
+    let page;
+    try {
+      page = await graphGet(next, token);
+    } catch {
+      // This folder's listing gave up (sustained throttling / offline). Keep the
+      // items gathered so far and stop paging THIS folder instead of failing all.
+      break;
+    }
     for (const it of page.value || []) {
       if (items.length >= MAX_FILES) break;
       const mt = String(it.file?.mimeType || "");
@@ -3972,10 +4010,12 @@ async function collectMediaItems(folderId, token, items) {  if (items.length >= 
       else if (it.folder && (it.folder.childCount || 0) > 0) subfolders.push(it.id);
     }
     next = page["@odata.nextLink"];
+    // Keep the overlay honest with a running tally while we walk a big library.
+    if (items.length && items.length % 200 === 0) onStatus?.(`Found ${items.length} photos & videos so far…`);
   }
   for (const sf of subfolders) {
     if (items.length >= MAX_FILES) break;
-    await collectMediaItems(sf, token, items);
+    await collectMediaItems(sf, token, items, onStatus);
   }
 }
 
@@ -4098,14 +4138,14 @@ async function importFromFolders(folderIds, onStatus, onFiles) {
   }
   onStatus?.("Finding photos & videos in your selected folders…");
   const items = [];
-  try {
-    for (const fid of ids) {
-      if (items.length >= MAX_FILES) break;
-      await collectMediaItems(fid, token, items);
+  for (const fid of ids) {
+    if (items.length >= MAX_FILES) break;
+    try {
+      await collectMediaItems(fid, token, items, onStatus);
+    } catch {
+      // One source folder failed to list — keep going with the others and feed
+      // whatever we DID find, rather than aborting the whole import.
     }
-  } catch {
-    onStatus?.("Couldn't read your selected OneDrive folders.");
-    return;
   }
   if (!items.length) {
     onStatus?.("No photos found in the selected folders.");
