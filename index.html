@@ -4088,7 +4088,7 @@ async function getItemMeta(id) {
 // total across the whole import so a huge tree can't run away. RESILIENT: if a
 // page request ultimately fails (after graphGet's own retries), we keep whatever
 // was already collected and move on, rather than throwing away the entire scan.
-async function collectMediaItems(folderId, token, items, onStatus) {
+async function collectMediaItems(folderId, token, items, onStatus, knownIds) {
   if (items.length >= MAX_FILES) return;
   const subfolders = [];
   // Enumerate LIGHTWEIGHT: we deliberately do NOT $expand=thumbnails here. For a
@@ -4111,8 +4111,12 @@ async function collectMediaItems(folderId, token, items, onStatus) {
     for (const it of page.value || []) {
       if (items.length >= MAX_FILES) break;
       const mt = String(it.file?.mimeType || "");
-      if (it.file && (mt.startsWith("image/") || mt.startsWith("video/"))) items.push(it);
-      else if (it.folder && (it.folder.childCount || 0) > 0) subfolders.push(it.id);
+      if (it.file && (mt.startsWith("image/") || mt.startsWith("video/"))) {
+        // Skip items we've ALREADY imported (by driveItem id) so repeated/auto
+        // sweeps only download NEW photos — makes the background catch-up cheap
+        // and resumable instead of re-fetching the whole library every pass.
+        if (!(knownIds && knownIds.has(it.id))) items.push(it);
+      } else if (it.folder && (it.folder.childCount || 0) > 0) subfolders.push(it.id);
     }
     next = page["@odata.nextLink"];
     // Keep the overlay honest with a running tally while we walk a big library.
@@ -4120,7 +4124,7 @@ async function collectMediaItems(folderId, token, items, onStatus) {
   }
   for (const sf of subfolders) {
     if (items.length >= MAX_FILES) break;
-    await collectMediaItems(sf, token, items, onStatus);
+    await collectMediaItems(sf, token, items, onStatus, knownIds);
   }
 }
 
@@ -4250,7 +4254,7 @@ async function downloadAndFeed(items, token, onStatus, onFiles) {
 
 // Import photos/videos from one or more chosen OneDrive folders (recursively).
 // An empty list defaults to the camera roll, preserving the original behaviour.
-async function importFromFolders(folderIds, onStatus, onFiles) {
+async function importFromFolders(folderIds, onStatus, onFiles, knownIds) {
   const token = await getTokenSilent();
   if (!token) {
     onStatus?.("Please connect OneDrive first.");
@@ -4270,7 +4274,7 @@ async function importFromFolders(folderIds, onStatus, onFiles) {
   for (const fid of ids) {
     if (items.length >= MAX_FILES) break;
     try {
-      await collectMediaItems(fid, token, items, onStatus);
+      await collectMediaItems(fid, token, items, onStatus, knownIds);
     } catch {
       // One source folder failed to list — keep going with the others and feed
       // whatever we DID find, rather than aborting the whole import.
@@ -5366,6 +5370,14 @@ async function autoSweep(silent = true) {
   await cloudSweep(); // cloud folders (rate-limited)
 }
 
+// DriveItem ids we've ALREADY imported. Passing these to the cloud import lets
+// it skip them during enumeration, so auto/background sweeps only download NEW
+// photos — the first catch-up pulls the whole backlog, later sweeps are cheap,
+// and an interrupted import resumes right where it left off next launch.
+function knownCloudIds() {
+  return new Set((state.photos || []).map((p) => p && p.cloudId).filter(Boolean));
+}
+
 async function cloudSweep() {
   if (cloudSweeping || !state.autoBackup) return;
   // Re-listing + downloading the cloud is heavy, so do it at most every 10 min
@@ -5387,7 +5399,7 @@ async function cloudSweep() {
     // Hold the scan lock (silent) so the background pull doesn't fight a manual
     // sort and the progress bar/nav stay calm.
     await withScanLock(async () => {
-      await cloud.importFromFolders(ids, () => {}, handleFiles);
+      await cloud.importFromFolders(ids, () => {}, handleFiles, knownCloudIds());
     }, true);
   } catch {
     /* offline / transient — the next sweep retries */
@@ -7239,6 +7251,16 @@ async function cloudStartup() {
   // then sweep up any photos still missing a backup \u2014 across ALL albums, without
   // the user having to open each one.
   verifyAllAlbums().then(() => backupAllAlbums());
+  // Auto-backup is "set up once and forget": resume the watch loop on EVERY
+  // launch (it otherwise only starts after a manual sort) and kick an immediate
+  // catch-up so photos added to the camera roll since last time import on their
+  // own — no button needed. knownCloudIds() makes this skip what's already in,
+  // so it's cheap when there's nothing new and resumes a big backlog across
+  // successive launches.
+  if (state.autoBackup) {
+    startAutoSync();
+    autoSweep(true);
+  }
 }
 
 // Throttled background re-sync when the app regains focus: silently pulls the
@@ -7472,7 +7494,7 @@ async function rescanCloudNow() {
     const ids = (state.cloudSources || []).map((s) => s.id);
     showScanMsg("Starting a full OneDrive scan…");
     const ran = await withScanLock(async () => {
-      await cloud.importFromFolders(ids, showScanMsg, handleFiles);
+      await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds());
     }, false);
     if (!ran) showScanMsg("A scan is already running — give it a moment.");
     renderAll();
