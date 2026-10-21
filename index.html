@@ -282,8 +282,10 @@ p { margin: 0 0 .9rem; }
 .stat__num { display: block; font-family: var(--font-serif); font-weight: 700; font-size: 1.5rem; color: var(--accent-dark); line-height: 1.1; }
 .stat__label { font-size: .78rem; color: var(--ink-soft); }
 
-.tips { background: var(--cream-2); border-radius: var(--radius-sm); padding: 14px 16px; }
-.tips h3 { font-size: .9rem; text-transform: uppercase; letter-spacing: .1em; color: var(--accent-dark); margin-bottom: .3rem; }
+.tips { background: var(--cream-2); border-radius: var(--radius-sm); padding: 14px 16px; border-left: 3px solid var(--accent); }
+.tips h3 { display: flex; align-items: center; gap: 7px; font-size: .9rem; text-transform: uppercase; letter-spacing: .1em; color: var(--accent-dark); margin-bottom: .3rem; }
+.tips__ico { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-dark); flex: 0 0 auto; }
+.tips__ico svg { width: 14px; height: 14px; display: block; }
 .tips p { margin: 0; color: var(--ink-soft); font-size: .92rem; }
 
 /* Short intro line shown under a view title (e.g. the Family screen). */
@@ -928,7 +930,7 @@ p { margin: 0 0 .9rem; }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  display: grid; grid-template-columns: repeat(4, 1fr);
   background: rgba(255, 255, 255, .92); backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
   box-shadow: 0 -6px 20px -14px rgba(50, 35, 20, .35);
@@ -1620,11 +1622,6 @@ p { margin: 0 0 .9rem; }
         <div class="home-backup__track" id="homeBackupTrack" hidden><div class="home-backup__fill" id="homeBackupFill"></div></div>
       </div>
 
-      <div class="tips" id="tipsCard">
-        <h3 id="tipsTitle">Tip</h3>
-        <p id="tipsBody">Point FamSort at your whole camera-roll folder &mdash; it sorts everything it finds, so there's no need to pick photos one by one.</p>
-      </div>
-
       <button class="home-mem" id="homeMemories" type="button" hidden>
         <div class="home-mem__text">
           <span class="home-mem__kicker">✨ Memories</span>
@@ -1634,6 +1631,11 @@ p { margin: 0 0 .9rem; }
         <div class="home-mem__strip" id="homeMemoriesStrip"></div>
         <span class="home-mem__go" id="homeMemoriesOpen">Open memories ›</span>
       </button>
+
+      <div class="tips" id="tipsCard">
+        <h3 id="tipsTitle"><span class="tips__ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.55.42.85.86.9 1.6l.03.6h5.34l.03-.6c.05-.74.35-1.18.9-1.6A6 6 0 0 0 12 3Z"/></svg></span>Tip</h3>
+        <p id="tipsBody">Point FamSort at your whole camera-roll folder &mdash; it sorts everything it finds, so there's no need to pick photos one by one.</p>
+      </div>
     </section>
 
     <!-- PEOPLE SCREEN merged into ALBUMS: the "faces to tag" queue now lives at
@@ -1948,6 +1950,9 @@ p { margin: 0 0 .9rem; }
     </button>
     <button class="tabbar__btn" data-nav="albums">
       <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2.6"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 16.5l3.8-3.3 3 2.5L15 11l4.5 4.2"/></svg></span>Albums
+    </button>
+    <button class="tabbar__btn" data-nav="memories">
+      <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l1.7 4.3L18 10l-4.3 1.7L12 16l-1.7-4.3L6 10l4.3-1.7L12 4Z"/><path d="M18.5 14.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8.8-1.9Z"/></svg></span>Memories
     </button>
     <button class="tabbar__btn" data-nav="family">
       <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="8.5" r="2.3"/><circle cx="17" cy="8.5" r="2.3"/><circle cx="12" cy="16.5" r="2.3"/><path d="M7 10.8v1.4a2 2 0 0 0 2 2h1M17 10.8v1.4a2 2 0 0 1-2 2h-1"/></svg></span>Family
