@@ -7685,7 +7685,7 @@ async function addGoogleSource() {
   // bug). So we do sign-in alone here; Google's popup is then allowed to show.
   if (!gphotos.hasGoogleToken()) {
     if (btn) btn.disabled = true;
-    showScanMsg("Opening Google sign-in… approve it in the Google popup, then press “Add from Google Photos” again.");
+    showScanMsg("Google Photos is a 2-step connect. Step 1 of 2: opening Google sign-in — approve it in the Google window that pops up.");
     let ok = false;
     try {
       ok = await gphotos.signInGoogle();
@@ -7697,7 +7697,9 @@ async function addGoogleSource() {
       showScanMsg("Google sign-in didn’t complete (popup blocked or cancelled). Allow pop-ups for this site, then try again.");
       return;
     }
-    showScanMsg("Signed in to Google ✓ — press “Add from Google Photos” again to choose your photos.");
+    // Make the second step obvious: relabel the button and tell them to click it.
+    if (btn) btn.textContent = "Pick from Google Photos →";
+    showScanMsg("Signed in to Google ✓  Step 2 of 2: now click “Pick from Google Photos →” to choose your photos.");
     return;
   }
   // STEP 2 — already signed in (token cached). Now open the picker. Only ONE popup
