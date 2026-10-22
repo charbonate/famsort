@@ -5419,14 +5419,22 @@ let scanCancelRequested = false;
 let scanPaused = false;
 const SCAN_CANCEL_NOASK = "famsort.scanCancelNoAsk";
 
-// Toggle the running scan's pause state and reflect it on the activity pill at
-// once, so the button and the label agree the instant it's pressed.
+// ---- single source of truth for the scan's live display ----
+// The scan loop writes ONLY these; the one renderer (renderStatusCard →
+// activitySnapshot) paints every visual from them, so the pill, the pipeline
+// chip and the corner orb can never disagree about what's happening.
+let scanUIActive = false;   // a visible scan owns the status pill right now
+let scanProgLabel = "";     // the current action, e.g. "Looking for faces…"
+let scanLoopDone = 0;       // items handled so far (this visible pass)
+let scanLoopTotal = 0;      // items to handle (0 = not yet known, e.g. still finding)
+let scanSummary = "";       // the "All done" summary, shown during the finish tick
+
+// Toggle the running scan's pause state. It only flips the flag and asks the ONE
+// renderer to repaint, so the spinner, label, buttons, chip and orb all update
+// together the instant it's pressed (no half-paused, half-spinning state).
 function toggleScanPause() {
   scanPaused = !scanPaused;
-  const pause = el("procPause");
-  if (pause) { pause.textContent = scanPaused ? "Resume" : "Pause"; pause.classList.toggle("btn--primary", scanPaused); }
-  const label = el("processingText");
-  if (label && scanPaused) label.textContent = "Paused — tap Resume to carry on";
+  renderStatusCard();
 }
 
 // Ask to stop the running face scan (with a "don't ask again" option), then flag
@@ -5444,8 +5452,8 @@ async function requestCancelScan() {
     if (!ok) return;
   }
   scanCancelRequested = true;
-  const t = el("processingText");
-  if (t) t.textContent = "Stopping…";
+  scanProgLabel = "Stopping…";
+  renderStatusCard();
 }
 
 async function withScanLock(fn, silent = false) {
@@ -5483,8 +5491,13 @@ function endScanSession() {
   scanTotal = 0;
   scanDone = 0;
   scanStartAt = 0;
+  scanLoopTotal = 0;
+  scanLoopDone = 0;
   if (wasActive && !autoScanning && n > 0) {
     showProgressDone(`Imported ${n.toLocaleString()} photo${n === 1 ? "" : "s"}`);
+  } else {
+    scanUIActive = false;
+    renderStatusCard();
   }
 }
 // "— about 8 minutes left", once we have enough samples for a stable estimate.
@@ -5528,8 +5541,10 @@ async function collectFresh(handle, requireGranted = false, runningTotal = 0) {
       fresh.push(file);
       // Keep the overlay alive with a running count while we walk the folder.
       if (!autoScanning && fresh.length % 15 === 0) {
-        const n = runningTotal + fresh.length;
-        el("procCount").textContent = `${n} new photo${n === 1 ? "" : "s"} found…`;
+        scanLoopDone = runningTotal + fresh.length;
+        scanLoopTotal = 0; // still discovering — a growing count, no bar yet
+        scanProgLabel = "Finding your photos…";
+        renderStatusCard();
         await new Promise((r) => setTimeout(r, 0));
       }
     }
@@ -5548,10 +5563,12 @@ async function scanHandles(handles, requireGranted = false) {
       showScanMsg(`Scanning “${handle.name}”…`);
       // Reading a large folder can take a while before face-detection even
       // starts. Show the overlay immediately so the Sort never looks frozen.
-      el("processingText").textContent = `Reading “${handle.name}”…`;
-      el("procCount").textContent = "Looking for photos…";
-      el("procBar").style.width = "8%";
-      el("processing").hidden = false;
+      scanUIActive = true;
+      scanProgLabel = `Reading “${handle.name}”…`;
+      scanLoopDone = 0;
+      scanLoopTotal = 0; // unknown yet — show a growing "found" count, no bar
+      scanSummary = "";
+      renderStatusCard();
     }
     const fresh = await collectFresh(handle, requireGranted, all.length);
     all.push(...fresh);
@@ -5565,7 +5582,8 @@ async function scanHandles(handles, requireGranted = false) {
     };
     await handleFiles(all, { source: folderSrc }); // processFiles drives the overlay + progress bar
   } else if (!autoScanning) {
-    el("processing").hidden = true; // nothing new found — take the overlay down
+    scanUIActive = false;
+    renderStatusCard(); // nothing new found — take the overlay down
   }
   await saveProcessedKeys();
   return all.length;
@@ -9578,20 +9596,18 @@ function setActivityMinimised(on) {
 // Reflect the minimised state and keep the orb's look in sync with what's going
 // on: a spinning ring while busy, amber when paused, green when just finished,
 // and a red dot when something actually needs the user (stuck / review).
-function applyActivityMinimised() {
+function applyActivityMinimised(snap) {
   const wrap = el("processing");
   if (!wrap) return;
   wrap.classList.toggle("is-mini", activityMinimised);
-  const spinner = el("procSpinner");
-  const check = el("procCheck");
-  const rb = el("procBackupNow");
-  const busy = spinner && !spinner.hidden;
-  const done = check && !check.hidden;
-  const paused = scanPaused || state.backupPaused;
-  const attn = !!rb && !rb.hidden && (rb.dataset.mode === "review" || rb.textContent === "Try again");
-  wrap.classList.toggle("orb-busy", !!busy && !paused && !done);
-  wrap.classList.toggle("orb-paused", !!paused && !done);
-  wrap.classList.toggle("orb-done", !!done);
+  if (snap === undefined) snap = activitySnapshot();
+  const busy = !!(snap && snap.busy && !snap.paused && !snap.done);
+  const paused = !!(snap && snap.paused && !snap.done);
+  const done = !!(snap && snap.done);
+  const attn = !!(snap && snap.kind === "backup" && (snap.review || snap.blocked));
+  wrap.classList.toggle("orb-busy", busy);
+  wrap.classList.toggle("orb-paused", paused);
+  wrap.classList.toggle("orb-done", done);
   wrap.classList.toggle("orb-attn", attn && !done);
 }
 
@@ -9623,49 +9639,34 @@ async function runBusy(btn, workingText, fn) {
   }
 }
 
-// Reset the pop-up to its "in progress" look and show it.
+// Reset the pop-up to its "in progress" look and show it. Only sets the shared
+// scan state + asks the one renderer to paint — no direct DOM writes here.
 function startProgressUI() {
   clearTimeout(progressDoneTimer);
   scanCancelRequested = false; // fresh scan — clear any prior cancel flag
   scanPaused = false; // and any prior pause
   scanDoneUntil = 0;
-  const p = el("processing");
-  p.classList.remove("processing--done");
-  el("procSpinner").hidden = false;
-  el("procCheck").hidden = true;
-  // Always say what it's doing right now — never a bare, vague "Working…".
-  el("processingText").textContent = "Looking through your photos…";
-  el("procCount").textContent = "";
-  const nb = el("procBackupNow"); if (nb) nb.hidden = true; // scan has nothing to retry
-  const note = el("activityNote"); if (note) note.textContent = "Looking through your photos for faces so it can sort them. You can keep using the app while this runs.";
-  const cancel = el("procCancel"); if (cancel) cancel.hidden = false;
-  // A scan always offers Pause (a safe break) alongside Stop.
-  const quick = el("activityQuick"); if (quick) quick.hidden = false;
-  const pause = el("procPause"); if (pause) { pause.textContent = "Pause"; pause.classList.remove("btn--primary"); }
-  applyActivityExpanded();
-  applyActivityMinimised();
-  p.hidden = false;
+  scanSummary = "";
+  scanUIActive = true;
+  // Start with a count-ready label; the loop fills in "N of M" as it goes.
+  scanProgLabel = "Looking through your photos…";
+  scanLoopDone = 0;
+  scanLoopTotal = scanTotal || 0;
+  renderStatusCard();
 }
 
-// Swap the spinner for a green tick, show a summary, then auto-dismiss.
+// Swap the spinner for a green tick, show a summary, then auto-dismiss. Again,
+// only updates shared state — the one renderer draws the tick.
 function showProgressDone(summary) {
   clearTimeout(progressDoneTimer);
-  const p = el("processing");
-  p.classList.add("processing--done");
-  el("procSpinner").hidden = true;
-  el("procCheck").hidden = false;
-  const nb = el("procBackupNow"); if (nb) nb.hidden = true;
-  el("procBar").style.width = "100%";
-  el("processingText").textContent = "All done";
-  el("procCount").textContent = summary;
-  applyActivityMinimised();
+  scanPaused = false;
+  scanSummary = summary;
   scanDoneUntil = Date.now() + 3400; // let the tick linger before backup status
+  renderStatusCard(); // snapshot now shows the green "All done" tick
   progressDoneTimer = setTimeout(() => {
-    p.hidden = true;
-    p.classList.remove("processing--done");
-    el("procSpinner").hidden = false;
-    el("procCheck").hidden = true;
     scanDoneUntil = 0;
+    scanSummary = "";
+    scanUIActive = false;
     renderStatusCard(); // hand the card over to the backup status, if any
   }, 3400);
 }
@@ -9838,23 +9839,25 @@ async function processFiles(fileList, opts = {}) {
     // Honour a Pause: hold at this photo (everything already sorted is kept) until
     // the user resumes or stops, so "Pause" is a real, safe break — not a cancel.
     while (scanPaused && !scanCancelRequested) {
-      el("processingText").textContent = "Paused — tap Resume to carry on";
+      // Just wait — the one renderer already shows the paused state. No DOM here.
       await new Promise((r) => setTimeout(r, 250));
     }
     if (scanCancelRequested) break;
     const isVid = files[i].type.startsWith("video/") || (isVideoName(files[i].name) && !isImageName(files[i].name));
-    el("processingText").textContent = isVid ? "Scanning video…" : "Looking for faces…";
+    // Update ONLY the shared scan state; the single renderer paints every visual
+    // from it, so the count climbs in real time and nothing can fall out of step.
+    scanProgLabel = isVid ? "Scanning video…" : "Looking for faces…";
     if (scanTotal > 0) {
-      // Big cloud import: show ONE running tally across the WHOLE library plus an
-      // ETA, instead of a per-80-chunk count that keeps resetting.
+      // Big cloud import: one running tally across the WHOLE library (+ ETA),
+      // instead of a per-80-chunk count that keeps resetting.
       scanDone++;
-      const shown = Math.min(scanDone, scanTotal);
-      el("procCount").textContent = `${shown.toLocaleString()} of ${scanTotal.toLocaleString()}${scanEtaText()}`;
-      el("procBar").style.width = Math.round((shown / scanTotal) * 100) + "%";
+      scanLoopDone = Math.min(scanDone, scanTotal);
+      scanLoopTotal = scanTotal;
     } else {
-      el("procCount").textContent = `${i + 1} of ${files.length}`;
-      el("procBar").style.width = Math.round(((i + 1) / files.length) * 100) + "%";
+      scanLoopDone = i + 1;
+      scanLoopTotal = files.length;
     }
+    renderStatusCard();
 
     let result;
     try {
@@ -11800,111 +11803,134 @@ function applyBackupBanner(wrap, ids, st) {
   if (closeBtn) closeBtn.hidden = false;
 }
 
+// THE single source of truth for "what is FamSort doing right now". The pill
+// (spinner / label / count / bar / buttons), the pipeline status chip and the
+// corner orb are ALL painted from this one snapshot, so they can never fall out
+// of step. Returns null when nothing's happening (every status visual hides).
+function activitySnapshot() {
+  // A visible scan/import owns the status while it runs, and for its finish tick.
+  const inDoneTick = scanSummary && Date.now() < scanDoneUntil;
+  if (scanUIActive || scanBusy || scanTotal > 0 || inDoneTick) {
+    if (inDoneTick) {
+      return { kind: "scan", done: true, busy: false, paused: false,
+               label: "All done", detail: scanSummary, pct: 100,
+               canPause: false, canStop: false, note: "" };
+    }
+    const total = scanLoopTotal || 0;
+    const done = scanLoopDone || 0;
+    const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
+    if (scanPaused) {
+      return { kind: "scan", paused: true, busy: false, done: false,
+               label: "Paused",
+               detail: total > 0
+                 ? `Stopped at ${done.toLocaleString()} of ${total.toLocaleString()} — tap Resume`
+                 : "Tap Resume to carry on",
+               pct, canPause: true, canStop: true,
+               note: "Paused — nothing is lost. Tap Resume to carry on from here, or Stop to finish for now." };
+    }
+    return { kind: "scan", busy: true, paused: false, done: false,
+             label: scanProgLabel || "Looking through your photos…",
+             detail: total > 0
+               ? `${done.toLocaleString()} of ${total.toLocaleString()}${scanEtaText()}`
+               : (done > 0 ? `${done.toLocaleString()} found so far…` : ""),
+             pct, canPause: true, canStop: true,
+             note: "Looking through your photos for faces so it can sort them. You can keep using the app while this runs." };
+  }
+  // Otherwise the backup / idle status, mapped from the one backup state.
+  const st = backupBannerState();
+  if (!st || st.doneState) return null;
+  return {
+    kind: "backup",
+    busy: !!st.busy, paused: !!st.paused, blocked: !!st.blocked,
+    review: !!st.review, now: st.now === true, done: false,
+    label: st.label || "", detail: st.detail || "", note: st.note || "",
+    pct: st.track ? st.pct : null,
+    canPause: true, canStop: false,
+  };
+}
+
 // ONE app-wide activity pill (floating above the tab bar, above the edit popup)
 // that says what the app is doing RIGHT NOW — scanning, backing up, or tidying —
 // on whatever screen you're on. It only shows while something is actually
 // happening; tap it to expand the full detail + actions. Backups run themselves,
 // so there's no "back up" button in the normal flow — the pill just reports it.
+// This is the ONLY function that paints the pill, the chip and the orb — every
+// mutator just updates state and calls here, so the visuals move as one.
 function renderStatusCard() {
   // Retire the old inline banners — this floating pill is the single status now.
   if (el("homeBackup")) el("homeBackup").hidden = true;
   if (el("albumsBackupSummary")) el("albumsBackupSummary").hidden = true;
   const p = el("processing");
   if (!p) return;
-  // A scan/import owns the card while it runs (and for its brief "done" tick) —
-  // processFiles/startProgressUI drive the text/count/bar; just keep the Pause
-  // control in sync so a scan can always be paused as well as stopped.
-  if (scanBusy || scanTotal > 0 || Date.now() < scanDoneUntil) {
-    p.hidden = false;
-    const q = el("activityQuick");
-    const pause = el("procPause");
-    const scanning = scanBusy || scanTotal > 0;
-    if (q && pause && scanning) {
-      q.hidden = false;
-      pause.textContent = scanPaused ? "Resume" : "Pause";
-      pause.classList.toggle("btn--primary", scanPaused);
-    } else if (q) {
-      q.hidden = true; // the "done" tick has no actions
-    }
-    applyActivityMinimised();
-    renderSetupFlowStatus();
+  const snap = activitySnapshot();
+  // Keep the pipeline chip + corner orb in step from the SAME snapshot.
+  renderSetupFlowStatus(snap);
+  if (!snap) {
+    p.classList.remove("processing--done");
+    p.hidden = true;
+    applyActivityMinimised(null);
     return;
   }
-  const st = backupBannerState();
-  // Nothing to report (no output, nothing to back up, or all done) — hide the pill.
-  if (!st || st.doneState) { if (!p.classList.contains("processing--done")) p.hidden = true; renderSetupFlowStatus(); return; }
-
-  // There's outstanding backup work. If it isn't blocked on a missing original,
-  // kick the backup off ourselves (no button) so it just happens; the pill then
-  // flips to the live "Backing up…" state on the next render.
-  if (st.now === true) maybeAutoBackup();
+  // Self-starting backup: kick a sweep when there's non-blocked queued work.
+  if (snap.kind === "backup" && snap.now) maybeAutoBackup();
 
   p.hidden = false;
-  p.classList.remove("processing--done");
-  const spinning = !!st.busy;
-  const label = el("processingText");
-  if (label) label.textContent = st.label || "";
-  const count = el("procCount");
-  if (count) count.textContent = st.detail || "";
-  const note = el("activityNote");
-  if (note) note.textContent = st.note || "";
-  const spinner = el("procSpinner");
-  if (spinner) spinner.hidden = !spinning;
-  const check = el("procCheck");
-  if (check) check.hidden = true;
-  const bar = el("procBar");
-  if (bar) { bar.style.width = (st.track ? st.pct : 0) + "%"; }
-  const barWrap = el("processing").querySelector(".activity__bar");
-  if (barWrap) barWrap.style.display = st.track ? "" : "none";
-  // The pill's action button: "Review photos" to manage unreachable ones,
-  // "Try again" when a backup is stuck on a missing original, or "Back up now".
+  p.classList.toggle("processing--done", !!snap.done);
+
+  // Spinner only while genuinely busy — never while paused, idle or done.
+  const spinner = el("procSpinner"); if (spinner) spinner.hidden = !(snap.busy && !snap.paused && !snap.done);
+  const check = el("procCheck"); if (check) check.hidden = !snap.done;
+  const label = el("processingText"); if (label) label.textContent = snap.label || "";
+  const count = el("procCount"); if (count) count.textContent = snap.detail || "";
+  const note = el("activityNote"); if (note) note.textContent = snap.note || "";
+  const bar = el("procBar"); if (bar) bar.style.width = (snap.pct == null ? 0 : snap.pct) + "%";
+  const barWrap = p.querySelector(".activity__bar"); if (barWrap) barWrap.style.display = (snap.pct == null) ? "none" : "";
+
+  // Action button (Review / Try again / Back up now) — backup states only.
   const retry = el("procBackupNow");
   if (retry) {
-    const review = !!st.review;
-    const showAction = review || !!st.blocked || st.now === true;
-    retry.hidden = !showAction;
-    retry.textContent = review ? "Review photos" : (st.blocked ? "Try again" : "Back up now");
-    retry.dataset.mode = review ? "review" : "retry";
+    const show = snap.kind === "backup" && (snap.review || snap.blocked || snap.now);
+    retry.hidden = !show;
+    retry.textContent = snap.review ? "Review photos" : (snap.blocked ? "Try again" : "Back up now");
+    retry.dataset.mode = snap.review ? "review" : "retry";
   }
-  // Quick (always-visible) Pause / Resume control for the backup.
+  // Pause / Resume quick control — one button, context-aware.
   const quick = el("activityQuick");
   const pause = el("procPause");
   if (quick && pause) {
-    quick.hidden = false;
-    if (st.paused) {
-      pause.textContent = "Resume backup";
-      pause.classList.add("btn--primary");
-    } else {
-      pause.textContent = "Pause backup";
-      pause.classList.remove("btn--primary");
-    }
+    quick.hidden = !snap.canPause;
+    const scan = snap.kind === "scan";
+    pause.textContent = snap.paused ? (scan ? "Resume" : "Resume backup") : (scan ? "Pause" : "Pause backup");
+    pause.classList.toggle("btn--primary", !!snap.paused);
   }
-  const cancel = el("procCancel");
-  if (cancel) cancel.hidden = true; // "Stop" is only for an in-progress scan
+  // Stop is only ever for an in-progress scan.
+  const cancel = el("procCancel"); if (cancel) cancel.hidden = !snap.canStop;
+
   applyActivityExpanded();
-  applyActivityMinimised();
-  renderSetupFlowStatus();
+  applyActivityMinimised(snap);
 }
 
 // The always-on status line inside the "Your pipeline" summary. It mirrors the
 // activity pill in one short, honest sentence so the home screen ALWAYS shows
 // what FamSort is doing right now — scanning, backing up, paused, or quietly
-// watching for new photos — which is the reassurance that it runs automatically.
-function renderSetupFlowStatus() {
+// watching for new photos. Derives from the SAME snapshot so it can't diverge.
+function renderSetupFlowStatus(snap) {
   const text = el("setupFlowStatusText");
   const wrap = el("setupFlowStatus");
   if (!text || !wrap) return;
+  if (snap === undefined) snap = activitySnapshot();
   let label, cls;
-  if (scanBusy || scanTotal > 0) {
-    if (scanPaused) { label = "Paused — tap Resume on the status bar"; cls = "is-paused"; }
-    else { label = "Finding faces & sorting your photos…"; cls = "is-busy"; }
-  } else {
-    const st = state.setupDone ? backupBannerState() : null;
-    if (st && st.busy) { label = `${st.label}${st.detail ? " · " + st.detail : ""}`; cls = "is-busy"; }
-    else if (st && st.paused) { label = "Backups paused — tap Resume to upload again"; cls = "is-paused"; }
-    else if (st && st.blocked) { label = st.label; cls = "is-warn"; }
-    else if (st && st.now) { label = "Backing up your new photos…"; cls = "is-busy"; }
+  if (snap && snap.kind === "scan") {
+    if (snap.done) { label = "All sorted — watching for new photos"; cls = "is-idle"; }
+    else if (snap.paused) { label = "Paused — tap Resume on the status bar"; cls = "is-paused"; }
+    else { label = `${snap.label}${snap.detail ? " · " + snap.detail : ""}`; cls = "is-busy"; }
+  } else if (snap && snap.kind === "backup") {
+    if (snap.paused) { label = "Backups paused — tap Resume to upload again"; cls = "is-paused"; }
+    else if (snap.blocked) { label = snap.label; cls = "is-warn"; }
+    else if (snap.busy || snap.now) { label = `${snap.label}${snap.detail ? " · " + snap.detail : ""}`; cls = "is-busy"; }
     else { label = "Watching for new photos — all caught up"; cls = "is-idle"; }
+  } else {
+    label = "Watching for new photos — all caught up"; cls = "is-idle";
   }
   text.textContent = label;
   wrap.className = "setup-flow__status " + cls;
