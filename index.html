@@ -5400,7 +5400,13 @@ async function scanHandles(handles, requireGranted = false) {
     all.push(...fresh);
   }
   if (all.length) {
-    await handleFiles(all); // processFiles drives the overlay + progress bar
+    // Stamp these with the folder/device they came from so each photo's Details
+    // can show "<Owner>'s Windows PC · ‘Camera Roll’" rather than a bare "device".
+    const folderSrc = {
+      kind: "folder",
+      name: handles.length === 1 ? folderSourceName(handles[0] && handles[0].name) : deviceSourceName(),
+    };
+    await handleFiles(all, { source: folderSrc }); // processFiles drives the overlay + progress bar
   } else if (!autoScanning) {
     el("processing").hidden = true; // nothing new found — take the overlay down
   }
@@ -7363,6 +7369,7 @@ function buildLibraryManifest() {
       backupId: p.backupId || null,
       backupFolder: p.backupFolder || null,
       cloudCopies: p.cloudCopies || null,
+      source: p.source || null, // where it was imported from, so Details reads the same on every device
       updatedAt: p.updatedAt || 0, // last change to this photo's albums/pointers
     })),
     deletedPhotos: state.deletedPhotos || {}, // tombstones so photo deletions propagate
@@ -7469,6 +7476,7 @@ async function rebuildFromManifest() {
         backupId: e.backupId || null,
         backupFolder: e.backupFolder || null,
         cloudCopies: e.cloudCopies || null,
+        source: e.source || null,
         updatedAt: e.updatedAt || 0,
         fromCloud: true, // original lives in OneDrive, not on this device
       });
@@ -7855,7 +7863,7 @@ async function addGoogleSource() {
     // Google Photos is a ONE-OFF pick with no watched source to pull from again,
     // so keep each picked file's original on-device (keepBlob) — otherwise it
     // could never be backed up later.
-    await gphotos.connectGooglePhotos(showScanMsg, (fl) => handleFiles(fl, { keepBlob: true }), pickerWindow);
+    await gphotos.connectGooglePhotos(showScanMsg, (fl) => handleFiles(fl, { keepBlob: true, source: { kind: "googlephotos", name: "Google Photos" } }), pickerWindow);
     renderAll();
   } catch (e) {
     showScanMsg("Couldn't import from Google Photos. Please try again.");
@@ -9560,6 +9568,12 @@ async function processFiles(fileList, opts = {}) {
     return;
   }
 
+  // Learn the OneDrive owner's name once so cloud imports can be labelled
+  // "<Name>'s OneDrive" in each photo's Details (cheap, cached, never prompts).
+  if (!odAccountLabel && files.some((f) => f && f.cloudId)) {
+    try { rememberOneDriveOwner(await cloud.accountInfo()); } catch { /* not signed in */ }
+  }
+
   if (!autoScanning) startProgressUI();
   let added = 0;
   let dupes = 0;
@@ -9687,6 +9701,7 @@ async function processFiles(fileList, opts = {}) {
       cameraMake: meta.cameraMake || "",
       cameraModel: meta.cameraModel || "",
       sourceId: (files[i] && files[i].cloudId) || null, // OneDrive item id of the ORIGINAL in the linked source — lets ANY device pull full quality to back up
+      source: makePhotoSource(files[i], opts), // where it came from (OneDrive / Google Photos / this device), shown in Details
     };
     state.photos.push(photoRec);
     batchPhotos.push(photoRec);
@@ -13725,6 +13740,77 @@ function photoYear(p) {
 
 // A read-only "about this photo" sheet surfaced from the lightbox: every date
 // we can honestly show, dimensions, back-up state and who's tagged.
+// ---- Where a photo came from (shown in Details) -------------------------
+// We stamp every newly imported photo with a { kind, name } source so the user
+// can see exactly where each picture originated — "Charbel's OneDrive", "Google
+// Photos", "Charbel's Windows PC", etc. Older photos (imported before this) are
+// labelled best-effort at display time from the signals we do have.
+let odAccountLabel = ""; // cached first name of the signed-in OneDrive owner
+
+// First name / handle from a display name or email, Capitalised.
+function firstName(s) {
+  const t = String(s || "").trim();
+  if (!t) return "";
+  const base = t.includes("@") ? t.split("@")[0] : t;
+  const word = base.split(/[\s._-]+/).filter(Boolean)[0] || base;
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+function rememberOneDriveOwner(info) {
+  if (info && (info.name || info.username)) odAccountLabel = firstName(info.name || info.username);
+}
+
+function oneDriveSourceName() {
+  return odAccountLabel ? `${odAccountLabel}'s OneDrive` : "OneDrive";
+}
+
+// The owner's first name for device labels: prefer the "Me" person, else the
+// signed-in OneDrive account.
+function ownerFirstName() {
+  const me = (state.people || []).find((p) => p && p.relationship === "Me");
+  if (me && me.name) return firstName(me.name);
+  return odAccountLabel || "";
+}
+
+// A rough device type from the user agent, for "<Owner>'s Windows PC" style labels.
+function deviceKind() {
+  const ua = navigator.userAgent || "";
+  if (/iPhone/i.test(ua)) return "iPhone";
+  if (/iPad/i.test(ua)) return "iPad";
+  if (/Android/i.test(ua)) return "Android phone";
+  if (/Macintosh|Mac OS X/i.test(ua)) return "Mac";
+  if (/Windows/i.test(ua)) return "Windows PC";
+  return "device";
+}
+
+function deviceSourceName() {
+  const owner = ownerFirstName();
+  const dev = deviceKind();
+  return owner ? `${owner}'s ${dev}` : `This ${dev === "device" ? "device" : dev}`;
+}
+
+function folderSourceName(folderName) {
+  const dev = deviceSourceName();
+  return folderName ? `${dev} \u00b7 \u201c${folderName}\u201d` : dev;
+}
+
+// Decide a photo's { kind, name } source at import time. OneDrive is detected
+// per-file by its cloudId; everything else comes from the import path (opts.source).
+function makePhotoSource(file, opts) {
+  if (file && file.cloudId) return { kind: "onedrive", name: oneDriveSourceName() };
+  if (opts && opts.source) return opts.source;
+  if (opts && opts.faceOnly) return { kind: "shared", name: "Shared with you" };
+  return { kind: "device", name: deviceSourceName() };
+}
+
+// A human label for the Details panel. Uses the stored source when present,
+// otherwise infers it for photos imported before source tracking existed.
+function photoSourceLabel(photo) {
+  if (photo && photo.source && photo.source.name) return photo.source.name;
+  if (photo && (photo.sourceId || photo.cloudId)) return oneDriveSourceName();
+  return "This device";
+}
+
 function openPhotoDetails(photo) {
   const modal = el("photoDetailsModal");
   const body = el("photoDetailsBody");
@@ -13745,6 +13831,7 @@ function openPhotoDetails(photo) {
   const cam = [photo.cameraMake, photo.cameraModel].filter(Boolean).join(" ").trim();
   if (cam) rows.push(["Camera", cam]);
   if (photo.bytes) rows.push(["File size", fmtBytes(photo.bytes)]);
+  rows.push(["From", photoSourceLabel(photo)]);
   rows.push(["Backed up", isPhotoSaved(photo) ? (state.outputMode === "device" ? "Yes · this device" : "Yes · OneDrive") : "Not yet"]);
   if (people.length) rows.push(["People", people.join(", ")]);
   rows.push(["File name", photo.name || "—"]);
