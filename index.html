@@ -544,7 +544,7 @@ button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
   background: rgba(20,16,14,.92); }
 .lightbox__stage { position: relative; display: flex; align-items: center; justify-content: center;
   width: 100%; max-width: 820px; }
-.lightbox__img { max-width: 100%; max-height: 54vh; max-height: 54dvh; object-fit: contain; border-radius: 10px;
+.lightbox__img { max-width: 100%; max-height: 48vh; max-height: 48dvh; object-fit: contain; border-radius: 10px;
   box-shadow: 0 10px 40px rgba(0,0,0,.5); background: var(--cream-2); }
 .lightbox__nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 48px;
   border-radius: 50%; border: none; background: rgba(255,255,255,.16); color: #fff;
@@ -553,18 +553,30 @@ button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
 .lightbox__nav--prev { left: 6px; }
 .lightbox__nav--next { right: 6px; }
 .lightbox__nav[hidden] { display: none; }
-.lightbox__strip { display: flex; gap: 8px; overflow-x: auto; max-width: 100%; padding: 2px; }
+.lightbox__strip { display: flex; gap: 8px; overflow-x: auto; max-width: 100%; width: 100%;
+  padding: 8px 10px; justify-content: safe center; background: rgba(255,255,255,.08); border-radius: 12px; }
 .lightbox__strip[hidden] { display: none; }
-.lightbox__strip-thumb { position: relative; flex: 0 0 auto; width: 58px; height: 58px; padding: 0;
-  border: 2px solid transparent; border-radius: 8px; overflow: hidden; cursor: pointer; background: none; }
+.lightbox__strip-thumb { position: relative; flex: 0 0 auto; width: 64px; height: 64px; padding: 0;
+  border: 2px solid transparent; border-radius: 8px; overflow: hidden; cursor: pointer; background: none; opacity: .72; transition: opacity .12s, border-color .12s; }
+.lightbox__strip-thumb:hover { opacity: 1; }
 .lightbox__strip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.lightbox__strip-thumb.is-active { border-color: #fff; }
+.lightbox__strip-thumb.is-active { border-color: #fff; opacity: 1; }
 .lightbox__strip-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: #fff; font-size: .8rem; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
 .lightbox__close { position: fixed; top: 14px; right: 16px; width: 44px; height: 44px;
   border-radius: 50%; border: none; background: rgba(255,255,255,.14); color: #fff;
   font-size: 1.2rem; cursor: pointer; z-index: 2; }
 .lightbox__close:hover { background: rgba(255,255,255,.26); }
+/* Top-right "⋯ options" menu, so the action buttons aren't a messy wrapped row. */
+.lightbox__menuwrap { position: fixed; top: 14px; right: 68px; z-index: 4; }
+.lightbox__menubtn { width: 44px; height: 44px; border-radius: 50%; border: none;
+  background: rgba(255,255,255,.14); color: #fff; font-size: 1.5rem; line-height: 1; cursor: pointer; }
+.lightbox__menubtn:hover { background: rgba(255,255,255,.26); }
+.lightbox__menu { position: absolute; top: 50px; right: 0; min-width: 220px; max-width: 78vw;
+  background: #fff; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.45); padding: 6px;
+  display: flex; flex-direction: column; gap: 2px; }
+.lightbox__menu[hidden] { display: none; }
+.lightbox__menu .btn { justify-content: flex-start; text-align: left; width: 100%; border-radius: 8px; }
 .lightbox__actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 
 /* Facebook-style clickable face boxes drawn over the open photo. */
@@ -1061,9 +1073,9 @@ body.wizard-open { overflow: hidden; }
 .activity__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .activity__label { font-weight: 700; font-size: .9rem; color: var(--ink); line-height: 1.25; }
 .activity__count { font-size: .8rem; color: var(--ink-soft); line-height: 1.25; }
-.activity__chev { flex: none; color: var(--ink-soft); font-size: 1.1rem; transition: transform .2s ease; }
-.activity.is-expanded .activity__chev { transform: rotate(180deg); }
+.activity__chev { flex: none; color: var(--ink); font-size: 1rem; font-weight: 700; line-height: 1; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; background: var(--cream-2); }
 .activity__bar { margin: 0; }
+.activity__quick { display: flex; gap: 8px; margin-top: 8px; }
 .activity__details { border-top: 1px solid var(--line); padding-top: 8px; }
 .activity__note { margin: 0 0 8px; font-size: .82rem; color: var(--ink-soft); line-height: 1.45; }
 .activity__actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -1307,6 +1319,13 @@ body.wizard-open { overflow: hidden; }
 
 /* Duplicate review modal */
 .dup-body { display: flex; flex-direction: column; gap: 14px; margin: 12px 0 16px; text-align: left; }
+.skipped-body { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0 16px; text-align: left; }
+.skipped-tile { width: 150px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px; background: var(--cream); }
+.skipped-tile__imgwrap { position: relative; cursor: pointer; }
+.skipped-tile__imgwrap img { width: 100%; height: 132px; object-fit: cover; border-radius: var(--radius-sm); background: var(--cream-2); display: block; }
+.skipped-tile__name { font-size: .72rem; color: var(--ink-soft); line-height: 1.3; word-break: break-word; min-height: 1.9em; }
+.skipped-tile__btns { display: flex; gap: 6px; }
+.skipped-tile__btns .btn { flex: 1; padding: 6px 8px; font-size: .76rem; }
 .dup-group { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; background: var(--cream); }
 .dup-group__head { font-size: .78rem; font-weight: 700; color: var(--ink-soft); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .03em; }
 .dup-row { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -2037,9 +2056,12 @@ body.wizard-open { overflow: hidden; }
           <span class="activity__label" id="processingText">Working…</span>
           <span class="activity__count" id="procCount"></span>
         </span>
-        <span class="activity__chev" id="activityChev" aria-hidden="true">⌄</span>
+        <span class="activity__chev" id="activityChev" aria-hidden="true">▴</span>
       </button>
       <div class="bar activity__bar"><div class="bar__fill" id="procBar"></div></div>
+      <div class="activity__quick" id="activityQuick" hidden>
+        <button class="btn btn--ghost btn--sm" id="procPause" type="button">Pause backup</button>
+      </div>
       <div class="activity__details" id="activityDetails" hidden>
         <p class="activity__note" id="activityNote"></p>
         <div class="activity__actions">
@@ -2107,6 +2129,23 @@ body.wizard-open { overflow: hidden; }
       <div class="dup-body" id="dupBody"></div>
       <div class="btn-row">
         <button class="btn btn--ghost" id="dupClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unreachable / couldn't-be-backed-up photos: ignore or remove them -->
+  <div class="modal" id="skippedModal" hidden>
+    <div class="modal__card modal__card--wide">
+      <h3>Photos that couldn't back up</h3>
+      <p class="modal__hint" id="skippedCount"></p>
+      <p class="modal__hint">These photos' originals can't be reached (often a one-off Google Photos pick, or a file that's no longer on the source). <strong>Ignore</strong> keeps the photo but stops flagging it; <strong>Remove from FamSort</strong> deletes it from this app only.</p>
+      <div class="btn-row btn-row--top">
+        <button class="btn btn--ghost" id="skippedRetryAll">Try again</button>
+        <button class="btn btn--ghost" id="skippedIgnoreAll">Ignore all</button>
+      </div>
+      <div class="skipped-body" id="skippedBody"></div>
+      <div class="btn-row">
+        <button class="btn btn--ghost" id="skippedClose">Close</button>
       </div>
     </div>
   </div>
@@ -2183,6 +2222,10 @@ body.wizard-open { overflow: hidden; }
   <!-- Full-size photo viewer -->
   <div class="lightbox" id="lightbox" hidden>
     <button class="lightbox__close" id="lightboxClose" aria-label="Close">✕</button>
+    <div class="lightbox__menuwrap">
+      <button class="lightbox__menubtn" id="lightboxMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Photo options">⋯</button>
+      <div class="lightbox__menu" id="lightboxMenu" hidden></div>
+    </div>
     <div class="lightbox__stage">
       <button class="lightbox__nav lightbox__nav--prev" id="lightboxPrev" aria-label="Previous photo" hidden>‹</button>
       <img class="lightbox__img" id="lightboxImg" alt="" />
@@ -5447,6 +5490,8 @@ async function loadAutoBackup() {
   // Default ON — the app is "set up once and forget": auto-sort, auto-dedup and
   // auto-backup run unless the user deliberately turns them off in Settings.
   state.autoBackup = m ? !!m.on : true;
+  const bp = await db.get("meta", "backupPaused");
+  state.backupPaused = bp ? !!bp.on : false;
   const bu = await db.get("meta", "backupUntagged");
   state.backupUntagged = bu ? !!bu.on : false; // default OFF — untagged photos stay on-device until tagged
   const b = await db.get("meta", "backedUpKeys");
@@ -5463,6 +5508,25 @@ async function loadAutoBackup() {
 
 async function saveAutoBackup() {
   await db.put("meta", { id: "autoBackup", on: state.autoBackup });
+}
+
+// Pause / resume ONLY the backup (uploads). Scanning, sorting and face-finding
+// keep running while paused — so the app still gets new photos ready, it just
+// doesn't push them to OneDrive/device until the user resumes.
+async function setBackupPaused(on) {
+  state.backupPaused = !!on;
+  await db.put("meta", { id: "backupPaused", on: state.backupPaused });
+  if (state.backupPaused) {
+    // Pausing backup frees the app to keep looking for new photos / faces.
+    activityExpanded = false;
+    applyActivityExpanded();
+    autoSweep(true);
+  } else {
+    // Resuming — give any outstanding backups an immediate nudge.
+    lastAutoBackupKick = 0;
+    maybeAutoBackup();
+  }
+  renderStatusCard();
 }
 
 // Turn "back up untagged photos too" on/off. Default OFF — untagged photos stay
@@ -6677,6 +6741,8 @@ function photoBackupStatus(p) {
   // grid calls it out; the sweep upgrades it to full quality by itself.
   if (cloudOK && p.backupLowRes) return "savedLowRes";
   if (isPhotoBackedUp(p)) return "saved";
+  // The user chose to ignore this unreachable photo — stop flagging it entirely.
+  if (p.backupIgnored) return "none";
   // We gave up reaching this one's original (e.g. a one-off Google Photos pick, or
   // a source file that's gone) — flag it red so it's obvious in the album.
   if (p.backupSkipped) return "skipped";
@@ -9360,9 +9426,13 @@ function applyActivityExpanded() {
   const det = el("activityDetails");
   const head = el("activityHead");
   const wrap = el("processing");
+  const chev = el("activityChev");
   if (det) det.hidden = !activityExpanded;
   if (head) head.setAttribute("aria-expanded", activityExpanded ? "true" : "false");
   if (wrap) wrap.classList.toggle("is-expanded", activityExpanded);
+  // Point the arrow at the action: collapsed shows an UP arrow (press to open),
+  // expanded shows a DOWN arrow (press to close).
+  if (chev) chev.textContent = activityExpanded ? "\u25be" : "\u25b4";
 }
 
 // Give EVERY slow/async button instant feedback: the moment it's pressed it
@@ -11413,6 +11483,14 @@ function backupBannerState() {
     backupEtaAnchorAt = 0;
     return { ...base, cls: "", label: "Backups paused", detail: "Resumes when you tap Done", note: "Backups are paused while you edit your setup so nothing is written to the old location.", html: "\u23f8 Backups paused while you edit your setup \u2014 they'll resume as soon as you tap Done.", track: false, pct: 0, now: false };
   }
+  // The user deliberately paused uploads. Scanning/sorting/face-finding keep
+  // running — only the push to OneDrive/device is held until they resume.
+  if (state.backupPaused) {
+    backupEtaAnchorAt = 0;
+    const waiting = Math.max(0, total - done - skipped);
+    if (waiting === 0 && skipped === 0) return null; // nothing queued — no need to nag
+    return { ...base, cls: "", label: "Backups paused", detail: waiting ? `${waiting} waiting to back up` : "", note: "Backup is paused. FamSort still finds, sorts and tags new photos \u2014 tap Resume to start uploading again.", html: `\u23f8 Backups paused \u2014 ${waiting} photo${waiting === 1 ? "" : "s"} waiting. Tap Resume to continue.`, track: false, pct: 0, now: false, paused: true };
+  }
   if (dedupeBusy) {
     backupEtaAnchorAt = 0;
     const pct = dedupeTotal ? Math.round((dedupeDone / dedupeTotal) * 100) : 0;
@@ -11435,7 +11513,7 @@ function backupBannerState() {
   // forever over photos that can never upload.
   if (left === 0) {
     if (skipped > 0) {
-      return { ...base, cls: "", label: "Backed up \u2014 some couldn't be reached", detail: `${done} of ${total} backed up`, note: `${skipped} photo${skipped === 1 ? "" : "s"} couldn't be backed up because the original isn't reachable \u2014 often photos picked one-off from Google Photos, or a file that's no longer on the source. They're flagged red in the album. Tap Try again to retry them.`, html: `${done} of ${total} backed up \u2014 ${skipped} couldn't be reached (flagged red)`, track: true, pct: 100, now: false, blocked: true };
+      return { ...base, cls: "", label: "Backed up \u2014 some couldn't be reached", detail: `${done} of ${total} backed up`, note: `${skipped} photo${skipped === 1 ? "" : "s"} couldn't be backed up because the original isn't reachable \u2014 often photos picked one-off from Google Photos, or a file that's no longer on the source. Tap Review photos to retry, ignore or remove them.`, html: `${done} of ${total} backed up \u2014 ${skipped} couldn't be reached (flagged red)`, track: true, pct: 100, now: false, blocked: true, review: true };
     }
     return { ...base, cls: "is-done", label: "All backed up", detail: "", note: "", html: `\u2713 All ${total} photo${total === 1 ? "" : "s"} backed up to ${where}`, track: false, pct: 100, now: false, doneState: true };
   }
@@ -11506,6 +11584,7 @@ function renderStatusCard() {
   // processFiles/startProgressUI drive the text/count/bar; just set a header note.
   if (scanBusy || scanTotal > 0 || Date.now() < scanDoneUntil) {
     p.hidden = false;
+    const q = el("activityQuick"); if (q) q.hidden = true; // no backup actions during a scan
     return;
   }
   const st = backupBannerState();
@@ -11534,13 +11613,28 @@ function renderStatusCard() {
   if (bar) { bar.style.width = (st.track ? st.pct : 0) + "%"; }
   const barWrap = el("processing").querySelector(".activity__bar");
   if (barWrap) barWrap.style.display = st.track ? "" : "none";
-  // The pill's action button: "Try again" when a backup is stuck on a missing
-  // original, or "Back up now" when work is simply queued to run automatically.
+  // The pill's action button: "Review photos" to manage unreachable ones,
+  // "Try again" when a backup is stuck on a missing original, or "Back up now".
   const retry = el("procBackupNow");
   if (retry) {
-    const showAction = !!st.blocked || st.now === true;
+    const review = !!st.review;
+    const showAction = review || !!st.blocked || st.now === true;
     retry.hidden = !showAction;
-    retry.textContent = st.blocked ? "Try again" : "Back up now";
+    retry.textContent = review ? "Review photos" : (st.blocked ? "Try again" : "Back up now");
+    retry.dataset.mode = review ? "review" : "retry";
+  }
+  // Quick (always-visible) Pause / Resume control for the backup.
+  const quick = el("activityQuick");
+  const pause = el("procPause");
+  if (quick && pause) {
+    quick.hidden = false;
+    if (st.paused) {
+      pause.textContent = "Resume backup";
+      pause.classList.add("btn--primary");
+    } else {
+      pause.textContent = "Pause backup";
+      pause.classList.remove("btn--primary");
+    }
   }
   const cancel = el("procCancel");
   if (cancel) cancel.hidden = true; // "Stop" is only for an in-progress scan
@@ -11552,6 +11646,7 @@ function renderStatusCard() {
 // storm can't hammer it and blocked photos aren't retried in a tight loop.
 let lastAutoBackupKick = 0;
 function maybeAutoBackup() {
+  if (state.backupPaused) return; // user paused uploads — scanning still runs
   if (backingUpAll || forceBackupBusy || dedupeBusy || configEditing) return;
   if (scanBusy || scanTotal > 0) return; // let an import finish first
   const now = Date.now();
@@ -11904,6 +11999,7 @@ function albumsBackupTotals() {
     for (const ph of albumPhotos(p.id)) {
       if (seen.has(ph.id)) continue;
       seen.add(ph.id);
+      if (ph.backupIgnored && !isPhotoBackedUp(ph)) continue; // user set it aside
       total++;
       if (isPhotoBackedUp(ph)) done++;
       else if (ph.backupSkipped) skipped++;
@@ -11963,6 +12059,7 @@ async function backupAllAlbums() {
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
   if ((!device && !cloudOK) || !state.autoBackup) return;
+  if (state.backupPaused) { renderAlbumsBackupSummary(); return; } // user paused uploads
   if (configEditing) return; // don't write to the OLD output folder while it's being changed
   if (backingUpAll || forceBackupBusy) return;
   // Heal any photos that lost their source link first, so the sweep can pull
@@ -11977,7 +12074,7 @@ async function backupAllAlbums() {
       // Skip the ones we've already given up on (unreachable originals) so an
       // auto-sweep doesn't hammer them every time — the user's "Try again" clears
       // the skip flag and re-queues them.
-      if (!isPhotoBackedUp(ph) && !ph.backupSkipped) gaps.push(ph.id);
+      if (!isPhotoBackedUp(ph) && !ph.backupSkipped && !ph.backupIgnored) gaps.push(ph.id);
     }
   }
   if (!gaps.length && !cloudOK) { renderAlbumsBackupSummary(); return; }
@@ -12510,6 +12607,21 @@ async function showLightboxPhoto() {
 
   const actions = el("lightboxActions");
   actions.innerHTML = "";
+  // Secondary actions live in the top-right "⋯" menu so the bar isn't a messy,
+  // wrapped pile of buttons. addMenuItem() adds one menu row.
+  const lbMenu = el("lightboxMenu");
+  const lbMenuBtn = el("lightboxMenuBtn");
+  if (lbMenu) { lbMenu.hidden = true; lbMenu.innerHTML = ""; }
+  if (lbMenuBtn) lbMenuBtn.setAttribute("aria-expanded", "false");
+  const closeLbMenu = () => { if (lbMenu) lbMenu.hidden = true; if (lbMenuBtn) lbMenuBtn.setAttribute("aria-expanded", "false"); };
+  const addMenuItem = (label, cls, onClick, close) => {
+    const b = document.createElement("button");
+    b.className = "btn " + (cls || "btn--ghost");
+    b.textContent = label;
+    b.addEventListener("click", (e) => { if (close) closeLbMenu(); onClick(e, b); });
+    if (lbMenu) lbMenu.appendChild(b);
+    return b;
+  };
 
   // A clear, obvious way to finish tagging and close — tags save as you tap, so
   // "Done" just closes the viewer.
@@ -12520,11 +12632,7 @@ async function showLightboxPhoto() {
   actions.appendChild(done);
 
   // "Details" — dates (taken/added/updated), dimensions, back-up state, people.
-  const details = document.createElement("button");
-  details.className = "btn btn--ghost";
-  details.textContent = "ⓘ Details";
-  details.addEventListener("click", () => openPhotoDetails(photo));
-  actions.appendChild(details);
+  addMenuItem("ⓘ Details", "btn--ghost", () => openPhotoDetails(photo), true);
 
   // Inside a specific person's album (not when opened from the naming pool):
   // allow removing the photo from that album.
@@ -12533,29 +12641,15 @@ async function showLightboxPhoto() {
     if (person) {
       // "Not them" — this face was misidentified. Untag, remember it's not
       // this person, and send it back to the naming pool to label correctly.
-      const not = document.createElement("button");
-      not.className = "btn btn--ghost";
-      not.textContent = `Not ${person.name}`;
-      not.addEventListener("click", () => notThisPerson(photoId, person.id));
-      actions.appendChild(not);
-
-      const rm = document.createElement("button");
-      rm.className = "btn btn--ghost";
-      rm.textContent = `Remove from ${person.name}'s album`;
-      rm.addEventListener("click", () => removePhotoFromPerson(photoId, person.id));
-      actions.appendChild(rm);
+      addMenuItem(`Not ${person.name}`, "btn--ghost", () => notThisPerson(photoId, person.id), true);
+      addMenuItem(`Remove from ${person.name}'s album`, "btn--ghost", () => removePhotoFromPerson(photoId, person.id), true);
 
       // Use the WHOLE photo as this person's album cover — shown cropped-to-fill
       // and centred (never stretched), so the cover is the full picture rather
       // than a tight face crop.
-      const coverCandidate = photo.thumb;
-      const isCover = person.coverThumb === coverCandidate;
-      const cover = document.createElement("button");
-      cover.className = "btn btn--ghost";
-      cover.textContent = isCover ? `★ ${person.name}'s cover` : `☆ Set as ${person.name}'s cover`;
-      cover.disabled = isCover;
-      cover.addEventListener("click", () => setAlbumCover(person.id, photo));
-      actions.appendChild(cover);
+      const isCover = person.coverThumb === photo.thumb;
+      const coverBtn = addMenuItem(isCover ? `★ ${person.name}'s cover` : `☆ Set as ${person.name}'s cover`, "btn--ghost", () => setAlbumCover(person.id, photo), true);
+      coverBtn.disabled = isCover;
     }
   }
 
@@ -12565,12 +12659,8 @@ async function showLightboxPhoto() {
     const albumId = state.activeAlbum;
     const label = albumId === UNTAGGED ? "Untagged" : "Everyone";
     const isCover = (state.specialCovers && state.specialCovers[albumId]) === photo.thumb;
-    const cover = document.createElement("button");
-    cover.className = "btn btn--ghost";
-    cover.textContent = isCover ? `★ ${label} cover` : `☆ Set as ${label} cover`;
-    cover.disabled = isCover;
-    cover.addEventListener("click", () => setSpecialCover(albumId, photo));
-    actions.appendChild(cover);
+    const coverBtn = addMenuItem(isCover ? `★ ${label} cover` : `☆ Set as ${label} cover`, "btn--ghost", () => setSpecialCover(albumId, photo), true);
+    coverBtn.disabled = isCover;
   }
 
   // Back up THIS photo to OneDrive/device right now, so you don't have to wait
@@ -12592,43 +12682,23 @@ async function showLightboxPhoto() {
     }
   }
 
-  const dl = document.createElement("button");
-  dl.className = "btn btn--ghost";
-  dl.textContent = photo.isVideo ? "Download video" : "Download photo";
-  dl.addEventListener("click", () => downloadPhoto(photo, dl));
-  actions.appendChild(dl);
+  const dl = addMenuItem(photo.isVideo ? "Download video" : "Download photo", "btn--ghost", () => downloadPhoto(photo, dl));
 
   // Re-scan this one photo for faces the first pass missed (common with lower-
   // res cloud imports). New faces are matched to your people and added.
   if (!photo.isVideo) {
-    const rescan = document.createElement("button");
-    rescan.className = "btn btn--ghost";
-    rescan.textContent = "Find faces in this photo";
-    rescan.addEventListener("click", () => findFacesInPhoto(photo, rescan));
-    actions.appendChild(rescan);
+    const rescan = addMenuItem("Find faces in this photo", "btn--ghost", () => findFacesInPhoto(photo, rescan));
 
     // Facebook-style click-to-tag: draw a box around a face the detector missed,
     // name it, and we'll offer to tag the same person in other photos too.
-    const tagFace = document.createElement("button");
-    tagFace.className = "btn btn--ghost";
-    tagFace.textContent = "＋ Tag a face";
-    tagFace.addEventListener("click", () => startFaceTagDraw(photo));
-    actions.appendChild(tagFace);
+    addMenuItem("＋ Tag a face", "btn--ghost", () => startFaceTagDraw(photo), true);
   } else {
     // Videos get their own deep scan: sample MANY frames across the clip (more
     // than the quick import pass) so people who only appear briefly are caught.
-    const vscan = document.createElement("button");
-    vscan.className = "btn btn--ghost";
-    vscan.textContent = "Find faces in this video";
-    vscan.addEventListener("click", () => findFacesInVideo(photo, vscan));
-    actions.appendChild(vscan);
+    const vscan = addMenuItem("Find faces in this video", "btn--ghost", () => findFacesInVideo(photo, vscan));
   }
 
-  const del = document.createElement("button");
-  del.className = "btn btn--danger";
-  del.textContent = "Delete photo everywhere";
-  del.addEventListener("click", () => deletePhoto(photoId));
-  actions.appendChild(del);
+  addMenuItem("Delete photo everywhere", "btn--danger", () => deletePhoto(photoId), true);
 }
 
 function closeLightbox() {
@@ -12644,6 +12714,10 @@ function closeLightbox() {
     URL.revokeObjectURL(lightboxMediaUrl);
     lightboxMediaUrl = null;
   }
+  const lbMenu = el("lightboxMenu");
+  if (lbMenu) lbMenu.hidden = true;
+  const lbMenuBtn = el("lightboxMenuBtn");
+  if (lbMenuBtn) lbMenuBtn.setAttribute("aria-expanded", "false");
   lightboxPhotoId = null;
 }
 
@@ -13281,7 +13355,7 @@ async function findFacesInPhoto(photo, btn) {
     } else if (btn) {
       // Be honest about WHY nothing was added so the user knows what to do next.
       if (alreadyTagged > 0) {
-        btn.textContent = `Already tagged ${alreadyTagged} face${alreadyTagged === 1 ? "" : "s"} here`;
+        btn.textContent = `No more faces found (${alreadyTagged} already tagged)`;
       } else if (found.rawCount > 0) {
         btn.textContent = "Face unclear — use ＋ Tag a face";
       } else {
@@ -13356,7 +13430,7 @@ async function findFacesInVideo(photo, btn) {
       renderLightboxTagging(photo);
     } else if (btn) {
       btn.textContent = alreadyTagged > 0
-        ? `Already tagged ${alreadyTagged} face${alreadyTagged === 1 ? "" : "s"}`
+        ? `No more faces found (${alreadyTagged} already tagged)`
         : "No new faces found";
     }
   } catch {
@@ -13412,6 +13486,116 @@ async function deletePhoto(photoId) {
   closeLightbox();
   recomputePending();
   renderAll();
+}
+
+/* ------------------------- unreachable ("couldn't back up") photo gallery */
+// Every album photo we've given up backing up (original unreachable) and the
+// user hasn't yet ignored.
+function skippedBackupPhotos() {
+  return state.photos.filter((p) => p.backupSkipped && !isPhotoBackedUp(p) && !p.backupIgnored);
+}
+
+// Mark a photo as "ignored" — keep it in FamSort but stop flagging it red and
+// stop counting it against the backup totals.
+async function ignoreSkippedPhoto(photo) {
+  photo.backupIgnored = true;
+  photo.backupSkipped = false;
+  photo.backupSkipReason = null;
+  await db.put("photos", photo);
+  renderSkippedGallery();
+  renderAll();
+}
+
+async function ignoreAllSkipped() {
+  const list = skippedBackupPhotos();
+  if (!list.length) return;
+  for (const p of list) { p.backupIgnored = true; p.backupSkipped = false; p.backupSkipReason = null; }
+  await db.bulkPut("photos", list);
+  renderSkippedGallery();
+  renderAll();
+}
+
+// Give the unreachable photos another backup attempt (the user may have
+// reconnected the source), then close the gallery and let the sweep run.
+async function retryAllSkipped() {
+  const list = skippedBackupPhotos();
+  if (list.length) {
+    for (const p of list) { p.backupSkipped = false; p.backupSkipReason = null; p.backupTries = 0; }
+    await db.bulkPut("photos", list);
+  }
+  relinkTried = false;
+  const modal = el("skippedModal"); if (modal) modal.hidden = true;
+  lastAutoBackupKick = Date.now();
+  await backupAllAlbums();
+  renderAll();
+}
+
+async function removeSkippedPhoto(photo) {
+  const ok = await uiConfirm(`Remove this photo from FamSort? This only deletes it from the app \u2014 your original file is never touched.`);
+  if (!ok) return;
+  await deletePhotoRecord(photo.id);
+  recomputePending();
+  renderSkippedGallery();
+  renderAll();
+}
+
+// Paint the gallery grid inside the modal from the current skipped list.
+function renderSkippedGallery() {
+  const body = el("skippedBody");
+  const countEl = el("skippedCount");
+  if (!body) return;
+  const list = skippedBackupPhotos();
+  if (countEl) countEl.textContent = `${list.length} photo${list.length === 1 ? "" : "s"} couldn't be backed up.`;
+  body.textContent = "";
+  if (!list.length) {
+    const done = document.createElement("p");
+    done.className = "modal__hint";
+    done.textContent = "All sorted — nothing left to review.";
+    body.appendChild(done);
+    const ign = el("skippedIgnoreAll"); if (ign) ign.hidden = true;
+    const rt = el("skippedRetryAll"); if (rt) rt.hidden = true;
+    return;
+  }
+  const ign = el("skippedIgnoreAll"); if (ign) ign.hidden = false;
+  const rt = el("skippedRetryAll"); if (rt) rt.hidden = false;
+  for (const photo of list) {
+    const tile = document.createElement("div");
+    tile.className = "skipped-tile";
+    const wrap = document.createElement("div");
+    wrap.className = "skipped-tile__imgwrap";
+    wrap.title = "Open photo";
+    const img = document.createElement("img");
+    img.alt = photo.name || "Photo";
+    img.src = photo.thumb || "";
+    wrap.appendChild(img);
+    wrap.addEventListener("click", () => { el("skippedModal").hidden = true; openLightbox(photo.id); });
+    tile.appendChild(wrap);
+    const name = document.createElement("div");
+    name.className = "skipped-tile__name";
+    name.textContent = photo.name || (photo.isVideo ? "Video" : "Photo");
+    tile.appendChild(name);
+    const btns = document.createElement("div");
+    btns.className = "skipped-tile__btns";
+    const ignore = document.createElement("button");
+    ignore.className = "btn btn--ghost";
+    ignore.textContent = "Ignore";
+    ignore.addEventListener("click", () => ignoreSkippedPhoto(photo));
+    const remove = document.createElement("button");
+    remove.className = "btn btn--danger";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => removeSkippedPhoto(photo));
+    btns.appendChild(ignore);
+    btns.appendChild(remove);
+    tile.appendChild(btns);
+    body.appendChild(tile);
+  }
+}
+
+function openSkippedGallery() {
+  const modal = el("skippedModal");
+  if (!modal) return;
+  renderSkippedGallery();
+  modal.hidden = false;
 }
 
 // Try to re-read the original file from a watched folder by name, so a download
@@ -14912,8 +15096,11 @@ function wire() {
     });
   const procBackupNow = el("procBackupNow");
   if (procBackupNow)
-    procBackupNow.addEventListener("click", () =>
-      runBusy(procBackupNow, "Backing up…", async () => {
+    procBackupNow.addEventListener("click", () => {
+      // In "review" mode the button opens the unreachable-photos gallery instead
+      // of retrying straight away (the gallery has its own Try again).
+      if (procBackupNow.dataset.mode === "review") { openSkippedGallery(); return; }
+      return runBusy(procBackupNow, "Backing up…", async () => {
         // Let the healer run again, and give every photo we'd given up on another
         // go — the user may have reconnected the source, or just wants a retry.
         relinkTried = false;
@@ -14925,8 +15112,11 @@ function wire() {
         lastAutoBackupKick = Date.now();
         setAutoBackupMsg("Retrying backup\u2026");
         await backupAllAlbums();
-      })
-    );
+      });
+    });
+  const procPause = el("procPause");
+  if (procPause)
+    procPause.addEventListener("click", () => setBackupPaused(!state.backupPaused));
   const backupUntaggedCb = el("backupUntagged");
   if (backupUntaggedCb) backupUntaggedCb.addEventListener("change", () => setBackupUntagged(backupUntaggedCb.checked));
   const uiInput = el("uiModalInput");
@@ -15016,6 +15206,14 @@ function wire() {
   el("dupModal").addEventListener("click", (e) => {
     if (e.target === el("dupModal")) closeDupModal();
   });
+  const skippedClose = el("skippedClose");
+  if (skippedClose) skippedClose.addEventListener("click", () => (el("skippedModal").hidden = true));
+  const skippedIgnoreAll = el("skippedIgnoreAll");
+  if (skippedIgnoreAll) skippedIgnoreAll.addEventListener("click", ignoreAllSkipped);
+  const skippedRetryAll = el("skippedRetryAll");
+  if (skippedRetryAll) skippedRetryAll.addEventListener("click", () => runBusy(skippedRetryAll, "Retrying…", retryAllSkipped));
+  const skippedModal = el("skippedModal");
+  if (skippedModal) skippedModal.addEventListener("click", (e) => { if (e.target === skippedModal) skippedModal.hidden = true; });
 
   el("rescanStart").addEventListener("click", startRescan);
   el("rescanCancel").addEventListener("click", () => (el("rescanModal").hidden = true));
@@ -15197,9 +15395,25 @@ function wire() {
   // Belt-and-braces for desktop tab close / navigation away.
   window.addEventListener("pagehide", () => flushPendingSyncs());
   el("lightboxClose").addEventListener("click", closeLightbox);
+  const lbMenuBtn = el("lightboxMenuBtn");
+  if (lbMenuBtn)
+    lbMenuBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const menu = el("lightboxMenu");
+      if (!menu) return;
+      const show = menu.hidden;
+      menu.hidden = !show;
+      lbMenuBtn.setAttribute("aria-expanded", show ? "true" : "false");
+    });
   el("lightboxPrev").addEventListener("click", () => lightboxStep(-1));
   el("lightboxNext").addEventListener("click", () => lightboxStep(1));
   el("lightbox").addEventListener("click", (e) => {
+    const menu = el("lightboxMenu");
+    // A tap anywhere that isn't the menu or its button dismisses the menu.
+    if (menu && !menu.hidden && !menu.contains(e.target) && e.target !== el("lightboxMenuBtn")) {
+      menu.hidden = true;
+      if (el("lightboxMenuBtn")) el("lightboxMenuBtn").setAttribute("aria-expanded", "false");
+    }
     if (e.target === el("lightbox")) closeLightbox();
   });
   document.addEventListener("keydown", (e) => {
