@@ -5918,6 +5918,11 @@ function backupEtaText(done, total) {
 // How many photos the last backup sweep couldn't upload because their full-size
 // original isn't on this device (so the banner can say WHY, not just "pending").
 let backupBlocked = 0;
+// How many photos the last sweep tried but couldn't upload (a real error, not a
+// missing original) and how many actually went up — so the pill can tell a
+// genuine stall ("couldn't upload, Try again") from normal in-progress work.
+let backupFailed = 0;
+let backupLastOk = 0;
 // Live duplicate-cleanup progress, published so the home/Add banner shows the
 // tidy-up with the SAME visibility as a backup (a page-wide bar, not just album
 // text). dedupedAt throttles the automatic sweep pass per album.
@@ -6529,7 +6534,11 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
     setThumbStatus(photo.id, "uploading");
     setAutoBackupMsg(`Backing up ${done} of ${total} to ${where} — ${backupNowLabel()}`);
     renderHomeBackup();
-    const got = await getUploadableFile(photo);
+    let got = null;
+    // Fetching the original can throw (e.g. a transient OneDrive/network error on
+    // a long sweep). Never let that bubble up — it used to abort the whole sweep
+    // and leave forceBackupBusy stuck true, so auto-backup never ran again.
+    try { got = await getUploadableFile(photo); } catch { got = null; }
     if (!got || got.lowRes) {
       // FULL QUALITY ONLY. We never store a low-res preview as the "backup": if
       // the full-size original isn't reachable on this device right now, leave the
@@ -6590,18 +6599,24 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
       await backupOne(photos[idx]);
     }
   };
-  await Promise.all(Array.from({ length: concurrency }, worker));
-
-  state.uploadingPhotoId = null;
+  // Whatever happens in the workers, ALWAYS release the busy lock — otherwise one
+  // stray throw would freeze every future backup (the "stuck at 598/627" bug).
+  try {
+    await Promise.all(Array.from({ length: concurrency }, worker));
+  } finally {
+    state.uploadingPhotoId = null;
+    backupLiveTotal = 0;
+    backupLiveDone = 0;
+    backupInFlight.clear();
+    forceBackupBusy = false;
+  }
   setAlbumBackupProgress(total, total);
-  backupLiveTotal = 0
-  backupInFlight.clear();;
-  backupLiveDone = 0;
-  // Remember how many couldn't upload because their full-size original isn't on
-  // THIS device — so the home banner can explain the hold-up instead of looking
-  // like it's silently stuck.
+  // Remember how the sweep went so the pill can be honest: how many couldn't
+  // upload because their full-size original isn't on THIS device, how many hit a
+  // real error, and how many actually went up (did we make any progress?).
   backupBlocked = needsSource;
-  forceBackupBusy = false;
+  backupFailed = fail;
+  backupLastOk = ok;
   await saveBackedUpKeys();
   if (!device) {
     scheduleCloudSync();
@@ -11369,7 +11384,15 @@ function backupBannerState() {
   if (blocked >= left && blocked > 0) {
     return { ...base, cls: "", label: "Some photos need their original", detail: `${done} of ${total} backed up`, note: `${blocked} photo${blocked === 1 ? "" : "s"} can't back up until the full-size original is reachable. Reconnect the source folder, or open this on the device that has them, then tap Try again.`, html: `${done} of ${total} backed up \u2014 ${blocked} need their original (reconnect the source folder, or open this on the device that has them)`, track: true, pct, now: false, blocked: true };
   }
-  return { ...base, cls: "", label: "Backing up your photos", detail: `${done} of ${total}`, note: `${left} still to go \u2014 this happens automatically.`, html: `${done} of ${total} backed up to ${where} \u2014 ${left} still to go`, track: true, pct, now: true };
+  // The last sweep finished, uploaded nothing, and hit real upload errors on the
+  // rest — that's a genuine stall (connection/permission), not normal progress.
+  // Say so and offer the nudge instead of pretending it's actively backing up.
+  if (backupLastOk === 0 && backupFailed > 0 && left > 0) {
+    return { ...base, cls: "", label: "Couldn't back up some photos", detail: `${done} of ${total} backed up`, note: `${left} photo${left === 1 ? "" : "s"} couldn't upload just now \u2014 usually a connection or OneDrive sign-in hiccup. It keeps retrying on its own; tap Try again to retry straight away.`, html: `${done} of ${total} backed up \u2014 ${left} couldn't upload (will keep retrying)`, track: true, pct, now: false, blocked: true };
+  }
+  // Still outstanding, nothing blocking it — show it as WAITING (not "backing up",
+  // which would look active when it isn't) and let the pill kick the sweep itself.
+  return { ...base, cls: "", label: "Waiting to back up", detail: `${done} of ${total}`, note: `${left} still to go \u2014 this backs up by itself in the background.`, html: `${done} of ${total} backed up to ${where} \u2014 ${left} still to go`, track: true, pct, now: true };
 }
 
 // Paint a backup-status banner (home or Albums) from backupBannerState(). Handles
