@@ -936,6 +936,12 @@ button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
    the Done bar is a true footer BELOW it — never floating over the controls
    (the recurring "Done is over everything" complaint). */
 #sourceWizard.is-editing .wizard-pane { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 18px; margin: 0; }
+/* When editing an ALREADY-configured setup we open straight to the one section
+   the user tapped — so drop the first-run wizard chrome (the "Step X of 3" badge
+   and the Next/Back/Sort nav buttons). It reads as a focused single-section
+   editor; the Done bar is the only way out and it applies the change. */
+#sourceWizard.is-editing .wizard-step-badge { display: none; }
+#sourceWizard.is-editing .wizard-pane .btn-row--split { display: none; }
 #sourceWizard.is-editing .wizard-editbar { flex: 0 0 auto; position: static; margin: 0; border-radius: 0 0 var(--radius) var(--radius); padding: 12px 18px; background: var(--accent-soft); box-shadow: 0 -8px 18px rgba(36,31,27,.1); }
 body.wizard-open { overflow: hidden; }
 /* Inputs list inside the "Your setup" summary — the actual sources, not a count. */

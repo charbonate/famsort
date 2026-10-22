@@ -7,7 +7,7 @@
 //   • Network-FIRST for our own app shell (HTML), so updates always land, with a
 //     cached fallback so the app still opens with no connection.
 // Bump CACHE_VERSION whenever you want every client to drop old caches.
-const CACHE_VERSION = "famsort-v2";
+const CACHE_VERSION = "famsort-v3";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 
