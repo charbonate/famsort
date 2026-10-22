@@ -943,6 +943,16 @@ button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
 #sourceWizard.is-editing .wizard-step-badge { display: none; }
 #sourceWizard.is-editing .wizard-pane .btn-row--split { display: none; }
 #sourceWizard.is-editing .wizard-editbar { flex: 0 0 auto; position: static; margin: 0; border-radius: 0 0 var(--radius) var(--radius); padding: 12px 18px; background: var(--accent-soft); box-shadow: 0 -8px 18px rgba(36,31,27,.1); }
+/* ✕ close button — only shown in the editing popup, pinned to the top-right over
+   the scrolling step so it's always reachable. */
+.wizard-close-x { display: none; }
+#sourceWizard.is-editing .wizard-close-x { position: absolute; top: 8px; right: 8px; z-index: 3; width: 34px; height: 34px; border: none; border-radius: 50%; background: var(--card); color: var(--ink-soft); font-size: 1.05rem; line-height: 1; cursor: pointer; display: grid; place-items: center; box-shadow: 0 1px 4px rgba(36,31,27,.18); }
+#sourceWizard.is-editing .wizard-close-x:hover { background: var(--accent-soft); color: var(--accent-dark); }
+/* Keep the step heading clear of the ✕. */
+#sourceWizard.is-editing .wizard-head { padding-right: 34px; }
+/* Floating toast: brief confirmation of what an edit did, above the tab bar. */
+.toast { position: fixed; left: 50%; bottom: 84px; transform: translate(-50%, 12px); z-index: 120; max-width: calc(100% - 32px); padding: 10px 16px; border-radius: var(--radius-sm); background: var(--ink); color: #fff; font-size: .85rem; font-weight: 600; text-align: center; box-shadow: var(--shadow); opacity: 0; transition: opacity .25s ease, transform .25s ease; pointer-events: none; }
+.toast.is-show { opacity: 1; transform: translate(-50%, 0); }
 body.wizard-open { overflow: hidden; }
 /* Inputs list inside the "Your setup" summary — the actual sources, not a count. */
 .setup-src-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
@@ -1650,6 +1660,9 @@ body.wizard-open { overflow: hidden; }
       <div class="wizard-backdrop" id="wizardBackdrop" hidden></div>
 
       <div class="card-plain" id="sourceWizard">
+        <!-- Close (✕) — only visible when editing an already-configured setup
+             (the `.is-editing` popup). Warns first if a change hasn't been applied. -->
+        <button class="wizard-close-x" id="editCloseX" type="button" aria-label="Close" title="Close">✕</button>
         <!-- STEP 1 — SOURCES (device folders AND cloud folders together) -->
         <div class="wizard-pane" id="wizPaneSources">
           <div class="wizard-head">
@@ -1785,7 +1798,7 @@ body.wizard-open { overflow: hidden; }
              to leave the editor and go back to the "Your setup" summary. Sits at
              the BOTTOM so Done is where you finish, after reviewing the steps. -->
         <div class="wizard-editbar" id="wizardEditBar" hidden>
-          <span class="wizard-editbar__label">Changes apply when you tap Done. FamSort keeps sorting &amp; backing up while you edit — add a new source and it'll scan it as soon as you're done.</span>
+          <span class="wizard-editbar__label">Changes apply when you tap Done.</span>
           <button class="btn btn--primary btn--sm" id="closeSetupBtn" type="button">✓ Done</button>
         </div>
       </div>
@@ -2436,6 +2449,10 @@ body.wizard-open { overflow: hidden; }
       <span class="slideshow__caption" id="slideCaption"></span>
     </div>
   </div>
+
+  <!-- Brief, non-blocking status message (floats above the tab bar, then fades).
+       Used to relay what editing the setup did, e.g. "Applying your sorting change". -->
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
   <!-- In-app confirm/alert dialog (replaces the browser's window.confirm so every
        prompt looks like part of Famsort). -->
@@ -11757,11 +11774,16 @@ function renderSetupUI() {
 // buttons). Keeps the three panes available as plain config — no first-time step
 // pressure — and jumps straight to the step the user asked to edit.
 let configEditing = false;
+// Snapshot of the material config (inputs + sorting + output) taken the moment
+// the editor opens, so when the user leaves we can tell whether anything ACTUALLY
+// changed — picking the same folder or option again counts as no change.
+let configEditSnap = null;
 // When a logged-out user chooses "set up on this device only", we drop the
 // sign-in gate for the rest of the session so they can use the wizard offline.
 let skipAuthGate = false;
 function openSetupConfig(step) {
   configEditing = true;
+  configEditSnap = configSigParts(); // remember how things stood before editing
   const wizard = el("sourceWizard");
   if (wizard) { wizard.hidden = false; wizard.classList.add("is-editing"); }
   const backdrop = el("wizardBackdrop");
@@ -11775,9 +11797,62 @@ function openSetupConfig(step) {
   if (wizard) wizard.scrollTop = 0; // start the popup at the top
 }
 
-// Leave the editor and collapse back to the "Your setup" summary.
-function closeSetupConfig() {
+// A compact fingerprint of each editable part of the config. Comparing these to
+// the open-time snapshot tells us precisely what the user changed (if anything).
+function configSigParts() {
+  return {
+    inputs: JSON.stringify([
+      (state.watched || []).map((w) => w.id || w.name).sort(),
+      (state.cloudSources || []).map((s) => s.id).sort(),
+    ]),
+    sorting: JSON.stringify([state.sortMode || "perPerson", !!state.backupUntagged]),
+    output: JSON.stringify([
+      state.outputMode || "cloud",
+      state.outputRoot || "Famsort",
+      state.outputHandleName || "",
+    ]),
+  };
+}
+
+// Human-readable list of which categories changed vs. the snapshot taken on open.
+function configChangedParts(snap) {
+  if (!snap) return [];
+  const now = configSigParts();
+  const parts = [];
+  if (now.inputs !== snap.inputs) parts.push("photo sources");
+  if (now.sorting !== snap.sorting) parts.push("sorting");
+  if (now.output !== snap.output) parts.push("output");
+  return parts;
+}
+
+// Join a short list into friendly prose: [a] → "a", [a,b] → "a and b",
+// [a,b,c] → "a, b and c".
+function humanJoin(list) {
+  if (list.length <= 1) return list[0] || "";
+  return list.slice(0, -1).join(", ") + " and " + list[list.length - 1];
+}
+
+// A brief, non-blocking status message that floats above the tab bar, then fades.
+// Used to relay what editing did ("Applied your sorting change", "No changes", …).
+function flashToast(msg) {
+  const t = el("toast");
+  if (!t) return;
+  t.textContent = msg;
+  t.hidden = false;
+  requestAnimationFrame(() => t.classList.add("is-show"));
+  clearTimeout(flashToast._t);
+  flashToast._t = setTimeout(() => {
+    t.classList.remove("is-show");
+    setTimeout(() => { t.hidden = true; }, 300);
+  }, 3400);
+}
+
+// Tear the editor down and collapse back to the "Your setup" summary. When
+// `apply` is true we ALSO action whatever changed — scan any newly-added input
+// then back up — so the user sees exactly what their edit did.
+function teardownSetupConfig(apply) {
   configEditing = false;
+  configEditSnap = null;
   const wizard = el("sourceWizard");
   if (wizard) wizard.classList.remove("is-editing");
   const backdrop = el("wizardBackdrop");
@@ -11787,10 +11862,37 @@ function closeSetupConfig() {
   if (editbar) editbar.hidden = true;
   renderSetupUI(); // hides the wizard again (setup is done) and refreshes the summary
   el("setupSummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  // Apply whatever changed and SHOW it: scan any newly-added input, then back up.
-  // If nothing changed, this quietly finds nothing and ends with an "all sorted"
-  // tick — so the user always sees exactly what editing did.
-  sortNow();
+  if (apply) sortNow(); // re-scan + re-sort to match the new config
+}
+
+// Called by Done (commit=true) and the ✕ close button (commit=false). Works out
+// whether the edit changed anything and acts accordingly:
+//  • Done + a real change → apply it and tell the user what changed.
+//  • Done + nothing changed → just close, say "No changes".
+//  • ✕ + nothing changed → close straight away, no fuss.
+//  • ✕ + a pending change → warn that it isn't applied yet and offer to apply.
+async function closeSetupConfig(commit) {
+  const parts = configChangedParts(configEditSnap);
+  const changed = parts.length > 0;
+  if (commit) {
+    if (changed) {
+      teardownSetupConfig(true);
+      flashToast(`Applying your ${humanJoin(parts)} ${parts.length > 1 ? "changes" : "change"}…`);
+    } else {
+      teardownSetupConfig(false);
+      flashToast("No changes to apply.");
+    }
+    return;
+  }
+  // ✕ / backdrop close.
+  if (!changed) { teardownSetupConfig(false); return; }
+  const ok = await uiConfirm(
+    `You changed your ${humanJoin(parts)} but haven't applied ${parts.length > 1 ? "them" : "it"} yet.\n\n` +
+      "Apply now so FamSort re-sorts to match?",
+    { okLabel: "✓ Apply now", cancelLabel: "Close without applying" }
+  );
+  teardownSetupConfig(ok);
+  flashToast(ok ? `Applying your ${humanJoin(parts)} ${parts.length > 1 ? "changes" : "change"}…` : "Closed without applying.");
 }
 
 
@@ -15796,7 +15898,11 @@ function wire() {
     b.addEventListener("click", () => openSetupConfig(b.dataset.editStep))
   );
   const closeSetupBtn = el("closeSetupBtn");
-  if (closeSetupBtn) closeSetupBtn.addEventListener("click", closeSetupConfig);
+  if (closeSetupBtn) closeSetupBtn.addEventListener("click", () => closeSetupConfig(true));
+  // The ✕ in the top-right leaves the editor; if there's an un-applied change it
+  // warns first, otherwise it just closes.
+  const editCloseX = el("editCloseX");
+  if (editCloseX) editCloseX.addEventListener("click", () => closeSetupConfig(false));
   const homeBackupNow = el("homeBackupNow");
   if (homeBackupNow)
     homeBackupNow.addEventListener("click", () => {
@@ -15834,7 +15940,7 @@ function wire() {
       backupAllAlbums();
     });
   const wizardBackdrop = el("wizardBackdrop");
-  if (wizardBackdrop) wizardBackdrop.addEventListener("click", closeSetupConfig);
+  if (wizardBackdrop) wizardBackdrop.addEventListener("click", () => closeSetupConfig(false));
   const repairBtn = el("albumBackupRepair");
   if (repairBtn)
     repairBtn.addEventListener("click", (e) =>
