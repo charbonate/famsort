@@ -4298,7 +4298,7 @@ async function getItemMeta(id) {
 // total across the whole import so a huge tree can't run away. RESILIENT: if a
 // page request ultimately fails (after graphGet's own retries), we keep whatever
 // was already collected and move on, rather than throwing away the entire scan.
-async function collectMediaItems(folderId, token, items, onStatus, knownIds) {
+async function collectMediaItems(folderId, token, items, onStatus, knownIds, onPage) {
   if (items.length >= MAX_FILES) return;
   const subfolders = [];
   // Enumerate LIGHTWEIGHT: we deliberately do NOT $expand=thumbnails here. For a
@@ -4331,10 +4331,13 @@ async function collectMediaItems(folderId, token, items, onStatus, knownIds) {
     next = page["@odata.nextLink"];
     // Keep the overlay honest with a running tally while we walk a big library.
     if (items.length && items.length % 200 === 0) onStatus?.(`Found ${items.length} photos & videos so far…`);
+    // Report the climbing count to the MAIN status banner and let it honour a
+    // Pause (hold here) or Stop (return false → bail out of the whole walk).
+    if (onPage && (await onPage(items.length)) === false) return;
   }
   for (const sf of subfolders) {
     if (items.length >= MAX_FILES) break;
-    await collectMediaItems(sf, token, items, onStatus, knownIds);
+    await collectMediaItems(sf, token, items, onStatus, knownIds, onPage);
   }
 }
 
@@ -4465,7 +4468,7 @@ async function downloadAndFeed(items, token, onStatus, onFiles, onTotal) {
 
 // Import photos/videos from one or more chosen OneDrive folders (recursively).
 // An empty list defaults to the camera roll, preserving the original behaviour.
-async function importFromFolders(folderIds, onStatus, onFiles, knownIds, onTotal) {
+async function importFromFolders(folderIds, onStatus, onFiles, knownIds, onTotal, onPage) {
   const token = await getTokenSilent();
   if (!token) {
     onStatus?.("Please connect OneDrive first.");
@@ -4485,7 +4488,7 @@ async function importFromFolders(folderIds, onStatus, onFiles, knownIds, onTotal
   for (const fid of ids) {
     if (items.length >= MAX_FILES) break;
     try {
-      await collectMediaItems(fid, token, items, onStatus, knownIds);
+      await collectMediaItems(fid, token, items, onStatus, knownIds, onPage);
     } catch {
       // One source folder failed to list — keep going with the others and feed
       // whatever we DID find, rather than aborting the whole import.
@@ -5535,6 +5538,27 @@ function scanEtaText() {
   return ` — about ${hours} hr ${mins} min left`;
 }
 
+// Cloud enumeration progress gate. Walking a big OneDrive library finds photos
+// in pages BEFORE any download/face-scan starts; this surfaces that climbing
+// "Found N" count on the MAIN status banner (it used to be buried in the sources
+// editor), and makes the walk honour Pause (hold here) and Stop (return false so
+// cloud.js bails out of the walk). Stays silent during the background 90s sweep.
+async function cloudEnumProgress(count) {
+  if (!autoScanning) {
+    scanUIActive = true;
+    scanProgLabel = "Finding your photos…";
+    scanLoopDone = count;
+    scanLoopTotal = 0; // still discovering — a growing count, no bar yet
+    renderStatusCard();
+    await new Promise((r) => setTimeout(r, 0)); // let the paint land
+  }
+  // Honour a Pause during enumeration too — the count used to keep climbing.
+  while (scanPaused && !scanCancelRequested) {
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return !scanCancelRequested; // false → tell cloud.js to stop the walk
+}
+
 // Read a folder and return only the files we haven't ingested yet (recording
 // their keys so the same file isn't picked up twice). Does NOT process them.
 async function collectFresh(handle, requireGranted = false, runningTotal = 0) {
@@ -5552,6 +5576,12 @@ async function collectFresh(handle, requireGranted = false, runningTotal = 0) {
   try {
     for await (const entry of walkImages(handle)) {
       if (scanCancelRequested) break; // user asked to stop — bail out of the walk
+      // Honour a Pause during the folder walk too — the climbing “found” count
+      // used to keep rising even while paused. Hold here until resume/stop.
+      while (scanPaused && !scanCancelRequested) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      if (scanCancelRequested) break;
       let file;
       try {
         file = await entry.getFile();
@@ -7771,7 +7801,7 @@ async function cloudBootCatchUp() {
   try {
     const ids = (state.cloudSources || []).map((s) => s.id);
     await withScanLock(async () => {
-      await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds(), beginScanSession);
+      await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds(), beginScanSession, cloudEnumProgress);
     }, false); // VISIBLE — the floating card shows the whole-library tally + ETA
   } catch {
     /* offline — the silent 90s loop retries */
@@ -8042,7 +8072,7 @@ async function scanAllNow() {
       lastCloudSweep = Date.now(); // this pass counts; don't let the timer double up
       const ids = (state.cloudSources || []).map((s) => s.id);
       cloudRan = await withScanLock(async () => {
-        await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds(), beginScanSession);
+        await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds(), beginScanSession, cloudEnumProgress);
       }, false);
     }
     renderAll();
@@ -11900,7 +11930,7 @@ function activitySnapshot() {
                label: "Paused",
                detail: total > 0
                  ? `Stopped at ${done.toLocaleString()} of ${total.toLocaleString()} — tap Resume`
-                 : "Tap Resume to carry on",
+                 : (done > 0 ? `Stopped at ${done.toLocaleString()} found — tap Resume` : "Tap Resume to carry on"),
                pct, canPause: true, canStop: true,
                note: "Paused — nothing is lost. Tap Resume to carry on from here, or Stop to finish for now." };
     }
