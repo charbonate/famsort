@@ -5527,13 +5527,16 @@ async function cloudSweep() {
     cloudSignedIn = true;
     const ids = (state.cloudSources || []).map((s) => s.id);
     // Hold the scan lock (silent) so the background pull doesn't fight a manual
-    // sort and the progress bar/nav stay calm.
+    // sort and the progress bar/nav stay calm. Pass beginScanSession so the
+    // floating progress card shows ONE honest "X of Y — about N min left" tally
+    // across everything new (instead of a per-80-chunk count with no ETA).
     await withScanLock(async () => {
-      await cloud.importFromFolders(ids, () => {}, handleFiles, knownCloudIds());
+      await cloud.importFromFolders(ids, () => {}, handleFiles, knownCloudIds(), beginScanSession);
     }, true);
   } catch {
     /* offline / transient — the next sweep retries */
   } finally {
+    endScanSession();
     cloudSweeping = false;
   }
 }
