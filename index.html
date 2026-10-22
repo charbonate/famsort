@@ -873,6 +873,12 @@ p { margin: 0 0 .9rem; }
 /* Editing bar at the top of the wizard: a clear way back to the summary. */
 .wizard-editbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--accent-soft); border-radius: var(--radius-sm); padding: 8px 8px 8px 14px; margin-bottom: 14px; }
 .wizard-editbar__label { font-size: .85rem; font-weight: 700; color: var(--accent-dark); }
+/* Editing an existing setup opens the wizard as a centered popup over a dimmed
+   page (first-run setup still renders inline, no popup). */
+.wizard-backdrop { position: fixed; inset: 0; z-index: 94; background: rgba(36,31,27,.55); }
+#sourceWizard.is-editing { position: fixed; z-index: 95; top: 50%; left: 50%; transform: translate(-50%, -50%); width: calc(100% - 32px); max-width: 560px; max-height: 88vh; max-height: 88dvh; overflow-y: auto; margin: 0; box-shadow: var(--shadow); }
+#sourceWizard.is-editing .wizard-editbar { position: sticky; top: 0; z-index: 5; }
+body.wizard-open { overflow: hidden; }
 /* Inputs list inside the "Your setup" summary — the actual sources, not a count. */
 .setup-src-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
 .setup-src-list li { display: flex; align-items: center; gap: 7px; font-size: .9rem; font-weight: 600; color: var(--ink); }
@@ -892,6 +898,9 @@ p { margin: 0 0 .9rem; }
 .home-backup__track { margin-top: 10px; height: 7px; border-radius: 999px; background: #e6dccb; overflow: hidden; }
 .home-backup__fill { height: 100%; width: 0; border-radius: 999px; background: var(--grad-primary); transition: width .35s ease; }
 .home-backup__spin { flex: 0 0 auto; width: 13px; height: 13px; border: 2px solid rgba(90,76,209,.3); border-top-color: var(--accent); border-radius: 50%; animation: authspin .7s linear infinite; }
+/* Collapsed "tap to show" pill — either backup banner can be closed and reopened. */
+.home-backup.is-collapsed, .albums-backup.is-collapsed { cursor: pointer; }
+.home-backup.is-collapsed .home-backup__text, .albums-backup.is-collapsed .albums-backup__text { color: var(--ink-soft); font-weight: 600; }
 
 /* A source folder that lives on ANOTHER device — shown, clearly marked, read-only. */
 .watched-row--remote .watched-row__main { background: var(--cream-2); opacity: .9; }
@@ -901,9 +910,15 @@ p { margin: 0 0 .9rem; }
 /* Albums screen: one overall backup/sync status for the whole library */
 .albums-backup { background: var(--cream-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 14px; }
 .albums-backup.is-done { background: var(--success-soft); border-color: #cdebd7; }
+.albums-backup.is-busy { background: var(--accent-soft); border-color: #d9d3f5; }
 .albums-backup__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.albums-backup__text { font-size: .9rem; color: var(--ink); font-weight: 600; }
+.albums-backup__text { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--ink); font-weight: 600; }
 .albums-backup.is-done .albums-backup__text { color: var(--success); }
+.albums-backup__row .btn { flex: 0 0 auto; }
+.albums-backup__now { color: var(--ink-soft); font-weight: 600; }
+.albums-backup__close { flex: 0 0 auto; width: 26px; height: 26px; border: 0; border-radius: 999px; background: rgba(30, 20, 60, .07); color: var(--ink-soft); font-size: 12px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.albums-backup__close:hover { background: rgba(30, 20, 60, .14); color: var(--ink); }
+.albums-backup__spin { flex: 0 0 auto; width: 13px; height: 13px; border: 2px solid rgba(90,76,209,.3); border-top-color: var(--accent); border-radius: 50%; animation: authspin .7s linear infinite; }
 .albums-backup__track { margin-top: 10px; height: 7px; border-radius: 999px; background: #e6dccb; overflow: hidden; }
 .albums-backup__fill { height: 100%; width: 0; border-radius: 999px; background: var(--grad-primary); transition: width .35s ease; }
 
@@ -1485,6 +1500,10 @@ p { margin: 0 0 .9rem; }
         </dl>
       </div>
 
+      <!-- Dimmed backdrop behind the setup wizard when it's opened as a popup for
+           editing an existing setup. Clicking it closes the editor. -->
+      <div class="wizard-backdrop" id="wizardBackdrop" hidden></div>
+
       <div class="card-plain" id="sourceWizard">
         <!-- Shown only when editing an existing setup (not first run): a clear way
              to leave the editor and go back to the "Your setup" summary. -->
@@ -1684,6 +1703,8 @@ p { margin: 0 0 .9rem; }
         <div class="albums-backup" id="albumsBackupSummary" hidden>
           <div class="albums-backup__row">
             <span class="albums-backup__text" id="albumsBackupText"></span>
+            <button class="btn btn--primary btn--sm" id="albumsBackupNow" type="button" hidden>⤒ Back up now</button>
+            <button class="albums-backup__close" id="albumsBackupClose" type="button" aria-label="Dismiss">✕</button>
           </div>
           <div class="albums-backup__track" id="albumsBackupTrack" hidden><div class="albums-backup__fill" id="albumsBackupFill"></div></div>
         </div>
@@ -5840,6 +5861,24 @@ function backupNowLabel() {
   if (!names.length) return "";
   if (names.length === 1) return names[0];
   return `${names[0]} +${names.length - 1} more`;
+}
+// Live ETA anchor for the backup banner: when a sweep starts we note the time and
+// how many photos were already done, then estimate "about N min left" from the
+// rate since. Reset to 0 whenever nothing is actively backing up.
+let backupEtaAnchorAt = 0;
+let backupEtaAnchorDone = 0;
+// "about N minutes left" for the backup banner, mirroring the scan ETA. Returns
+// "" until we have a stable rate (a little elapsed time + a few photos done).
+function backupEtaText(done, total) {
+  if (!backupEtaAnchorAt) return "";
+  const elapsed = Date.now() - backupEtaAnchorAt;
+  const progressed = done - backupEtaAnchorDone;
+  if (progressed < 3 || elapsed < 2500) return "";
+  const perItem = elapsed / progressed;
+  const etaMs = Math.max(0, total - done) * perItem;
+  if (etaMs < 45000) return " \u2014 under a minute left";
+  const mins = Math.max(1, Math.round(etaMs / 60000));
+  return ` \u2014 about ${mins} minute${mins === 1 ? "" : "s"} left`;
 }
 // How many photos the last backup sweep couldn't upload because their full-size
 // original isn't on this device (so the banner can say WHY, not just "pending").
@@ -11088,9 +11127,14 @@ function renderSetupUI() {
   if (summary) summary.hidden = !state.setupDone;
   // Before first-run setup, show the stepped wizard; afterwards collapse it
   // behind the summary's "Edit" buttons so the screen isn't a wall of steps.
-  if (wizard && !configEditing) wizard.hidden = !!state.setupDone;
+  if (wizard && !configEditing) { wizard.hidden = !!state.setupDone; wizard.classList.remove("is-editing"); }
   const editbar = el("wizardEditBar");
   if (editbar) editbar.hidden = !(configEditing && state.setupDone);
+  if (!configEditing) {
+    const bd = el("wizardBackdrop");
+    if (bd) bd.hidden = true;
+    document.body.classList.remove("wizard-open");
+  }
   if (!state.setupDone) return;
   const outputEl = el("setupSummaryOutput");
   const inputsEl = el("setupSummaryInputs");
@@ -11130,18 +11174,26 @@ let skipAuthGate = false;
 function openSetupConfig(step) {
   configEditing = true;
   const wizard = el("sourceWizard");
-  if (wizard) wizard.hidden = false;
+  if (wizard) { wizard.hidden = false; wizard.classList.add("is-editing"); }
+  const backdrop = el("wizardBackdrop");
+  if (backdrop) backdrop.hidden = false;
+  document.body.classList.add("wizard-open");
   const editbar = el("wizardEditBar");
   if (editbar) editbar.hidden = false;
   const pane = step === "output" || step === "sorting" ? step : "sources";
   showWizardPane(pane);
   renderHomeBackup(); // reflect the paused-while-editing state right away
-  wizard?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (wizard) wizard.scrollTop = 0; // start the popup at the top
 }
 
 // Leave the editor and collapse back to the "Your setup" summary.
 function closeSetupConfig() {
   configEditing = false;
+  const wizard = el("sourceWizard");
+  if (wizard) wizard.classList.remove("is-editing");
+  const backdrop = el("wizardBackdrop");
+  if (backdrop) backdrop.hidden = true;
+  document.body.classList.remove("wizard-open");
   const editbar = el("wizardEditBar");
   if (editbar) editbar.hidden = true;
   renderSetupUI(); // hides the wizard again (setup is done) and refreshes the summary
@@ -11184,78 +11236,99 @@ function renderStats() {
 // backup is running and HOW FAR it's got — the Albums screen isn't the only
 // place that shows it anymore. Reuses the force-backup live counters when a
 // sweep is in progress, and the verified album totals when it's idle.
-let homeBackupDismissed = false; // user closed the "all backed up" confirmation
-function renderHomeBackup() {
-  const wrap = el("homeBackup");
-  if (!wrap) return;
+let homeBackupDismissed = false; // user collapsed the banner to the "tap to show" pill
+
+// Build the ONE backup-status message shared by the home banner and the Albums
+// banner so they always say exactly the same thing. Returns null when there's
+// nothing to show. `html` is safe (only app strings + escaped filenames).
+function backupBannerState() {
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
   const hasOutput = device || cloudOK;
   const { total, done } = albumsBackupTotals();
-  // Nothing to say until there's an output, auto-backup is on, and photos exist.
-  if (!hasOutput || !state.autoBackup || !total || !state.setupDone) {
-    wrap.hidden = true;
+  if (!hasOutput || !state.autoBackup || !total || !state.setupDone) return null;
+  const where = device ? "this device" : "OneDrive";
+  const base = { done, total };
+  // While the user edits any of the 3 setup steps, backups are paused so we never
+  // write to the OLD output folder mid-change. Say so plainly.
+  if (configEditing) {
+    backupEtaAnchorAt = 0;
+    return { ...base, cls: "", html: "\u23f8 Backups paused while you edit your setup \u2014 they'll resume as soon as you tap Done.", track: false, pct: 0, now: false };
+  }
+  if (dedupeBusy) {
+    backupEtaAnchorAt = 0;
+    const pct = dedupeTotal ? Math.round((dedupeDone / dedupeTotal) * 100) : 0;
+    return { ...base, cls: "is-busy", html: `<span class="home-backup__spin"></span> Tidying up duplicate copies in ${where}\u2026 ${dedupeDone} of ${dedupeTotal}`, track: true, pct, now: false, busy: true };
+  }
+  const busy = (forceBackupBusy || backingUpAll) && backupLiveTotal > 0;
+  if (busy) {
+    // Anchor the ETA the first render a sweep is live.
+    if (!backupEtaAnchorAt) { backupEtaAnchorAt = Date.now(); backupEtaAnchorDone = done; }
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    const left = Math.max(0, total - done);
+    const eta = backupEtaText(done, total);
+    const now = backupNowLabel();
+    return { ...base, cls: "is-busy", html: `<span class="home-backup__spin"></span> Backing up ${done} of ${total} to ${where}\u2026 ${left} to go${eta}${now ? ` <span class="home-backup__now">${escapeHtml(now)}</span>` : ""}`, track: true, pct, now: false, busy: true };
+  }
+  backupEtaAnchorAt = 0;
+  if (done >= total) {
+    return { ...base, cls: "is-done", html: `\u2713 All ${total} photo${total === 1 ? "" : "s"} backed up to ${where}`, track: false, pct: 100, now: false, doneState: true };
+  }
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const left = total - done;
+  // Be honest about WHY it's paused: if some originals aren't on this device they
+  // can't upload here — that's not "stuck", it just needs the source.
+  const blocked = Math.min(backupBlocked, left);
+  if (blocked >= left && blocked > 0) {
+    return { ...base, cls: "", html: `${done} of ${total} backed up \u2014 ${blocked} need their original (reconnect the source folder, or open this on the device that has them)`, track: true, pct, now: false };
+  }
+  return { ...base, cls: "", html: `${done} of ${total} backed up to ${where} \u2014 ${left} still to go`, track: true, pct, now: true };
+}
+
+// Paint a backup-status banner (home or Albums) from backupBannerState(). Handles
+// the collapsed "tap to show" pill so either banner can be closed and reopened.
+function applyBackupBanner(wrap, ids, st) {
+  if (!wrap) return;
+  if (!st) { wrap.hidden = true; return; }
+  const txt = el(ids.txt);
+  const track = ids.track ? el(ids.track) : null;
+  const fill = ids.fill ? el(ids.fill) : null;
+  const nowBtn = ids.now ? el(ids.now) : null;
+  const closeBtn = ids.close ? el(ids.close) : null;
+  // Active work always reopens the banner so progress stays visible.
+  if (st.busy) homeBackupDismissed = false;
+  if (homeBackupDismissed && !st.busy) {
+    // Everything backed up and the user closed it — leave the screen clean.
+    if (st.doneState) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    wrap.classList.add("is-collapsed");
+    wrap.classList.remove("is-busy", "is-done");
+    if (txt) txt.textContent = `${st.done} of ${st.total} backed up \u2014 tap to show`;
+    if (track) track.hidden = true;
+    if (nowBtn) nowBtn.hidden = true;
+    if (closeBtn) closeBtn.hidden = true;
     return;
   }
   wrap.hidden = false;
-  const txt = el("homeBackupText");
-  const track = el("homeBackupTrack");
-  const fill = el("homeBackupFill");
-  const nowBtn = el("homeBackupNow");
-  const where = device ? "this device" : "OneDrive";
-  // While the user is editing any of the 3 setup steps, backups are paused so we
-  // never write to the OLD output folder mid-change. Say so plainly.
-  if (configEditing) {
-    wrap.classList.remove("is-busy", "is-done");
-    if (txt) txt.textContent = "⏸ Backups paused while you edit your setup — they'll resume as soon as you tap Done.";
-    if (track) track.hidden = true;
-    if (nowBtn) nowBtn.hidden = true;
-    return;
-  }
-  const busy = (forceBackupBusy || backingUpAll) && backupLiveTotal > 0;
-  // Any active work (uploading or de-duping) always re-shows the banner, even if
-  // the user previously dismissed the "all done" confirmation.
-  if (busy || dedupeBusy) homeBackupDismissed = false;
-  wrap.classList.toggle("is-busy", busy || dedupeBusy);
-  wrap.classList.toggle("is-done", !busy && !dedupeBusy && done >= total);
-  if (dedupeBusy) {
-    // Duplicate tidy-up gets the SAME page-wide visibility as a backup.
-    const pct = dedupeTotal ? Math.round((dedupeDone / dedupeTotal) * 100) : 0;
-    if (txt) txt.innerHTML = `<span class="home-backup__spin"></span> Tidying up duplicate copies in ${where}\u2026 ${dedupeDone} of ${dedupeTotal}`;
-    if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
-    if (nowBtn) nowBtn.hidden = true;
-  } else if (busy) {
-    // ONE page-wide bar for the whole library: show the TRUE total across every
-    // album and how many remain, so it never resets to "0 of 30" when one sweep
-    // hands off to the next — it's x of the correct total, with y to go.
-    const pct = total ? Math.round((done / total) * 100) : 0;
-    const left = Math.max(0, total - done);
-    const now = backupNowLabel();
-    if (txt) txt.innerHTML = `<span class="home-backup__spin"></span> Backing up ${done} of ${total} to ${where}\u2026 ${left} to go${now ? ` <span class="home-backup__now">${escapeHtml(now)}</span>` : ""}`;
-    if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
-    if (nowBtn) nowBtn.hidden = true;
-  } else if (done >= total) {
-    if (homeBackupDismissed) { wrap.hidden = true; return; }
-    if (txt) txt.textContent = `\u2713 All ${total} photo${total === 1 ? "" : "s"} backed up to ${where}`;
-    if (track) track.hidden = true;
-    if (nowBtn) nowBtn.hidden = true;
-  } else {
-    const pct = total ? Math.round((done / total) * 100) : 0;
-    const left = total - done;
-    // Be honest about WHY it's paused: if some originals aren't on this device
-    // they can't upload here — that's not "stuck", it just needs the source.
-    const blocked = Math.min(backupBlocked, left);
-    if (txt) {
-      if (blocked >= left && blocked > 0) {
-        txt.textContent = `${done} of ${total} backed up \u2014 ${blocked} need their original (reconnect the source folder, or open this on the device that has them)`;
-      } else {
-        txt.textContent = `${done} of ${total} backed up to ${where} \u2014 ${left} still to go`;
-      }
-    }
-    if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
-    // Offer a manual kick so the user isn't waiting on the background sweep.
-    if (nowBtn) nowBtn.hidden = blocked >= left && blocked > 0;
-  }
+  wrap.classList.remove("is-collapsed");
+  wrap.classList.toggle("is-busy", st.cls === "is-busy");
+  wrap.classList.toggle("is-done", st.cls === "is-done");
+  if (txt) txt.innerHTML = st.html;
+  if (track) { track.hidden = !st.track; if (st.track && fill) fill.style.width = st.pct + "%"; }
+  if (nowBtn) nowBtn.hidden = !st.now;
+  if (closeBtn) closeBtn.hidden = false;
+}
+
+// Live backup banner on the home/Add screen — same content as the Albums banner.
+function renderHomeBackup() {
+  applyBackupBanner(el("homeBackup"), { txt: "homeBackupText", track: "homeBackupTrack", fill: "homeBackupFill", now: "homeBackupNow", close: "homeBackupClose" }, backupBannerState());
+}
+
+// Repaint BOTH backup banners together so their collapsed/expanded state and
+// content stay in sync no matter which screen the user is on.
+function refreshBackupBanners() {
+  renderHomeBackup();
+  renderAlbumsBackupSummary();
 }
 
 
@@ -11591,43 +11664,9 @@ function albumsBackupTotals() {
 // automatically (no button). The sourced/sorted/backed-up totals live on the
 // home screen now — this bar is purely the pending/sync read-out.
 function renderAlbumsBackupSummary() {
-  const bar = el("albumsBackupSummary");
-  if (!bar) return;
-  const { total, done } = albumsBackupTotals();
-  if (!total) { bar.hidden = true; return; }
-  bar.hidden = false;
-
-  const device = state.outputMode === "device" && !!state.outputHandle;
-  const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
-  const hasOutput = device || cloudOK;
-  const txt = el("albumsBackupText");
-  const fill = el("albumsBackupFill");
-  const track = el("albumsBackupTrack");
-
-  // No backup destination (or auto-backup off): nudge the user to turn it on.
-  if (!hasOutput || !state.autoBackup) {
-    bar.classList.remove("is-done");
-    if (track) track.hidden = true;
-    if (txt) txt.textContent = !hasOutput
-      ? "Choose a cloud or device output on the Add screen to back up your albums."
-      : "Auto-backup is off \u2014 turn it on in Settings to save copies automatically.";
-    return;
-  }
-
-  const where = device ? "this device" : "OneDrive";
-  const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 100;
-  bar.classList.toggle("is-done", done >= total);
-  if (done >= total) {
-    if (txt) txt.textContent = `\u2713 All ${total} album photo${total === 1 ? "" : "s"} backed up to ${where}`;
-    if (track) track.hidden = true;
-  } else {
-    const act = backgroundBusy() ? activityStatusText() : "";
-    if (txt)
-      txt.textContent = act
-        ? `${act} ${done} of ${total} done`
-        : `${done} of ${total} backed up to ${where} \u2014 ${total - done} still syncing\u2026`;
-    if (track) { track.hidden = false; if (fill) fill.style.width = pct + "%"; }
-  }
+  // Same banner as the home screen, same content — just rendered into the Albums
+  // header element so the status reads identically wherever the user is.
+  applyBackupBanner(el("albumsBackupSummary"), { txt: "albumsBackupText", track: "albumsBackupTrack", fill: "albumsBackupFill", now: "albumsBackupNow", close: "albumsBackupClose" }, backupBannerState());
 }
 
 // Back up EVERY album's outstanding photos in one background sweep \u2014 no need to
@@ -14716,9 +14755,34 @@ function wire() {
   if (homeBackupClose)
     homeBackupClose.addEventListener("click", () => {
       homeBackupDismissed = true;
-      const wrap = el("homeBackup");
-      if (wrap) wrap.hidden = true;
+      refreshBackupBanners();
     });
+  // Tapping a collapsed banner (either screen) reopens it.
+  const expandBanner = (wrap) => {
+    if (!wrap) return;
+    wrap.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return; // let the ✕ / Back up now buttons work
+      if (!wrap.classList.contains("is-collapsed")) return;
+      homeBackupDismissed = false;
+      refreshBackupBanners();
+    });
+  };
+  expandBanner(el("homeBackup"));
+  expandBanner(el("albumsBackupSummary"));
+  const albumsBackupClose = el("albumsBackupClose");
+  if (albumsBackupClose)
+    albumsBackupClose.addEventListener("click", () => {
+      homeBackupDismissed = true;
+      refreshBackupBanners();
+    });
+  const albumsBackupNow = el("albumsBackupNow");
+  if (albumsBackupNow)
+    albumsBackupNow.addEventListener("click", () => {
+      setAutoBackupMsg("Backing up now\u2026");
+      backupAllAlbums();
+    });
+  const wizardBackdrop = el("wizardBackdrop");
+  if (wizardBackdrop) wizardBackdrop.addEventListener("click", closeSetupConfig);
   const repairBtn = el("albumBackupRepair");
   if (repairBtn)
     repairBtn.addEventListener("click", () => {
