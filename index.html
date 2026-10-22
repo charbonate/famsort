@@ -11454,7 +11454,7 @@ function backupBannerState() {
   }
   // Still outstanding, nothing blocking it — show it as WAITING (not "backing up",
   // which would look active when it isn't) and let the pill kick the sweep itself.
-  return { ...base, cls: "", label: "Waiting to back up", detail: `${done} of ${total}`, note: `${left} still to go \u2014 this backs up by itself in the background.`, html: `${done} of ${total} backed up to ${where} \u2014 ${left} still to go`, track: true, pct, now: true };
+  return { ...base, cls: "", label: "Backing up shortly", detail: `${done} of ${total}`, note: `${left} still to go \u2014 this starts on its own within a few seconds (and whenever you're back online). Tap \u201cBack up now\u201d to start straight away.`, html: `${done} of ${total} backed up to ${where} \u2014 ${left} still to go`, track: true, pct, now: true };
 }
 
 // Paint a backup-status banner (home or Albums) from backupBannerState(). Handles
@@ -11519,7 +11519,7 @@ function renderStatusCard() {
 
   p.hidden = false;
   p.classList.remove("processing--done");
-  const spinning = !!st.busy || (st.now === true && !configEditing);
+  const spinning = !!st.busy;
   const label = el("processingText");
   if (label) label.textContent = st.label || "";
   const count = el("procCount");
@@ -11534,10 +11534,14 @@ function renderStatusCard() {
   if (bar) { bar.style.width = (st.track ? st.pct : 0) + "%"; }
   const barWrap = el("processing").querySelector(".activity__bar");
   if (barWrap) barWrap.style.display = st.track ? "" : "none";
-  // The only button in the pill is "Try again", shown ONLY when backup is stuck
-  // waiting on a missing original (a manual nudge for the rare stuck case).
+  // The pill's action button: "Try again" when a backup is stuck on a missing
+  // original, or "Back up now" when work is simply queued to run automatically.
   const retry = el("procBackupNow");
-  if (retry) retry.hidden = !st.blocked;
+  if (retry) {
+    const showAction = !!st.blocked || st.now === true;
+    retry.hidden = !showAction;
+    retry.textContent = st.blocked ? "Try again" : "Back up now";
+  }
   const cancel = el("procCancel");
   if (cancel) cancel.hidden = true; // "Stop" is only for an in-progress scan
   applyActivityExpanded();
@@ -14909,7 +14913,7 @@ function wire() {
   const procBackupNow = el("procBackupNow");
   if (procBackupNow)
     procBackupNow.addEventListener("click", () =>
-      runBusy(procBackupNow, "Trying…", async () => {
+      runBusy(procBackupNow, "Backing up…", async () => {
         // Let the healer run again, and give every photo we'd given up on another
         // go — the user may have reconnected the source, or just wants a retry.
         relinkTried = false;
