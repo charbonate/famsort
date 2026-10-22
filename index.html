@@ -886,23 +886,53 @@ button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
 .source-add-hint { line-height: 1.5; }
 .source-add-hint strong { color: var(--ink); }
 
-/* First-run vs returning: the "Your setup" summary of inputs / output / sorting */
-.setup-summary__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.setup-summary__scope { font-size: .74rem; color: var(--accent-dark); background: var(--accent-soft); border-radius: 999px; padding: 3px 10px; font-weight: 600; white-space: nowrap; }
-.setup-summary__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 14px 0 12px; }
-.setup-summary__grid > div { background: var(--cream-2); border-radius: var(--radius-sm); padding: 10px 12px; display: flex; flex-direction: column; }
-.setup-summary__grid dt { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); font-weight: 700; display: flex; flex-direction: column; gap: 2px; }
-.setup-summary__hint { font-size: .68rem; letter-spacing: 0; text-transform: none; font-weight: 500; opacity: .85; }
-.setup-summary__grid dd { margin: 6px 0 12px; font-size: .95rem; color: var(--ink); font-weight: 600; }
-.setup-summary__edit { align-self: flex-start; margin-top: auto; }
-/* Editing bar at the top of the wizard: a clear way back to the summary. */
-.wizard-editbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--accent-soft); border-radius: var(--radius-sm); padding: 8px 8px 8px 14px; margin-top: 16px; }
-.wizard-editbar__label { font-size: .85rem; font-weight: 700; color: var(--accent-dark); }
+/* First-run vs returning: the packed-away "Your photo pipeline" — a modern
+   input → sort → output flow with an always-on live status line. */
+.setup-flow { background: linear-gradient(160deg, #fff, var(--cream-2)); }
+.setup-flow__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.setup-flow__title { margin: 0; }
+.setup-flow__scope { font-size: .74rem; color: var(--accent-dark); background: var(--accent-soft); border-radius: 999px; padding: 3px 10px; font-weight: 600; white-space: nowrap; }
+/* Live status chip — a coloured dot that pulses when busy + one honest sentence. */
+.setup-flow__status { display: flex; align-items: center; gap: 9px; margin: 12px 0 14px; padding: 9px 13px; border-radius: 999px; background: var(--cream-2); border: 1px solid var(--line); font-size: .86rem; font-weight: 600; color: var(--ink); cursor: pointer; width: 100%; text-align: left; }
+.setup-flow__pulse { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: #1f9d55; box-shadow: 0 0 0 0 rgba(31,157,85,.45); }
+.setup-flow__status.is-busy { border-color: #c9d9f6; background: #eef3fe; }
+.setup-flow__status.is-busy .setup-flow__pulse { background: var(--accent); animation: flow-pulse 1.3s ease-out infinite; }
+.setup-flow__status.is-paused { border-color: #ead9ad; background: #fbf3df; }
+.setup-flow__status.is-paused .setup-flow__pulse { background: #c7962a; }
+.setup-flow__status.is-warn { border-color: #f0caba; background: #fcefe8; }
+.setup-flow__status.is-warn .setup-flow__pulse { background: #d2592a; }
+.setup-flow__status-text { min-width: 0; }
+@keyframes flow-pulse { 0% { box-shadow: 0 0 0 0 rgba(90,76,209,.5); } 70% { box-shadow: 0 0 0 7px rgba(90,76,209,0); } 100% { box-shadow: 0 0 0 0 rgba(90,76,209,0); } }
+/* The pipeline rail: three stage tiles separated by arrows. Wraps on narrow. */
+.setup-flow__pipe { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+.flow-stage { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; gap: 4px; text-align: left; cursor: pointer; background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 11px 12px 10px; color: inherit; font: inherit; transition: border-color .15s, transform .15s, box-shadow .15s; }
+.flow-stage:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(90,76,209,.12); }
+.flow-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.flow-stage__badge { font-size: .64rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; color: var(--accent-dark); }
+.flow-stage__ico { font-size: 1.3rem; line-height: 1; }
+.flow-stage__val { font-size: .9rem; font-weight: 700; color: var(--ink); line-height: 1.3; word-break: break-word; }
+.flow-stage__more { font-size: .76rem; font-weight: 600; color: var(--ink-soft); }
+.flow-stage__edit { margin-top: 2px; font-size: .7rem; font-weight: 700; color: var(--accent); opacity: 0; transition: opacity .15s; }
+.flow-stage:hover .flow-stage__edit, .flow-stage:focus-visible .flow-stage__edit { opacity: 1; }
+.flow-stage--sort { background: var(--accent-soft); border-color: transparent; }
+.flow-arrow { flex: 0 0 auto; align-self: center; color: var(--accent); font-size: 1.1rem; font-weight: 800; }
+@media (max-width: 460px) {
+  .setup-flow__pipe { flex-direction: column; }
+  .flow-stage { flex-basis: auto; }
+  .flow-arrow { transform: rotate(90deg); align-self: center; margin: -2px 0; }
+}
+/* Editing bar at the bottom of the wizard: a clear way back to the summary. */
+.wizard-editbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--accent-soft); border-radius: var(--radius-sm); padding: 10px 10px 10px 14px; margin-top: 16px; }
+.wizard-editbar__label { font-size: .78rem; font-weight: 600; color: var(--accent-dark); line-height: 1.4; }
+.wizard-editbar .btn { flex: 0 0 auto; white-space: nowrap; }
 /* Editing an existing setup opens the wizard as a centered popup over a dimmed
    page (first-run setup still renders inline, no popup). */
 .wizard-backdrop { position: fixed; inset: 0; z-index: 94; background: rgba(36,31,27,.55); }
 #sourceWizard.is-editing { position: fixed; z-index: 95; top: 50%; left: 50%; transform: translate(-50%, -50%); width: calc(100% - 32px); max-width: 560px; max-height: 88vh; max-height: 88dvh; overflow-y: auto; margin: 0; box-shadow: var(--shadow); }
-#sourceWizard.is-editing .wizard-editbar { position: sticky; bottom: 0; z-index: 5; margin-top: 16px; box-shadow: 0 -6px 16px rgba(36,31,27,.08); }
+/* The Done bar sticks to the bottom of the scrolling popup. Give it a solid
+   backing and give the popup room below so it never sits ON TOP of the last
+   controls — the complaint that "Done is over everything". */
+#sourceWizard.is-editing .wizard-editbar { position: sticky; bottom: -1px; z-index: 5; margin: 16px -18px -18px; border-radius: 0 0 var(--radius) var(--radius); padding: 12px 18px; background: var(--accent-soft); box-shadow: 0 -8px 18px rgba(36,31,27,.1); }
 body.wizard-open { overflow: hidden; }
 /* Inputs list inside the "Your setup" summary — the actual sources, not a count. */
 .setup-src-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
@@ -1518,28 +1548,47 @@ body.wizard-open { overflow: hidden; }
         <button class="linkbtn signed-out-gate__device" id="gateDeviceBtn" type="button">Set up on this device only, without an account</button>
       </div>
 
-      <div class="card-plain setup-summary" id="setupSummary" hidden>
-        <div class="setup-summary__head">
-          <h3>Your setup</h3>
-          <span class="setup-summary__scope">Shared across all your devices</span>
+      <div class="card-plain setup-flow" id="setupSummary" hidden>
+        <div class="setup-flow__head">
+          <h3 class="setup-flow__title">Your photo pipeline</h3>
+          <span class="setup-flow__scope">Synced across your devices</span>
         </div>
-        <dl class="setup-summary__grid">
-          <div>
-            <dt>Inputs<span class="setup-summary__hint">where photos come from</span></dt>
-            <dd id="setupSummaryInputs">—</dd>
-            <button class="btn btn--ghost btn--sm setup-summary__edit" data-edit-step="sources" type="button">Edit sources</button>
-          </div>
-          <div>
-            <dt>Output<span class="setup-summary__hint">where sorted albums are saved</span></dt>
-            <dd id="setupSummaryOutput">—</dd>
-            <button class="btn btn--ghost btn--sm setup-summary__edit" data-edit-step="output" type="button">Edit output</button>
-          </div>
-          <div>
-            <dt>Sorting<span class="setup-summary__hint">how photos with several people are filed</span></dt>
-            <dd id="setupSummarySorting">—</dd>
-            <button class="btn btn--ghost btn--sm setup-summary__edit" data-edit-step="sorting" type="button">Edit sorting</button>
-          </div>
-        </dl>
+
+        <!-- Always-on live status: in one honest line, what FamSort is doing RIGHT
+             NOW — so it's always clear it runs automatically in the background. -->
+        <div class="setup-flow__status is-idle" id="setupFlowStatus">
+          <span class="setup-flow__pulse" aria-hidden="true"></span>
+          <span class="setup-flow__status-text" id="setupFlowStatusText">Watching for new photos — all caught up</span>
+        </div>
+
+        <!-- The pipeline: where photos come IN → how they're sorted → where they go
+             OUT. Each stage is tappable to edit just that part. -->
+        <div class="setup-flow__pipe">
+          <button class="flow-stage flow-stage--in" data-edit-step="sources" type="button">
+            <span class="flow-stage__badge">Input</span>
+            <span class="flow-stage__ico" aria-hidden="true">📥</span>
+            <span class="flow-stage__val" id="setupSummaryInputs">—</span>
+            <span class="flow-stage__edit">Tap to edit</span>
+          </button>
+
+          <span class="flow-arrow" aria-hidden="true">➜</span>
+
+          <button class="flow-stage flow-stage--sort" data-edit-step="sorting" type="button">
+            <span class="flow-stage__badge">Sort method</span>
+            <span class="flow-stage__ico" aria-hidden="true">🧠</span>
+            <span class="flow-stage__val" id="setupSummarySorting">—</span>
+            <span class="flow-stage__edit">Tap to edit</span>
+          </button>
+
+          <span class="flow-arrow" aria-hidden="true">➜</span>
+
+          <button class="flow-stage flow-stage--out" data-edit-step="output" type="button">
+            <span class="flow-stage__badge">Output</span>
+            <span class="flow-stage__ico" aria-hidden="true">📤</span>
+            <span class="flow-stage__val" id="setupSummaryOutput">—</span>
+            <span class="flow-stage__edit">Tap to edit</span>
+          </button>
+        </div>
       </div>
 
       <!-- Dimmed backdrop behind the setup wizard when it's opened as a popup for
@@ -1684,7 +1733,7 @@ body.wizard-open { overflow: hidden; }
              to leave the editor and go back to the "Your setup" summary. Sits at
              the BOTTOM so Done is where you finish, after reviewing the steps. -->
         <div class="wizard-editbar" id="wizardEditBar" hidden>
-          <span class="wizard-editbar__label">Editing your setup</span>
+          <span class="wizard-editbar__label">Changes apply when you tap Done. FamSort keeps sorting &amp; backing up while you edit — add a new source and it'll scan it as soon as you're done.</span>
           <button class="btn btn--primary btn--sm" id="closeSetupBtn" type="button">✓ Done</button>
         </div>
       </div>
@@ -2053,7 +2102,7 @@ body.wizard-open { overflow: hidden; }
         <span class="spinner spinner--sm" id="procSpinner"></span>
         <span class="activity__check" id="procCheck" hidden>✓</span>
         <span class="activity__main">
-          <span class="activity__label" id="processingText">Working…</span>
+          <span class="activity__label" id="processingText">Starting…</span>
           <span class="activity__count" id="procCount"></span>
         </span>
         <span class="activity__chev" id="activityChev" aria-hidden="true">▴</span>
@@ -5190,6 +5239,12 @@ async function boot() {
   // Backfill real capture dates/dimensions/camera for photos imported before
   // metadata capture existed — runs quietly in the background, never blocks boot.
   backfillPhotoMeta();
+  // Proactive self-heal on launch: re-sort any faces that are sitting unsorted
+  // (people named after their photos were added, faces released by an earlier
+  // reorganise) and mirror the output to the albums — so a returning user lands
+  // on an already-tidy library instead of having to press anything. Deferred so
+  // it never slows the first paint, and it skips itself if a scan is running.
+  setTimeout(() => { reconcileLibrary({ force: true }).catch(() => {}); }, 4000);
 }
 
 // One-time-ish background pass: for photos that have no true capture date yet but
@@ -5313,7 +5368,21 @@ let scanBusy = false;
 // The processing loops check it and bail out cleanly, keeping whatever was
 // already sorted. Reset at the start of every fresh scan.
 let scanCancelRequested = false;
+// Set true when the user taps Pause on a RUNNING scan. The processing loop holds
+// at the current photo (keeping everything already sorted) until they Resume or
+// Stop. A pause never loses work — it just stops picking up new photos for now.
+let scanPaused = false;
 const SCAN_CANCEL_NOASK = "famsort.scanCancelNoAsk";
+
+// Toggle the running scan's pause state and reflect it on the activity pill at
+// once, so the button and the label agree the instant it's pressed.
+function toggleScanPause() {
+  scanPaused = !scanPaused;
+  const pause = el("procPause");
+  if (pause) { pause.textContent = scanPaused ? "Resume" : "Pause"; pause.classList.toggle("btn--primary", scanPaused); }
+  const label = el("processingText");
+  if (label && scanPaused) label.textContent = "Paused — tap Resume to carry on";
+}
 
 // Ask to stop the running face scan (with a "don't ask again" option), then flag
 // the loops to bail. Photos already sorted are kept; the rest can be scanned
@@ -5323,8 +5392,8 @@ async function requestCancelScan() {
   const skipAsk = localStorage.getItem(SCAN_CANCEL_NOASK) === "1";
   if (!skipAsk) {
     const ok = await uiConfirm(
-      "Stop looking for faces? Photos already sorted are kept — you can scan the rest any time.",
-      { okLabel: "Stop scanning", cancelLabel: "Keep going", danger: true, dontAsk: true }
+      "FamSort is scanning your photos for faces so it can sort them. Stop that scan now? Everything already sorted is kept — you can scan the rest any time. (Tip: tap Pause instead if you just want a break.)",
+      { okLabel: "Stop scanning", cancelLabel: "Keep scanning", danger: true, dontAsk: true }
     );
     if (uiModalDontAsk) localStorage.setItem(SCAN_CANCEL_NOASK, "1");
     if (!ok) return;
@@ -5602,6 +5671,10 @@ function startAutoSync() {
       autoSweep(true);
       // Keep chipping away at any outstanding backups on their own — no button.
       maybeAutoBackup();
+      // Proactively re-sort any faces that drifted out of step (new imports,
+      // people named after their photos, faces released by a reorganise) and
+      // keep the output mirrored to the albums — no button, no reminder.
+      reconcileLibrary().catch(() => {});
       // Continuously reconcile the open album against OneDrive so "backed up"
       // stays truthful and any gaps get re-uploaded automatically.
       if (state.activeAlbum) maybeReconcileAlbum(state.activeAlbum);
@@ -5623,7 +5696,6 @@ function stopAutoSync() {
 let lastCloudSweep = 0;
 let cloudSweeping = false;
 async function autoSweep(silent = true) {
-  if (configEditing) return; // paused while the user edits their setup (see renderHomeBackup)
   await autoRescanGranted(silent); // device folders
   await cloudSweep(); // cloud folders (rate-limited)
 }
@@ -6530,7 +6602,6 @@ async function cleanupAlbumDuplicates(id) {
 // so "backed up" stays honest without the user pressing anything.
 async function maybeReconcileAlbum(id, force = false) {
   if (reconcileBusy || forceBackupBusy) return;
-  if (configEditing) return; // paused while the user edits their setup
   if (id === ALL_ALBUM || id === UNTAGGED || id === AWAITING) return;
   if (!(state.outputMode === "cloud" && cloud.oneDriveConfigured())) return;
   if (!force && Date.now() - (reconciledAt.get(id) || 0) < 45000) return;
@@ -9180,6 +9251,10 @@ async function sortNow() {
     renderSetupUI();
   }
   try {
+    // Instant, honest feedback the moment Sort is pressed — so it never looks
+    // like nothing happened, even when there are no new photos to add.
+    startProgressUI();
+    const beforeCount = state.photos.length;
     // 1) Device folders — scan each watched handle (duplicates skipped).
     for (const w of state.watched) {
       if (w.handle) await scanHandle(w.handle);
@@ -9199,6 +9274,16 @@ async function sortNow() {
     // Now that the user has sorted once, keep watching for new photos while the
     // app stays open (auto-backup). Never starts on its own before this.
     startAutoSync();
+    // If no scan showed its own completion (nothing new was found anywhere), end
+    // with a clear tick so Sort ALWAYS confirms visibly instead of going quiet.
+    if (!scanBusy && scanTotal === 0 && Date.now() >= scanDoneUntil) {
+      const added = state.photos.length - beforeCount;
+      showProgressDone(
+        added > 0
+          ? `Sorted ${added.toLocaleString()} new photo${added === 1 ? "" : "s"}`
+          : "You're all sorted — nothing new to add"
+      );
+    }
   } finally {
     // The cloud import's last status has now finished; clear it so it doesn't look
     // stuck. Live progress was shown by the floating pill, which dismisses itself.
@@ -9467,14 +9552,21 @@ async function runBusy(btn, workingText, fn) {
 function startProgressUI() {
   clearTimeout(progressDoneTimer);
   scanCancelRequested = false; // fresh scan — clear any prior cancel flag
+  scanPaused = false; // and any prior pause
   scanDoneUntil = 0;
   const p = el("processing");
   p.classList.remove("processing--done");
   el("procSpinner").hidden = false;
   el("procCheck").hidden = true;
+  // Always say what it's doing right now — never a bare, vague "Working…".
+  el("processingText").textContent = "Looking through your photos…";
+  el("procCount").textContent = "";
   const nb = el("procBackupNow"); if (nb) nb.hidden = true; // scan has nothing to retry
   const note = el("activityNote"); if (note) note.textContent = "Looking through your photos for faces so it can sort them. You can keep using the app while this runs.";
   const cancel = el("procCancel"); if (cancel) cancel.hidden = false;
+  // A scan always offers Pause (a safe break) alongside Stop.
+  const quick = el("activityQuick"); if (quick) quick.hidden = false;
+  const pause = el("procPause"); if (pause) { pause.textContent = "Pause"; pause.classList.remove("btn--primary"); }
   applyActivityExpanded();
   p.hidden = false;
 }
@@ -9666,6 +9758,13 @@ async function processFiles(fileList, opts = {}) {
 
   for (let i = 0; i < files.length; i++) {
     if (scanCancelRequested) break; // user tapped ✕ on the overlay — stop here
+    // Honour a Pause: hold at this photo (everything already sorted is kept) until
+    // the user resumes or stops, so "Pause" is a real, safe break — not a cancel.
+    while (scanPaused && !scanCancelRequested) {
+      el("processingText").textContent = "Paused — tap Resume to carry on";
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    if (scanCancelRequested) break;
     const isVid = files[i].type.startsWith("video/") || (isVideoName(files[i].name) && !isImageName(files[i].name));
     el("processingText").textContent = isVid ? "Scanning video…" : "Looking for faces…";
     if (scanTotal > 0) {
@@ -11309,6 +11408,58 @@ function updatePhotoLabels(photoIds) {
   scheduleLibrarySync(); // album membership changed — keep the sorted-output manifest current
 }
 
+// ---------------------------------------------------------------------------
+// Proactive self-heal — keep input → albums → output in step WITHOUT the user
+// asking. The app used to only ever sort a photo at the instant it was imported,
+// so anything that drifted out of step AFTERWARDS just sat there: a person named
+// after their photos were already in, faces released back to the pool by a
+// reorganise, or a source that changed. Nothing re-checked them. This closes
+// those gaps and runs on its own — on boot and on the background timer:
+//   1. AUTO-SORT — re-match every face that isn't on a person yet against ALL
+//      named people, so a known face attaches itself the moment we can recognise
+//      it (brand-new imports AND older photos that were never sorted).
+//   2. SURFACE   — re-cluster whatever is still unknown into the "to name"
+//      queue, so a photo that HAS a face is never left in limbo (neither in an
+//      album nor waiting to be named).
+//   3. MIRROR    — nudge the output to match the albums: verify every album
+//      against OneDrive and upload anything missing. (Losing a tag already pulls
+//      that photo's copy out of the old person-folder via scheduleRefile, so the
+//      output never keeps a photo the album has dropped.)
+let lastLibraryReconcile = 0;
+let libraryReconcileBusy = false;
+
+async function reconcileLibrary({ force = false } = {}) {
+  if (libraryReconcileBusy) return 0;
+  if (scanBusy || reconcileBusy || forceBackupBusy || verifyingAll) return 0; // don't fight an active job
+  if (!force && Date.now() - lastLibraryReconcile < 60000) return 0;
+  libraryReconcileBusy = true;
+  let attached = 0;
+  try {
+    // 1 + 2) Auto-sort the backlog of still-unknown faces, then surface the rest.
+    const people = namedPeople();
+    const unknownBefore = state.faces.filter((f) => !f.personId).length;
+    if (people.length && unknownBefore) {
+      for (const person of people) {
+        const was = state.faces.filter((f) => !f.personId).length;
+        await assignMatchingUnassigned(person); // attaches matching faces + refiles output itself
+        attached += was - state.faces.filter((f) => !f.personId).length;
+      }
+    }
+    recomputePending(); // everything still unknown lands in the "to name" queue
+    if (attached) renderAll();
+    else renderTagQueue();
+    lastLibraryReconcile = Date.now();
+    // 3) Mirror the output to the albums. Fire-and-forget: it rate-limits itself
+    // per album and never blocks the sort above.
+    if (state.outputMode === "cloud" && cloud.oneDriveConfigured()) {
+      verifyAllAlbums().catch(() => {});
+    }
+  } finally {
+    libraryReconcileBusy = false;
+  }
+  return attached;
+}
+
 function sample(arr, n) {
   if (arr.length <= n) return arr.slice();
   const step = arr.length / n;
@@ -11372,16 +11523,22 @@ function renderSetupUI() {
   // exactly where photos are coming from, and it's editable via the button below.
   if (inputsEl) {
     const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-    const rows = [];
-    for (const w of state.watched) rows.push(`<li><span class="setup-src__ico">📁</span>${esc(w.name)}<span class="setup-src__where">this device</span></li>`);
-    for (const s of state.cloudSources || []) rows.push(`<li><span class="setup-src__ico">☁️</span>${esc(s.name)}<span class="setup-src__where">OneDrive</span></li>`);
+    const items = [];
+    for (const w of state.watched) items.push(`📁 ${esc(w.name)}`);
+    for (const s of state.cloudSources || []) items.push(`☁️ ${esc(s.name)}`);
     const myId = getDeviceId();
     for (const [devId, info] of Object.entries(state.remoteSources || {})) {
       if (devId === myId || !info || !Array.isArray(info.folders)) continue;
-      for (const f of info.folders) rows.push(`<li><span class="setup-src__ico">💻</span>${esc(f.name)}<span class="setup-src__where">${esc(info.label || "another device")}</span></li>`);
+      for (const f of info.folders) items.push(`💻 ${esc(f.name)}`);
     }
-    if (!rows.length && !(state.cloudSources || []).length && cloudSignedIn) rows.push(`<li><span class="setup-src__ico">☁️</span>Your OneDrive camera roll<span class="setup-src__where">default</span></li>`);
-    inputsEl.innerHTML = rows.length ? `<ul class="setup-src-list">${rows.join("")}</ul>` : "No sources yet \u2014 add one";
+    if (!items.length && cloudSignedIn) items.push("☁️ Your OneDrive camera roll");
+    // Keep the pipeline tile compact: show the first couple of sources, then a
+    // "+N more" so a big source list never blows out the card.
+    let html;
+    if (!items.length) html = "No sources yet";
+    else if (items.length <= 2) html = items.join("<br>");
+    else html = items.slice(0, 2).join("<br>") + `<br><span class="flow-stage__more">+${items.length - 2} more</span>`;
+    inputsEl.innerHTML = html;
   }
   if (outputEl) {
     outputEl.textContent =
@@ -11390,6 +11547,7 @@ function renderSetupUI() {
         : `OneDrive \u00b7 ${state.outputRoot || "Famsort"}`;
   }
   if (sortingEl) sortingEl.textContent = state.sortMode === "single" ? "One copy, grouped by main person" : "A folder for each person";
+  renderSetupFlowStatus();
 }
 
 // Reveal the setup wizard for editing (from the summary's per-step "Edit"
@@ -11410,7 +11568,7 @@ function openSetupConfig(step) {
   if (editbar) editbar.hidden = false;
   const pane = step === "output" || step === "sorting" ? step : "sources";
   showWizardPane(pane);
-  renderHomeBackup(); // reflect the paused-while-editing state right away
+  renderStatusCard(); // keep the live status visible while editing
   if (wizard) wizard.scrollTop = 0; // start the popup at the top
 }
 
@@ -11426,8 +11584,10 @@ function closeSetupConfig() {
   if (editbar) editbar.hidden = true;
   renderSetupUI(); // hides the wizard again (setup is done) and refreshes the summary
   el("setupSummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  // Resume backups now that the setup is settled — pick up anything that changed.
-  backupAllAlbums();
+  // Apply whatever changed and SHOW it: scan any newly-added input, then back up.
+  // If nothing changed, this quietly finds nothing and ends with an "all sorted"
+  // tick — so the user always sees exactly what editing did.
+  sortNow();
 }
 
 
@@ -11477,12 +11637,6 @@ function backupBannerState() {
   if (!hasOutput || !state.autoBackup || !total || !state.setupDone) return null;
   const where = device ? "this device" : "OneDrive";
   const base = { done, total };
-  // While the user edits any of the 3 setup steps, backups are paused so we never
-  // write to the OLD output folder mid-change. Say so plainly.
-  if (configEditing) {
-    backupEtaAnchorAt = 0;
-    return { ...base, cls: "", label: "Backups paused", detail: "Resumes when you tap Done", note: "Backups are paused while you edit your setup so nothing is written to the old location.", html: "\u23f8 Backups paused while you edit your setup \u2014 they'll resume as soon as you tap Done.", track: false, pct: 0, now: false };
-  }
   // The user deliberately paused uploads. Scanning/sorting/face-finding keep
   // running — only the push to OneDrive/device is held until they resume.
   if (state.backupPaused) {
@@ -11581,15 +11735,26 @@ function renderStatusCard() {
   const p = el("processing");
   if (!p) return;
   // A scan/import owns the card while it runs (and for its brief "done" tick) —
-  // processFiles/startProgressUI drive the text/count/bar; just set a header note.
+  // processFiles/startProgressUI drive the text/count/bar; just keep the Pause
+  // control in sync so a scan can always be paused as well as stopped.
   if (scanBusy || scanTotal > 0 || Date.now() < scanDoneUntil) {
     p.hidden = false;
-    const q = el("activityQuick"); if (q) q.hidden = true; // no backup actions during a scan
+    const q = el("activityQuick");
+    const pause = el("procPause");
+    const scanning = scanBusy || scanTotal > 0;
+    if (q && pause && scanning) {
+      q.hidden = false;
+      pause.textContent = scanPaused ? "Resume" : "Pause";
+      pause.classList.toggle("btn--primary", scanPaused);
+    } else if (q) {
+      q.hidden = true; // the "done" tick has no actions
+    }
+    renderSetupFlowStatus();
     return;
   }
   const st = backupBannerState();
   // Nothing to report (no output, nothing to back up, or all done) — hide the pill.
-  if (!st || st.doneState) { if (!p.classList.contains("processing--done")) p.hidden = true; return; }
+  if (!st || st.doneState) { if (!p.classList.contains("processing--done")) p.hidden = true; renderSetupFlowStatus(); return; }
 
   // There's outstanding backup work. If it isn't blocked on a missing original,
   // kick the backup off ourselves (no button) so it just happens; the pill then
@@ -11639,6 +11804,31 @@ function renderStatusCard() {
   const cancel = el("procCancel");
   if (cancel) cancel.hidden = true; // "Stop" is only for an in-progress scan
   applyActivityExpanded();
+  renderSetupFlowStatus();
+}
+
+// The always-on status line inside the "Your pipeline" summary. It mirrors the
+// activity pill in one short, honest sentence so the home screen ALWAYS shows
+// what FamSort is doing right now — scanning, backing up, paused, or quietly
+// watching for new photos — which is the reassurance that it runs automatically.
+function renderSetupFlowStatus() {
+  const text = el("setupFlowStatusText");
+  const wrap = el("setupFlowStatus");
+  if (!text || !wrap) return;
+  let label, cls;
+  if (scanBusy || scanTotal > 0) {
+    if (scanPaused) { label = "Paused — tap Resume on the status bar"; cls = "is-paused"; }
+    else { label = "Finding faces & sorting your photos…"; cls = "is-busy"; }
+  } else {
+    const st = state.setupDone ? backupBannerState() : null;
+    if (st && st.busy) { label = `${st.label}${st.detail ? " · " + st.detail : ""}`; cls = "is-busy"; }
+    else if (st && st.paused) { label = "Backups paused — tap Resume to upload again"; cls = "is-paused"; }
+    else if (st && st.blocked) { label = st.label; cls = "is-warn"; }
+    else if (st && st.now) { label = "Backing up your new photos…"; cls = "is-busy"; }
+    else { label = "Watching for new photos — all caught up"; cls = "is-idle"; }
+  }
+  text.textContent = label;
+  wrap.className = "setup-flow__status " + cls;
 }
 
 // Self-starting backup: when the pill shows outstanding (non-blocked) work, kick
@@ -11647,7 +11837,7 @@ function renderStatusCard() {
 let lastAutoBackupKick = 0;
 function maybeAutoBackup() {
   if (state.backupPaused) return; // user paused uploads — scanning still runs
-  if (backingUpAll || forceBackupBusy || dedupeBusy || configEditing) return;
+  if (backingUpAll || forceBackupBusy || dedupeBusy) return;
   if (scanBusy || scanTotal > 0) return; // let an import finish first
   const now = Date.now();
   if (now - lastAutoBackupKick < 15000) return;
@@ -12060,7 +12250,6 @@ async function backupAllAlbums() {
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
   if ((!device && !cloudOK) || !state.autoBackup) return;
   if (state.backupPaused) { renderAlbumsBackupSummary(); return; } // user paused uploads
-  if (configEditing) return; // don't write to the OLD output folder while it's being changed
   if (backingUpAll || forceBackupBusy) return;
   // Heal any photos that lost their source link first, so the sweep can pull
   // their full-size originals rather than blocking on "needs source".
@@ -13736,6 +13925,17 @@ function showShareMsg(text) {
 // on the device — no re-import needed. Picks up matching-logic improvements
 // (better grouping/auto-tagging) using the face fingerprints we already stored.
 async function reapplyMatching() {
+  // This can pull a LOT of photos out of albums when few faces are confirmed, so
+  // never run it silently — explain exactly what it does and let the user back out.
+  const confirmedTotal = state.faces.filter((f) => f.confirmed).length;
+  const warn = confirmedTotal < 5
+    ? "\n\n⚠️ You've only confirmed a few faces so far, so this is likely to pull a lot of photos OUT of their albums. Confirm more correct faces first (tap a name in a photo → ✓), then run this."
+    : "";
+  const ok = await uiConfirm(
+    "Reupdate & reorganise rebuilds every person's album from the faces you've CONFIRMED (the ones you tapped ✓), then rechecks every auto-tagged photo against them — so wrong faces get cleaned out.\n\nIt never deletes photos or your original files, but it CAN move a lot of photos between albums (or back to “to name”)." + warn,
+    { danger: true, okLabel: "Reorganise now", cancelLabel: "Cancel" }
+  );
+  if (!ok) return;
   showShareMsg("Re-organising your albums…");
   // The crux of "press Reupdate and it reorganises": we must re-examine faces
   // that were AUTO-matched before, not just unassigned ones. For each named
@@ -13767,6 +13967,10 @@ async function reapplyMatching() {
   // Every photo's album list may have changed — recompute them all.
   updatePhotoLabels(new Set(state.photos.map((p) => p.id)));
   renderAll();
+  // Mirror the output straight away: push any newly-correct photos up and let
+  // the refile queue pull copies out of folders they no longer belong in, so
+  // OneDrive matches the re-organised albums without waiting for a timer.
+  reconcileLibrary({ force: true }).catch(() => {});
   showShareMsg(
     released.length
       ? `Re-organised — rechecked ${released.length} auto-tagged face${released.length === 1 ? "" : "s"} against the faces you confirmed.`
@@ -15116,7 +15320,21 @@ function wire() {
     });
   const procPause = el("procPause");
   if (procPause)
-    procPause.addEventListener("click", () => setBackupPaused(!state.backupPaused));
+    procPause.addEventListener("click", () => {
+      // One context-aware Pause: pauses a running scan, or pauses backups when idle.
+      if (scanBusy || scanTotal > 0) { toggleScanPause(); return; }
+      setBackupPaused(!state.backupPaused);
+    });
+  // The live status chip in the pipeline summary: tap to resume if paused, else
+  // open the activity pill's full detail/controls.
+  const flowStatus = el("setupFlowStatus");
+  if (flowStatus)
+    flowStatus.addEventListener("click", () => {
+      if (!(scanBusy || scanTotal > 0) && state.backupPaused) { setBackupPaused(false); return; }
+      if (scanPaused) { toggleScanPause(); return; }
+      activityExpanded = true;
+      applyActivityExpanded();
+    });
   const backupUntaggedCb = el("backupUntagged");
   if (backupUntaggedCb) backupUntaggedCb.addEventListener("change", () => setBackupUntagged(backupUntaggedCb.checked));
   const uiInput = el("uiModalInput");
