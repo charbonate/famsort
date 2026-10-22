@@ -1149,6 +1149,7 @@ body.wizard-open { overflow: hidden; }
 .processing.orb-paused .activity__orb-ring { opacity: 1; background: #e0ad44; animation: none; }
 .processing.orb-done .activity__orb-ring { opacity: 1; background: #1f9d55; animation: none; }
 .processing.orb-attn .activity__orb-dot { display: block; }
+.processing.orb-idle .activity__orb-ring { opacity: .34; animation: none; }
 
 .spinner {
   width: 40px; height: 40px; margin: 0 auto 14px; border-radius: 50%;
@@ -1673,8 +1674,6 @@ body.wizard-open { overflow: hidden; }
 
           <p class="card-plain__fine" id="rescanLine" hidden>After an app update, <button class="linkbtn" id="rebuildBtn">re-scan everything with the latest AI</button> to apply improvements without re-choosing folders.</p>
 
-          <p class="card-plain__fine" id="cloudRescanLine" hidden>Connected to OneDrive. <button class="linkbtn" id="rescanCloudBtn">Scan all my OneDrive photos now</button> — pulls your whole camera roll with live progress (handy if some photos are missing).</p>
-
           <div class="btn-row btn-row--split">
             <span class="btn-row__spacer"></span>
             <button class="btn btn--primary" id="toOutputBtn">Next: choose output →</button>
@@ -2147,7 +2146,8 @@ body.wizard-open { overflow: hidden; }
       </div>
       <div class="bar activity__bar"><div class="bar__fill" id="procBar"></div></div>
       <div class="activity__quick" id="activityQuick" hidden>
-        <button class="btn btn--ghost btn--sm" id="procPause" type="button">Pause backup</button>
+        <button class="btn btn--primary btn--sm" id="procScanNow" type="button" hidden>Scan now</button>
+        <button class="btn btn--ghost btn--sm" id="procPause" type="button" hidden>Pause backup</button>
       </div>
       <div class="activity__details" id="activityDetails" hidden>
         <p class="activity__note" id="activityNote"></p>
@@ -5508,8 +5508,14 @@ function scanEtaText() {
   const perItem = elapsed / scanDone;
   const etaMs = Math.max(0, scanTotal - scanDone) * perItem;
   if (etaMs < 60000) return " — under a minute left";
-  const mins = Math.round(etaMs / 60000);
-  return ` — about ${mins} minute${mins === 1 ? "" : "s"} left`;
+  const totalMins = Math.round(etaMs / 60000);
+  if (totalMins < 60) return ` — about ${totalMins} minute${totalMins === 1 ? "" : "s"} left`;
+  // Over an hour, show hours (and minutes) so a big camera-roll import reads
+  // "about 2 hours left" instead of a confusing "about 130 minutes left".
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  if (mins === 0) return ` — about ${hours} hour${hours === 1 ? "" : "s"} left`;
+  return ` — about ${hours} hr ${mins} min left`;
 }
 
 // Read a folder and return only the files we haven't ingested yet (recording
@@ -7906,10 +7912,6 @@ function renderSources() {
   // "Re-scan with latest AI" only makes sense when device folders exist.
   const rl = el("rescanLine");
   if (rl) rl.hidden = state.watched.length === 0;
-
-  // "Scan all my OneDrive photos now" only shows when OneDrive is set up.
-  const crl = el("cloudRescanLine");
-  if (crl) crl.hidden = !cloud.oneDriveConfigured();
 }
 
 // Back-compat alias — older call sites render the unified source list now.
@@ -7997,6 +7999,47 @@ async function rescanCloudNow() {
   } finally {
     endScanSession();
     if (btn) btn.disabled = false;
+  }
+}
+
+// The app's MAIN "Scan now" action — it lives on the always-on status bar, not
+// hidden in an editor. Unlike the silent, rate-limited background sweep, this
+// runs IMMEDIATELY and VISIBLY across EVERY selected input — device folders AND
+// connected cloud sources — streaming one honest live count (+ time left) to the
+// status pill, so "did it get everything?" is one tap to check.
+async function scanAllNow() {
+  if (scanBusy || scanTotal > 0) { showScanMsg("A scan's already running — give it a moment."); return; }
+  startProgressUI();
+  const beforeCount = state.photos.length;
+  let cloudRan = false;
+  try {
+    // 1) Device folders first — local and fast; each streams its live count.
+    const handles = state.watched.map((w) => w.handle).filter(Boolean);
+    if (handles.length) {
+      await withScanLock(async () => { await scanHandles(handles); }, false);
+    }
+    // 2) Connected cloud sources — pull the whole selection with one unified
+    //    "X of Y — about N left" tally (and ETA) via beginScanSession.
+    if (window.isSecureContext && cloud.oneDriveConfigured() && (cloudSignedIn || (await cloud.hasCloudAccount()))) {
+      cloudSignedIn = true;
+      lastCloudSweep = Date.now(); // this pass counts; don't let the timer double up
+      const ids = (state.cloudSources || []).map((s) => s.id);
+      cloudRan = await withScanLock(async () => {
+        await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds(), beginScanSession);
+      }, false);
+    }
+    renderAll();
+  } catch {
+    showScanMsg("Couldn't finish the scan. Please try again.");
+  } finally {
+    if (cloudRan) endScanSession(); // finalises the cloud session's finish tick
+    // Always confirm visibly — even when nothing new turned up anywhere.
+    if (!scanBusy && scanTotal === 0 && Date.now() >= scanDoneUntil) {
+      const added = state.photos.length - beforeCount;
+      showProgressDone(added > 0
+        ? `Added ${added.toLocaleString()} new photo${added === 1 ? "" : "s"}`
+        : "All caught up — nothing new to add");
+    }
   }
 }
 
@@ -9590,7 +9633,7 @@ let activityMinimised = (() => { try { return localStorage.getItem("famsort_acti
 function setActivityMinimised(on) {
   activityMinimised = !!on;
   try { localStorage.setItem("famsort_activity_min", on ? "1" : "0"); } catch {}
-  applyActivityMinimised();
+  renderStatusCard(); // full repaint so the opened pill shows the current status
 }
 
 // Reflect the minimised state and keep the orb's look in sync with what's going
@@ -9605,10 +9648,14 @@ function applyActivityMinimised(snap) {
   const paused = !!(snap && snap.paused && !snap.done);
   const done = !!(snap && snap.done);
   const attn = !!(snap && snap.kind === "backup" && (snap.review || snap.blocked));
+  // Dormant-but-present: a calm orb when nothing's running, so it stays a handle
+  // instead of vanishing between sweeps or when you switch pages.
+  const idle = !!(snap && !busy && !paused && !done && !attn);
   wrap.classList.toggle("orb-busy", busy);
   wrap.classList.toggle("orb-paused", paused);
   wrap.classList.toggle("orb-done", done);
   wrap.classList.toggle("orb-attn", attn && !done);
+  wrap.classList.toggle("orb-idle", idle);
 }
 
 // Give EVERY slow/async button instant feedback: the moment it's pressed it
@@ -9804,7 +9851,7 @@ async function processFiles(fileList, opts = {}) {
     (f) => f.type.startsWith("image/") || f.type.startsWith("video/") || isMediaName(f.name)
   );
   if (!files.length) {
-    if (!autoScanning) el("processing").hidden = true;
+    if (!autoScanning) { scanUIActive = false; renderStatusCard(); }
     return;
   }
 
@@ -11836,17 +11883,31 @@ function activitySnapshot() {
              pct, canPause: true, canStop: true,
              note: "Looking through your photos for faces so it can sort them. You can keep using the app while this runs." };
   }
-  // Otherwise the backup / idle status, mapped from the one backup state.
+  // A live backup, mapped from the one backup state.
   const st = backupBannerState();
-  if (!st || st.doneState) return null;
-  return {
-    kind: "backup",
-    busy: !!st.busy, paused: !!st.paused, blocked: !!st.blocked,
-    review: !!st.review, now: st.now === true, done: false,
-    label: st.label || "", detail: st.detail || "", note: st.note || "",
-    pct: st.track ? st.pct : null,
-    canPause: true, canStop: false,
-  };
+  if (st && !st.doneState) {
+    return {
+      kind: "backup",
+      busy: !!st.busy, paused: !!st.paused, blocked: !!st.blocked,
+      review: !!st.review, now: st.now === true, done: false,
+      label: st.label || "", detail: st.detail || "", note: st.note || "",
+      pct: st.track ? st.pct : null,
+      canPause: true, canStop: false, canScan: false,
+    };
+  }
+  // Nothing running. Once set up, DON'T go dark — keep a persistent "watching"
+  // status that also hosts the main Scan now action, so the pill/orb stays a
+  // stable handle (it no longer blinks out between sweeps or when changing
+  // pages). Before setup there's nothing to watch, so the pill stays hidden.
+  if (state.setupDone) {
+    return {
+      kind: "idle", busy: false, paused: false, done: false,
+      label: "All caught up", detail: "Watching for new photos",
+      note: "FamSort keeps watching your photos and sorts new ones automatically. Tap Scan now to check every input right now.",
+      pct: null, canPause: false, canStop: false, canScan: true,
+    };
+  }
+  return null;
 }
 
 // ONE app-wide activity pill (floating above the tab bar, above the edit popup)
@@ -11894,15 +11955,18 @@ function renderStatusCard() {
     retry.textContent = snap.review ? "Review photos" : (snap.blocked ? "Try again" : "Back up now");
     retry.dataset.mode = snap.review ? "review" : "retry";
   }
-  // Pause / Resume quick control — one button, context-aware.
+  // Pause / Resume + Scan now quick controls — context-aware.
   const quick = el("activityQuick");
   const pause = el("procPause");
-  if (quick && pause) {
-    quick.hidden = !snap.canPause;
+  const scanNow = el("procScanNow");
+  if (scanNow) scanNow.hidden = !snap.canScan;
+  if (pause) {
+    pause.hidden = !snap.canPause;
     const scan = snap.kind === "scan";
     pause.textContent = snap.paused ? (scan ? "Resume" : "Resume backup") : (scan ? "Pause" : "Pause backup");
     pause.classList.toggle("btn--primary", !!snap.paused);
   }
+  if (quick) quick.hidden = !(snap.canPause || snap.canScan);
   // Stop is only ever for an in-progress scan.
   const cancel = el("procCancel"); if (cancel) cancel.hidden = !snap.canStop;
 
@@ -15207,6 +15271,9 @@ function navTo(view) {
   // anything still outstanding, so it keeps moving on its own wherever the user
   // is — not only when they open Albums (which is why it could look stuck).
   if ((view === "albums" || view === "add") && state.setupDone) backupAllAlbums();
+  // Keep the one activity pill/orb correctly painted on whatever screen we land
+  // on, so it never vanishes just from switching tabs.
+  renderStatusCard();
   window.scrollTo(0, 0);
   // Replay the slide+fade so switching tabs feels like a native screen change.
   const active = document.querySelector(`.view[data-view="${view}"]`);
@@ -15302,8 +15369,6 @@ function wire() {
     try { gphotos.preloadGoogle?.(); } catch { /* ignore */ }
   }
   el("rebuildBtn").addEventListener("click", rebuildFromWatched);
-  const rescanCloudBtn = el("rescanCloudBtn");
-  if (rescanCloudBtn) rescanCloudBtn.addEventListener("click", (e) => runBusy(e.currentTarget, "Scanning…", rescanCloudNow));
   el("toOutputBtn").addEventListener("click", () => showWizardPane("output"));
   el("backToSourcesBtn").addEventListener("click", () => showWizardPane("sources"));
   el("toSortingBtn").addEventListener("click", () => showWizardPane("sorting"));
@@ -15438,6 +15503,10 @@ function wire() {
       if (scanBusy || scanTotal > 0) { toggleScanPause(); return; }
       setBackupPaused(!state.backupPaused);
     });
+  // The main "Scan now" action on the status pill — scans every selected input.
+  const procScanNowBtn = el("procScanNow");
+  if (procScanNowBtn)
+    procScanNowBtn.addEventListener("click", (e) => runBusy(e.currentTarget, "Scanning…", scanAllNow));
   // The live status chip in the pipeline summary: tap to resume if paused, else
   // open the activity pill's full detail/controls.
   const flowStatus = el("setupFlowStatus");
