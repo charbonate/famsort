@@ -194,6 +194,18 @@ p { margin: 0 0 .9rem; }
   transition: transform .1s ease, background .18s ease;
 }
 .btn:active { transform: scale(.97); }
+/* Instant press acknowledgement on EVERY button — a quick flash so a tap always
+   feels like it registered, even before the (possibly slow) action responds. */
+@keyframes btn-press { 0% { transform: scale(.94); } 100% { transform: scale(1); } }
+button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
+/* While an async action runs, the button disables itself and shows a spinner so
+   the user can see it's working and can't double-tap it. */
+.btn.is-working, button.is-working { opacity: .7; cursor: default; pointer-events: none; }
+.btn__spin {
+  display: inline-block; width: 1em; height: 1em; flex: none; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent; vertical-align: -.15em;
+  animation: spin .7s linear infinite;
+}
 .btn--primary { background: var(--grad-primary); color: #fff; border-color: transparent;
   box-shadow: var(--shadow-accent); }
 .btn--primary:hover { filter: brightness(1.04); box-shadow: 0 10px 24px -8px rgba(90, 76, 209, 0.55); }
@@ -1023,31 +1035,41 @@ body.wizard-open { overflow: hidden; }
 .bar { height: 8px; background: var(--cream-2); border-radius: 999px; overflow: hidden; }
 .bar__fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s ease; }
 
-/* Global progress pop-up — a floating card just above the bottom tab bar. It
-   never blocks taps so you can keep navigating while a sort runs, and it shows
-   a tick + lingers briefly when the sort finishes. */
+/* Global activity indicator — a small floating "busy" pill just above the tab
+   bar. Sits ABOVE the edit popup (z-96) so you always know what's happening,
+   never blocks taps, and expands on tap to show progress + actions. */
 .processing {
-  position: fixed; left: 0; right: 0; z-index: 35;
+  position: fixed; left: 0; right: 0; z-index: 96;
   bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 10px);
   display: block; padding: 0 12px; pointer-events: none;
 }
 .processing__card {
   pointer-events: auto;
-  display: flex; align-items: center; gap: 12px; text-align: left;
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px; text-align: left;
   margin: 0 auto; max-width: 560px; width: 100%;
   background: #fff; border: 1px solid var(--line); border-radius: 14px;
-  padding: 12px 16px; box-shadow: 0 10px 30px rgba(36,31,27,.22);
+  padding: 10px 14px; box-shadow: 0 10px 30px rgba(36,31,27,.22);
   animation: proc-rise .25s ease;
 }
 @keyframes proc-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.processing__body { flex: 1; min-width: 0; }
-.processing__body p { margin: 0 0 6px; font-weight: 600; font-size: .9rem; }
-.processing__count { font-size: .8rem; color: var(--ink-soft); margin: 0; white-space: nowrap; }
-#procBackupNow { flex: 0 0 auto; white-space: nowrap; }
+/* The tappable header row: spinner/tick, label + live count, chevron. */
+.activity__head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; color: inherit; font: inherit;
+}
+.activity__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.activity__label { font-weight: 700; font-size: .9rem; color: var(--ink); line-height: 1.25; }
+.activity__count { font-size: .8rem; color: var(--ink-soft); line-height: 1.25; }
+.activity__chev { flex: none; color: var(--ink-soft); font-size: 1.1rem; transition: transform .2s ease; }
+.activity.is-expanded .activity__chev { transform: rotate(180deg); }
+.activity__bar { margin: 0; }
+.activity__details { border-top: 1px solid var(--line); padding-top: 8px; }
+.activity__note { margin: 0 0 8px; font-size: .82rem; color: var(--ink-soft); line-height: 1.45; }
+.activity__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 /* Green tick shown in place of the spinner once the sort completes. */
-.processing__check {
-  flex: none; width: 24px; height: 24px; border-radius: 50%;
-  background: #1f9d55; color: #fff; font-size: .9rem; font-weight: 700;
+.activity__check {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  background: #1f9d55; color: #fff; font-size: .85rem; font-weight: 700;
   display: grid; place-items: center; animation: proc-pop .3s ease;
 }
 @keyframes proc-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
@@ -2000,22 +2022,32 @@ body.wizard-open { overflow: hidden; }
     </button>
   </nav>
 
-  <!-- Global progress pop-up — a floating card, visible on every screen while a
-       scan/sort runs so you can navigate freely and still see what's happening.
-       Shows a tick and lingers briefly once the sort finishes. -->
-  <div class="processing" id="processing" hidden>
-    <div class="processing__card">
-      <button class="processing__cancel" id="procCancel" type="button" title="Stop scanning" aria-label="Stop scanning">✕</button>
-      <div class="spinner spinner--sm" id="procSpinner"></div>
-      <div class="processing__check" id="procCheck" hidden>✓</div>
-      <div class="processing__body">
-        <p id="processingText">Looking for faces…</p>
-        <div class="bar"><div class="bar__fill" id="procBar"></div></div>
+  <!-- Global activity indicator — a small "busy" pill, visible on every screen
+       (and above the edit popup) whenever the app is scanning, backing up or
+       tidying. Tap it to expand the details (progress, time left, actions). It
+       only appears while something is actually happening. -->
+  <div class="processing activity" id="processing" hidden>
+    <div class="processing__card activity__card">
+      <button class="activity__head" id="activityHead" type="button" aria-expanded="false" aria-label="Show activity details">
+        <span class="spinner spinner--sm" id="procSpinner"></span>
+        <span class="activity__check" id="procCheck" hidden>✓</span>
+        <span class="activity__main">
+          <span class="activity__label" id="processingText">Working…</span>
+          <span class="activity__count" id="procCount"></span>
+        </span>
+        <span class="activity__chev" id="activityChev" aria-hidden="true">⌄</span>
+      </button>
+      <div class="bar activity__bar"><div class="bar__fill" id="procBar"></div></div>
+      <div class="activity__details" id="activityDetails" hidden>
+        <p class="activity__note" id="activityNote"></p>
+        <div class="activity__actions">
+          <button class="btn btn--ghost btn--sm" id="procBackupNow" type="button" hidden>Try again</button>
+          <button class="btn btn--ghost btn--sm" id="procCancel" type="button">Stop</button>
+        </div>
       </div>
-      <button class="btn btn--primary btn--sm" id="procBackupNow" type="button" hidden>⤒ Back up now</button>
-      <p class="processing__count" id="procCount"></p>
     </div>
   </div>
+
 
   <!-- Lightweight modal for naming a person -->
   <div class="modal" id="nameModal" hidden>
@@ -5496,6 +5528,8 @@ function startAutoSync() {
   autoSyncTimer = setInterval(() => {
     if (document.visibilityState === "visible") {
       autoSweep(true);
+      // Keep chipping away at any outstanding backups on their own — no button.
+      maybeAutoBackup();
       // Continuously reconcile the open album against OneDrive so "backed up"
       // stays truthful and any gaps get re-uploaded automatically.
       if (state.activeAlbum) maybeReconcileAlbum(state.activeAlbum);
@@ -9259,6 +9293,46 @@ let progressDoneTimer = null;
 // While a scan's "done" tick is showing we hold off the backup status so the two
 // don't fight over the one card. Timestamp = when the backup status may take over.
 let scanDoneUntil = 0;
+// Whether the user has tapped the activity pill open to see the full details.
+let activityExpanded = false;
+
+// Show/hide the expanded details to match the user's chosen state.
+function applyActivityExpanded() {
+  const det = el("activityDetails");
+  const head = el("activityHead");
+  const wrap = el("processing");
+  if (det) det.hidden = !activityExpanded;
+  if (head) head.setAttribute("aria-expanded", activityExpanded ? "true" : "false");
+  if (wrap) wrap.classList.toggle("is-expanded", activityExpanded);
+}
+
+// Give EVERY slow/async button instant feedback: the moment it's pressed it
+// disables itself and shows a spinner + "working" label, so the user can SEE
+// their tap registered and can't fire it again. Restores the original on finish.
+async function runBusy(btn, workingText, fn) {
+  if (!btn) return fn();
+  if (btn.dataset.busy === "1") return; // already running — ignore repeat taps
+  const origHTML = btn.innerHTML;
+  const wasDisabled = btn.disabled;
+  btn.dataset.busy = "1";
+  btn.classList.add("is-working");
+  btn.disabled = true;
+  if (workingText != null) {
+    btn.textContent = "";
+    const sp = document.createElement("span");
+    sp.className = "btn__spin";
+    btn.appendChild(sp);
+    btn.appendChild(document.createTextNode(" " + workingText));
+  }
+  try {
+    return await fn();
+  } finally {
+    delete btn.dataset.busy;
+    btn.classList.remove("is-working");
+    btn.disabled = wasDisabled;
+    btn.innerHTML = origHTML;
+  }
+}
 
 // Reset the pop-up to its "in progress" look and show it.
 function startProgressUI() {
@@ -9269,7 +9343,10 @@ function startProgressUI() {
   p.classList.remove("processing--done");
   el("procSpinner").hidden = false;
   el("procCheck").hidden = true;
-  const nb = el("procBackupNow"); if (nb) nb.hidden = true; // scan owns the card now
+  const nb = el("procBackupNow"); if (nb) nb.hidden = true; // scan has nothing to retry
+  const note = el("activityNote"); if (note) note.textContent = "Looking through your photos for faces so it can sort them. You can keep using the app while this runs.";
+  const cancel = el("procCancel"); if (cancel) cancel.hidden = false;
+  applyActivityExpanded();
   p.hidden = false;
 }
 
@@ -11263,12 +11340,12 @@ function backupBannerState() {
   // write to the OLD output folder mid-change. Say so plainly.
   if (configEditing) {
     backupEtaAnchorAt = 0;
-    return { ...base, cls: "", html: "\u23f8 Backups paused while you edit your setup \u2014 they'll resume as soon as you tap Done.", track: false, pct: 0, now: false };
+    return { ...base, cls: "", label: "Backups paused", detail: "Resumes when you tap Done", note: "Backups are paused while you edit your setup so nothing is written to the old location.", html: "\u23f8 Backups paused while you edit your setup \u2014 they'll resume as soon as you tap Done.", track: false, pct: 0, now: false };
   }
   if (dedupeBusy) {
     backupEtaAnchorAt = 0;
     const pct = dedupeTotal ? Math.round((dedupeDone / dedupeTotal) * 100) : 0;
-    return { ...base, cls: "is-busy", html: `<span class="home-backup__spin"></span> Tidying up duplicate copies in ${where}\u2026 ${dedupeDone} of ${dedupeTotal}`, track: true, pct, now: false, busy: true };
+    return { ...base, cls: "is-busy", label: "Tidying up duplicates", detail: `${dedupeDone} of ${dedupeTotal}`, note: "Removing duplicate and lower-quality copies so each photo is kept just once.", html: `<span class="home-backup__spin"></span> Tidying up duplicate copies in ${where}\u2026 ${dedupeDone} of ${dedupeTotal}`, track: true, pct, now: false, busy: true };
   }
   const busy = (forceBackupBusy || backingUpAll) && backupLiveTotal > 0;
   if (busy) {
@@ -11278,11 +11355,11 @@ function backupBannerState() {
     const left = Math.max(0, total - done);
     const eta = backupEtaText(done, total);
     const now = backupNowLabel();
-    return { ...base, cls: "is-busy", html: `<span class="home-backup__spin"></span> Backing up ${done} of ${total} to ${where}\u2026 ${left} to go${eta}${now ? ` <span class="home-backup__now">${escapeHtml(now)}</span>` : ""}`, track: true, pct, now: false, busy: true };
+    return { ...base, cls: "is-busy", label: "Backing up your photos", detail: `${done} of ${total}${eta}`, note: `${left} still to go \u2014 this happens automatically in the background.${now ? ` Now: ${now}.` : ""}`, html: `<span class="home-backup__spin"></span> Backing up ${done} of ${total} to ${where}\u2026 ${left} to go${eta}${now ? ` <span class="home-backup__now">${escapeHtml(now)}</span>` : ""}`, track: true, pct, now: false, busy: true };
   }
   backupEtaAnchorAt = 0;
   if (done >= total) {
-    return { ...base, cls: "is-done", html: `\u2713 All ${total} photo${total === 1 ? "" : "s"} backed up to ${where}`, track: false, pct: 100, now: false, doneState: true };
+    return { ...base, cls: "is-done", label: "All backed up", detail: "", note: "", html: `\u2713 All ${total} photo${total === 1 ? "" : "s"} backed up to ${where}`, track: false, pct: 100, now: false, doneState: true };
   }
   const pct = total ? Math.round((done / total) * 100) : 0;
   const left = total - done;
@@ -11290,9 +11367,9 @@ function backupBannerState() {
   // can't upload here — that's not "stuck", it just needs the source.
   const blocked = Math.min(backupBlocked, left);
   if (blocked >= left && blocked > 0) {
-    return { ...base, cls: "", html: `${done} of ${total} backed up \u2014 ${blocked} need their original (reconnect the source folder, or open this on the device that has them)`, track: true, pct, now: false };
+    return { ...base, cls: "", label: "Some photos need their original", detail: `${done} of ${total} backed up`, note: `${blocked} photo${blocked === 1 ? "" : "s"} can't back up until the full-size original is reachable. Reconnect the source folder, or open this on the device that has them, then tap Try again.`, html: `${done} of ${total} backed up \u2014 ${blocked} need their original (reconnect the source folder, or open this on the device that has them)`, track: true, pct, now: false, blocked: true };
   }
-  return { ...base, cls: "", html: `${done} of ${total} backed up to ${where} \u2014 ${left} still to go`, track: true, pct, now: true };
+  return { ...base, cls: "", label: "Backing up your photos", detail: `${done} of ${total}`, note: `${left} still to go \u2014 this happens automatically.`, html: `${done} of ${total} backed up to ${where} \u2014 ${left} still to go`, track: true, pct, now: true };
 }
 
 // Paint a backup-status banner (home or Albums) from backupBannerState(). Handles
@@ -11329,44 +11406,72 @@ function applyBackupBanner(wrap, ids, st) {
   if (closeBtn) closeBtn.hidden = false;
 }
 
-// ONE app-wide status card (the floating card above the tab bar) says what the
-// app is doing right now — scanning for faces, backing up, or tidying duplicates
-// — on whatever screen you're on. The old per-screen backup banners are retired
-// in favour of this single card; per-album bars stay unique to their album.
+// ONE app-wide activity pill (floating above the tab bar, above the edit popup)
+// that says what the app is doing RIGHT NOW — scanning, backing up, or tidying —
+// on whatever screen you're on. It only shows while something is actually
+// happening; tap it to expand the full detail + actions. Backups run themselves,
+// so there's no "back up" button in the normal flow — the pill just reports it.
 function renderStatusCard() {
-  // Retire the old inline banners — this floating card is the single status now.
+  // Retire the old inline banners — this floating pill is the single status now.
   if (el("homeBackup")) el("homeBackup").hidden = true;
   if (el("albumsBackupSummary")) el("albumsBackupSummary").hidden = true;
   const p = el("processing");
   if (!p) return;
-  // The edit popup covers the screen and pauses work — don't show the card behind it.
-  if (configEditing) { p.hidden = true; return; }
-  // A scan/import owns the card while it runs (and for its brief "done" tick).
-  if (scanBusy || scanTotal > 0 || Date.now() < scanDoneUntil) return;
+  // A scan/import owns the card while it runs (and for its brief "done" tick) —
+  // processFiles/startProgressUI drive the text/count/bar; just set a header note.
+  if (scanBusy || scanTotal > 0 || Date.now() < scanDoneUntil) {
+    p.hidden = false;
+    return;
+  }
   const st = backupBannerState();
-  // Nothing active and nothing pending (or all done) — clear the card.
+  // Nothing to report (no output, nothing to back up, or all done) — hide the pill.
   if (!st || st.doneState) { if (!p.classList.contains("processing--done")) p.hidden = true; return; }
-  if (st.busy) homeBackupDismissed = false;         // active work always reopens
-  if (homeBackupDismissed) { p.hidden = true; return; } // user closed the idle note
+
+  // There's outstanding backup work. If it isn't blocked on a missing original,
+  // kick the backup off ourselves (no button) so it just happens; the pill then
+  // flips to the live "Backing up…" state on the next render.
+  if (st.now === true) maybeAutoBackup();
+
   p.hidden = false;
   p.classList.remove("processing--done");
-  const text = el("processingText");
-  if (text) text.innerHTML = st.html.replace(/<span class="home-backup__spin"><\/span>\s*/, "");
+  const spinning = !!st.busy || (st.now === true && !configEditing);
+  const label = el("processingText");
+  if (label) label.textContent = st.label || "";
+  const count = el("procCount");
+  if (count) count.textContent = st.detail || "";
+  const note = el("activityNote");
+  if (note) note.textContent = st.note || "";
   const spinner = el("procSpinner");
-  if (spinner) spinner.hidden = !st.busy;
+  if (spinner) spinner.hidden = !spinning;
   const check = el("procCheck");
   if (check) check.hidden = true;
   const bar = el("procBar");
-  if (bar) bar.style.width = (st.track ? st.pct : 0) + "%";
-  const count = el("procCount");
-  if (count) count.textContent = "";
-  const nowBtn = el("procBackupNow");
-  if (nowBtn) nowBtn.hidden = !st.now;
+  if (bar) { bar.style.width = (st.track ? st.pct : 0) + "%"; }
+  const barWrap = el("processing").querySelector(".activity__bar");
+  if (barWrap) barWrap.style.display = st.track ? "" : "none";
+  // The only button in the pill is "Try again", shown ONLY when backup is stuck
+  // waiting on a missing original (a manual nudge for the rare stuck case).
+  const retry = el("procBackupNow");
+  if (retry) retry.hidden = !st.blocked;
   const cancel = el("procCancel");
-  if (cancel) cancel.hidden = false; // acts as "dismiss" when not scanning
+  if (cancel) cancel.hidden = true; // "Stop" is only for an in-progress scan
+  applyActivityExpanded();
 }
 
-// Kept for every existing call site — they all now drive the single app-wide card.
+// Self-starting backup: when the pill shows outstanding (non-blocked) work, kick
+// a sweep without the user pressing anything. Guarded + rate-limited so a render
+// storm can't hammer it and blocked photos aren't retried in a tight loop.
+let lastAutoBackupKick = 0;
+function maybeAutoBackup() {
+  if (backingUpAll || forceBackupBusy || dedupeBusy || configEditing) return;
+  if (scanBusy || scanTotal > 0) return; // let an import finish first
+  const now = Date.now();
+  if (now - lastAutoBackupKick < 15000) return;
+  lastAutoBackupKick = now;
+  backupAllAlbums();
+}
+
+// Kept for every existing call site — they all now drive the single app-wide pill.
 function renderHomeBackup() { renderStatusCard(); }
 function refreshBackupBanners() { renderStatusCard(); }
 
@@ -14490,19 +14595,30 @@ function closeUiModal(result) {
 
 /* ------------------------------------------------------------- wiring */
 function wire() {
+  // Instant press feedback for EVERY button in the app — a quick flash the moment
+  // it's tapped so an action always feels like it registered, even if the real
+  // work takes a moment to respond. (Captures before any handler runs.)
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b || b.disabled) return;
+    b.classList.remove("is-pressing");
+    void b.offsetWidth; // restart the animation if tapped rapidly
+    b.classList.add("is-pressing");
+    setTimeout(() => b.classList.remove("is-pressing"), 240);
+  }, true);
   // Unified source → output wizard (device folders + cloud folders together).
   el("addDeviceBtn").addEventListener("click", addDeviceSource);
-  el("addCloudBtn").addEventListener("click", addCloudSource);
+  el("addCloudBtn").addEventListener("click", (e) => runBusy(e.currentTarget, "Connecting…", addCloudSource));
   const addGoogleBtn = el("addGoogleBtn");
   if (addGoogleBtn) {
-    addGoogleBtn.addEventListener("click", addGoogleSource);
+    addGoogleBtn.addEventListener("click", (e) => runBusy(e.currentTarget, "Connecting…", addGoogleSource));
     // Warm up Google Identity Services ahead of the click so the consent popup
     // opens inside the user gesture (script already loaded) and isn't blocked.
     try { gphotos.preloadGoogle?.(); } catch { /* ignore */ }
   }
   el("rebuildBtn").addEventListener("click", rebuildFromWatched);
   const rescanCloudBtn = el("rescanCloudBtn");
-  if (rescanCloudBtn) rescanCloudBtn.addEventListener("click", rescanCloudNow);
+  if (rescanCloudBtn) rescanCloudBtn.addEventListener("click", (e) => runBusy(e.currentTarget, "Scanning…", rescanCloudNow));
   el("toOutputBtn").addEventListener("click", () => showWizardPane("output"));
   el("backToSourcesBtn").addEventListener("click", () => showWizardPane("sources"));
   el("toSortingBtn").addEventListener("click", () => showWizardPane("sorting"));
@@ -14590,18 +14706,27 @@ function wire() {
   const procCancelBtn = el("procCancel");
   if (procCancelBtn)
     procCancelBtn.addEventListener("click", () => {
-      // While a scan runs this ✕ stops the scan; when the card is only showing
-      // backup status it just dismisses the note (it reappears on new activity).
+      // "Stop" cancels an in-progress scan; otherwise it just collapses the pill.
       if (scanBusy || scanTotal > 0) { requestCancelScan(); return; }
-      homeBackupDismissed = true;
-      renderStatusCard();
+      activityExpanded = false;
+      applyActivityExpanded();
+    });
+  // Tap the pill header to expand/collapse the details.
+  const activityHead = el("activityHead");
+  if (activityHead)
+    activityHead.addEventListener("click", () => {
+      activityExpanded = !activityExpanded;
+      applyActivityExpanded();
     });
   const procBackupNow = el("procBackupNow");
   if (procBackupNow)
-    procBackupNow.addEventListener("click", () => {
-      setAutoBackupMsg("Backing up now\u2026");
-      backupAllAlbums();
-    });
+    procBackupNow.addEventListener("click", () =>
+      runBusy(procBackupNow, "Trying…", async () => {
+        lastAutoBackupKick = Date.now();
+        setAutoBackupMsg("Retrying backup\u2026");
+        await backupAllAlbums();
+      })
+    );
   const backupUntaggedCb = el("backupUntagged");
   if (backupUntaggedCb) backupUntaggedCb.addEventListener("change", () => setBackupUntagged(backupUntaggedCb.checked));
   const uiInput = el("uiModalInput");
@@ -14836,14 +14961,14 @@ function wire() {
   if (wizardBackdrop) wizardBackdrop.addEventListener("click", closeSetupConfig);
   const repairBtn = el("albumBackupRepair");
   if (repairBtn)
-    repairBtn.addEventListener("click", () => {
-      if (state.activeAlbum) repairAlbumBackup(state.activeAlbum);
-    });
+    repairBtn.addEventListener("click", (e) =>
+      runBusy(e.currentTarget, "Repairing…", async () => { if (state.activeAlbum) await repairAlbumBackup(state.activeAlbum); })
+    );
   const dedupBtn = el("albumBackupDedup");
   if (dedupBtn)
-    dedupBtn.addEventListener("click", () => {
-      if (state.activeAlbum) cleanupAlbumDuplicates(state.activeAlbum);
-    });
+    dedupBtn.addEventListener("click", (e) =>
+      runBusy(e.currentTarget, "Checking…", async () => { if (state.activeAlbum) await cleanupAlbumDuplicates(state.activeAlbum); })
+    );
 
   const autoToggle = el("autoBackup");
   if (autoToggle) autoToggle.addEventListener("change", (e) => setAutoBackup(e.target.checked));
