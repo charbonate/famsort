@@ -883,13 +883,13 @@ button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
 .setup-summary__grid dd { margin: 6px 0 12px; font-size: .95rem; color: var(--ink); font-weight: 600; }
 .setup-summary__edit { align-self: flex-start; margin-top: auto; }
 /* Editing bar at the top of the wizard: a clear way back to the summary. */
-.wizard-editbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--accent-soft); border-radius: var(--radius-sm); padding: 8px 8px 8px 14px; margin-bottom: 14px; }
+.wizard-editbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--accent-soft); border-radius: var(--radius-sm); padding: 8px 8px 8px 14px; margin-top: 16px; }
 .wizard-editbar__label { font-size: .85rem; font-weight: 700; color: var(--accent-dark); }
 /* Editing an existing setup opens the wizard as a centered popup over a dimmed
    page (first-run setup still renders inline, no popup). */
 .wizard-backdrop { position: fixed; inset: 0; z-index: 94; background: rgba(36,31,27,.55); }
 #sourceWizard.is-editing { position: fixed; z-index: 95; top: 50%; left: 50%; transform: translate(-50%, -50%); width: calc(100% - 32px); max-width: 560px; max-height: 88vh; max-height: 88dvh; overflow-y: auto; margin: 0; box-shadow: var(--shadow); }
-#sourceWizard.is-editing .wizard-editbar { position: sticky; top: 0; z-index: 5; }
+#sourceWizard.is-editing .wizard-editbar { position: sticky; bottom: 0; z-index: 5; margin-top: 16px; box-shadow: 0 -6px 16px rgba(36,31,27,.08); }
 body.wizard-open { overflow: hidden; }
 /* Inputs list inside the "Your setup" summary — the actual sources, not a count. */
 .setup-src-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
@@ -1046,7 +1046,7 @@ body.wizard-open { overflow: hidden; }
 .processing__card {
   pointer-events: auto;
   display: flex; flex-direction: column; align-items: stretch; gap: 8px; text-align: left;
-  margin: 0 auto; max-width: 560px; width: 100%;
+  margin: 0 auto; width: fit-content; max-width: min(560px, calc(100% - 24px));
   background: #fff; border: 1px solid var(--line); border-radius: 14px;
   padding: 10px 14px; box-shadow: 0 10px 30px rgba(36,31,27,.22);
   animation: proc-rise .25s ease;
@@ -1527,12 +1527,6 @@ body.wizard-open { overflow: hidden; }
       <div class="wizard-backdrop" id="wizardBackdrop" hidden></div>
 
       <div class="card-plain" id="sourceWizard">
-        <!-- Shown only when editing an existing setup (not first run): a clear way
-             to leave the editor and go back to the "Your setup" summary. -->
-        <div class="wizard-editbar" id="wizardEditBar" hidden>
-          <span class="wizard-editbar__label">Editing your setup</span>
-          <button class="btn btn--primary btn--sm" id="closeSetupBtn" type="button">✓ Done</button>
-        </div>
         <!-- STEP 1 — SOURCES (device folders AND cloud folders together) -->
         <div class="wizard-pane" id="wizPaneSources">
           <div class="wizard-head">
@@ -1665,6 +1659,13 @@ body.wizard-open { overflow: hidden; }
             <button class="btn btn--primary" id="sortNowBtn">Sort my photos</button>
           </div>
           <p class="msg" id="sortingMsg" hidden></p>
+        </div>
+        <!-- Shown only when editing an existing setup (not first run): a clear way
+             to leave the editor and go back to the "Your setup" summary. Sits at
+             the BOTTOM so Done is where you finish, after reviewing the steps. -->
+        <div class="wizard-editbar" id="wizardEditBar" hidden>
+          <span class="wizard-editbar__label">Editing your setup</span>
+          <button class="btn btn--primary btn--sm" id="closeSetupBtn" type="button">✓ Done</button>
         </div>
       </div>
 
@@ -9058,8 +9059,6 @@ async function chooseDeviceOutput() {
 
 // Pull from EVERY source — device folders and cloud folders — and sort on-device.
 async function sortNow() {
-  const btn = el("sortNowBtn");
-  if (btn) btn.disabled = true;
   // First sort → setup is done. Remember it (and share it across the account) so
   // returning users see their setup summary instead of the first-time steps.
   if (!state.setupDone) {
@@ -9087,12 +9086,10 @@ async function sortNow() {
     // Now that the user has sorted once, keep watching for new photos while the
     // app stays open (auto-backup). Never starts on its own before this.
     startAutoSync();
-    // The cloud import's last status ("Scanned … sorting them…") has now finished;
-    // clear it so it doesn't look stuck. Live progress was shown by the floating
-    // bar, which dismisses itself.
-    hideCloudMsg();
   } finally {
-    if (btn) btn.disabled = false;
+    // The cloud import's last status has now finished; clear it so it doesn't look
+    // stuck. Live progress was shown by the floating pill, which dismisses itself.
+    hideCloudMsg();
   }
 }
 
@@ -14646,7 +14643,7 @@ function wire() {
   el("backToSourcesBtn").addEventListener("click", () => showWizardPane("sources"));
   el("toSortingBtn").addEventListener("click", () => showWizardPane("sorting"));
   el("backToOutputBtn").addEventListener("click", () => showWizardPane("output"));
-  el("sortNowBtn").addEventListener("click", sortNow);
+  el("sortNowBtn").addEventListener("click", (e) => runBusy(e.currentTarget, "Sorting\u2026", sortNow));
   el("sortModePerPerson").addEventListener("change", () => setSortMode("perPerson", false));
   el("sortModeSingle").addEventListener("change", () => setSortMode("single", false));
   el("sortModeSettingsPerPerson").addEventListener("change", () => setSortMode("perPerson", true));
