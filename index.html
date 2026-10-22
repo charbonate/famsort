@@ -1043,6 +1043,7 @@ body.wizard-open { overflow: hidden; }
 .processing__body { flex: 1; min-width: 0; }
 .processing__body p { margin: 0 0 6px; font-weight: 600; font-size: .9rem; }
 .processing__count { font-size: .8rem; color: var(--ink-soft); margin: 0; white-space: nowrap; }
+#procBackupNow { flex: 0 0 auto; white-space: nowrap; }
 /* Green tick shown in place of the spinner once the sort completes. */
 .processing__check {
   flex: none; width: 24px; height: 24px; border-radius: 50%;
@@ -1050,8 +1051,7 @@ body.wizard-open { overflow: hidden; }
   display: grid; place-items: center; animation: proc-pop .3s ease;
 }
 @keyframes proc-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
-.processing--done .processing__card { border-color: #bfe3cc; }
-.processing--done .bar__fill { background: #1f9d55; }
+.processing--done .processing__card { border-color: #bfe3cc; }.processing--done .bar__fill { background: #1f9d55; }
 .spinner {
   width: 40px; height: 40px; margin: 0 auto 14px; border-radius: 50%;
   border: 4px solid var(--cream-2); border-top-color: var(--accent); animation: spin .8s linear infinite;
@@ -2012,6 +2012,7 @@ body.wizard-open { overflow: hidden; }
         <p id="processingText">Looking for faces…</p>
         <div class="bar"><div class="bar__fill" id="procBar"></div></div>
       </div>
+      <button class="btn btn--primary btn--sm" id="procBackupNow" type="button" hidden>⤒ Back up now</button>
       <p class="processing__count" id="procCount"></p>
     </div>
   </div>
@@ -9255,15 +9256,20 @@ async function handleFiles(fileList, opts = {}) {
 
 // ---- progress pop-up (floating card above the tab bar) ----
 let progressDoneTimer = null;
+// While a scan's "done" tick is showing we hold off the backup status so the two
+// don't fight over the one card. Timestamp = when the backup status may take over.
+let scanDoneUntil = 0;
 
 // Reset the pop-up to its "in progress" look and show it.
 function startProgressUI() {
   clearTimeout(progressDoneTimer);
   scanCancelRequested = false; // fresh scan — clear any prior cancel flag
+  scanDoneUntil = 0;
   const p = el("processing");
   p.classList.remove("processing--done");
   el("procSpinner").hidden = false;
   el("procCheck").hidden = true;
+  const nb = el("procBackupNow"); if (nb) nb.hidden = true; // scan owns the card now
   p.hidden = false;
 }
 
@@ -9274,14 +9280,18 @@ function showProgressDone(summary) {
   p.classList.add("processing--done");
   el("procSpinner").hidden = true;
   el("procCheck").hidden = false;
+  const nb = el("procBackupNow"); if (nb) nb.hidden = true;
   el("procBar").style.width = "100%";
   el("processingText").textContent = "All done";
   el("procCount").textContent = summary;
+  scanDoneUntil = Date.now() + 3400; // let the tick linger before backup status
   progressDoneTimer = setTimeout(() => {
     p.hidden = true;
     p.classList.remove("processing--done");
     el("procSpinner").hidden = false;
     el("procCheck").hidden = true;
+    scanDoneUntil = 0;
+    renderStatusCard(); // hand the card over to the backup status, if any
   }, 3400);
 }
 
@@ -11319,17 +11329,46 @@ function applyBackupBanner(wrap, ids, st) {
   if (closeBtn) closeBtn.hidden = false;
 }
 
-// Live backup banner on the home/Add screen — same content as the Albums banner.
-function renderHomeBackup() {
-  applyBackupBanner(el("homeBackup"), { txt: "homeBackupText", track: "homeBackupTrack", fill: "homeBackupFill", now: "homeBackupNow", close: "homeBackupClose" }, backupBannerState());
+// ONE app-wide status card (the floating card above the tab bar) says what the
+// app is doing right now — scanning for faces, backing up, or tidying duplicates
+// — on whatever screen you're on. The old per-screen backup banners are retired
+// in favour of this single card; per-album bars stay unique to their album.
+function renderStatusCard() {
+  // Retire the old inline banners — this floating card is the single status now.
+  if (el("homeBackup")) el("homeBackup").hidden = true;
+  if (el("albumsBackupSummary")) el("albumsBackupSummary").hidden = true;
+  const p = el("processing");
+  if (!p) return;
+  // The edit popup covers the screen and pauses work — don't show the card behind it.
+  if (configEditing) { p.hidden = true; return; }
+  // A scan/import owns the card while it runs (and for its brief "done" tick).
+  if (scanBusy || scanTotal > 0 || Date.now() < scanDoneUntil) return;
+  const st = backupBannerState();
+  // Nothing active and nothing pending (or all done) — clear the card.
+  if (!st || st.doneState) { if (!p.classList.contains("processing--done")) p.hidden = true; return; }
+  if (st.busy) homeBackupDismissed = false;         // active work always reopens
+  if (homeBackupDismissed) { p.hidden = true; return; } // user closed the idle note
+  p.hidden = false;
+  p.classList.remove("processing--done");
+  const text = el("processingText");
+  if (text) text.innerHTML = st.html.replace(/<span class="home-backup__spin"><\/span>\s*/, "");
+  const spinner = el("procSpinner");
+  if (spinner) spinner.hidden = !st.busy;
+  const check = el("procCheck");
+  if (check) check.hidden = true;
+  const bar = el("procBar");
+  if (bar) bar.style.width = (st.track ? st.pct : 0) + "%";
+  const count = el("procCount");
+  if (count) count.textContent = "";
+  const nowBtn = el("procBackupNow");
+  if (nowBtn) nowBtn.hidden = !st.now;
+  const cancel = el("procCancel");
+  if (cancel) cancel.hidden = false; // acts as "dismiss" when not scanning
 }
 
-// Repaint BOTH backup banners together so their collapsed/expanded state and
-// content stay in sync no matter which screen the user is on.
-function refreshBackupBanners() {
-  renderHomeBackup();
-  renderAlbumsBackupSummary();
-}
+// Kept for every existing call site — they all now drive the single app-wide card.
+function renderHomeBackup() { renderStatusCard(); }
+function refreshBackupBanners() { renderStatusCard(); }
 
 
 // The "faces to tag" queue — the one piece of the old People screen we kept.
@@ -11664,9 +11703,8 @@ function albumsBackupTotals() {
 // automatically (no button). The sourced/sorted/backed-up totals live on the
 // home screen now — this bar is purely the pending/sync read-out.
 function renderAlbumsBackupSummary() {
-  // Same banner as the home screen, same content — just rendered into the Albums
-  // header element so the status reads identically wherever the user is.
-  applyBackupBanner(el("albumsBackupSummary"), { txt: "albumsBackupText", track: "albumsBackupTrack", fill: "albumsBackupFill", now: "albumsBackupNow", close: "albumsBackupClose" }, backupBannerState());
+  // Status now lives in the single app-wide floating card (renderStatusCard).
+  renderStatusCard();
 }
 
 // Back up EVERY album's outstanding photos in one background sweep \u2014 no need to
@@ -14550,7 +14588,20 @@ function wire() {
   el("folderConfirm").addEventListener("click", confirmFolderBrowser);
   el("folderNewBtn").addEventListener("click", createFolderHere);
   const procCancelBtn = el("procCancel");
-  if (procCancelBtn) procCancelBtn.addEventListener("click", requestCancelScan);
+  if (procCancelBtn)
+    procCancelBtn.addEventListener("click", () => {
+      // While a scan runs this ✕ stops the scan; when the card is only showing
+      // backup status it just dismisses the note (it reappears on new activity).
+      if (scanBusy || scanTotal > 0) { requestCancelScan(); return; }
+      homeBackupDismissed = true;
+      renderStatusCard();
+    });
+  const procBackupNow = el("procBackupNow");
+  if (procBackupNow)
+    procBackupNow.addEventListener("click", () => {
+      setAutoBackupMsg("Backing up now\u2026");
+      backupAllAlbums();
+    });
   const backupUntaggedCb = el("backupUntagged");
   if (backupUntaggedCb) backupUntaggedCb.addEventListener("change", () => setBackupUntagged(backupUntaggedCb.checked));
   const uiInput = el("uiModalInput");
