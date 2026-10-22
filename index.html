@@ -1690,15 +1690,15 @@ body.wizard-open { overflow: hidden; }
 
           <div class="btn-row btn-row--split">
             <span class="btn-row__spacer"></span>
-            <button class="btn btn--primary" id="toOutputBtn">Next: choose output →</button>
+            <button class="btn btn--primary" id="toSortingBtn">Next: how to sort →</button>
           </div>
           <p class="msg" id="scanMsg" hidden></p>
         </div>
 
-        <!-- STEP 2 — OUTPUT -->
+        <!-- STEP 3 — OUTPUT -->
         <div class="wizard-pane" id="wizPaneOutput" hidden>
           <div class="wizard-head">
-            <span class="wizard-step-badge">Step 2 of 3</span>
+            <span class="wizard-step-badge">Step 3 of 3</span>
             <h3>Where should the sorted albums go?</h3>
           </div>
           <div class="account-line" id="accountLine" hidden></div>
@@ -1732,17 +1732,17 @@ body.wizard-open { overflow: hidden; }
           </div>
 
           <div class="btn-row btn-row--split">
-            <button class="btn btn--ghost" id="backToSourcesBtn">← Back</button>
+            <button class="btn btn--ghost" id="backToSortingBtn">← Back</button>
             <span class="btn-row__spacer"></span>
-            <button class="btn btn--primary" id="toSortingBtn">Next: how to sort →</button>
+            <button class="btn btn--primary" id="sortNowBtn">Sort my photos</button>
           </div>
           <p class="msg" id="cloudMsg" hidden></p>
         </div>
 
-        <!-- STEP 3 — SORTING RULE -->
+        <!-- STEP 2 — SORTING RULE -->
         <div class="wizard-pane" id="wizPaneSorting" hidden>
           <div class="wizard-head">
-            <span class="wizard-step-badge">Step 3 of 3</span>
+            <span class="wizard-step-badge">Step 2 of 3</span>
             <h3>How should photos with more than one person be sorted?</h3>
           </div>
           <p>Your in-app albums always <strong>mirror the folders</strong> in your output exactly. Choose how a photo that has several tagged people is filed.</p>
@@ -1769,9 +1769,9 @@ body.wizard-open { overflow: hidden; }
           </label>
 
           <div class="btn-row btn-row--split">
-            <button class="btn btn--ghost" id="backToOutputBtn">← Back</button>
+            <button class="btn btn--ghost" id="backToSourcesBtn">← Back</button>
             <span class="btn-row__spacer"></span>
-            <button class="btn btn--primary" id="sortNowBtn">Sort my photos</button>
+            <button class="btn btn--primary" id="toOutputBtn">Next: choose output →</button>
           </div>
           <p class="msg" id="sortingMsg" hidden></p>
         </div>
@@ -15428,10 +15428,10 @@ function wire() {
     try { gphotos.preloadGoogle?.(); } catch { /* ignore */ }
   }
   el("rebuildBtn").addEventListener("click", rebuildFromWatched);
-  el("toOutputBtn").addEventListener("click", () => showWizardPane("output"));
-  el("backToSourcesBtn").addEventListener("click", () => showWizardPane("sources"));
   el("toSortingBtn").addEventListener("click", () => showWizardPane("sorting"));
-  el("backToOutputBtn").addEventListener("click", () => showWizardPane("output"));
+  el("backToSourcesBtn").addEventListener("click", () => showWizardPane("sources"));
+  el("toOutputBtn").addEventListener("click", () => showWizardPane("output"));
+  el("backToSortingBtn").addEventListener("click", () => showWizardPane("sorting"));
   el("sortNowBtn").addEventListener("click", (e) => runBusy(e.currentTarget, "Sorting\u2026", sortNow));
   el("sortModePerPerson").addEventListener("change", () => setSortMode("perPerson", false));
   el("sortModeSingle").addEventListener("change", () => setSortMode("single", false));
