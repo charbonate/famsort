@@ -15996,8 +15996,23 @@ boot().catch((e) => showFatal("boot()", e));
        the heavy face model + fonts and the app shell — no behaviour change. -->
   <script>
     if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:") {
+      // Auto-update: when a new worker takes control, reload once so the fresh
+      // app shell is shown without the user having to clear anything. The guard
+      // stops a reload loop.
+      var swRefreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", function () {
+        if (swRefreshing) return;
+        swRefreshing = true;
+        location.reload();
+      });
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("sw.js").catch(function () {});
+        navigator.serviceWorker.register("sw.js").then(function (reg) {
+          // Check for a new version now and every time the app is brought back.
+          try { reg.update(); } catch (e) {}
+          document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState === "visible") { try { reg.update(); } catch (e) {} }
+          });
+        }).catch(function () {});
       });
     }
   </script>
