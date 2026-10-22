@@ -5847,7 +5847,10 @@ async function cloudSweep() {
   lastCloudSweep = Date.now();
   try {
     cloudSignedIn = true;
-    const ids = (state.cloudSources || []).map((s) => s.id);
+    // ONLY the cloud folders the user selected — never default to the camera
+    // roll. If nothing is selected there's no cloud input to sweep.
+    const ids = (state.cloudSources || []).map((s) => s.id).filter(Boolean);
+    if (!ids.length) return;
     // Hold the scan lock (silent) so the background pull doesn't fight a manual
     // sort and the progress bar/nav stay calm. Pass beginScanSession so the
     // floating progress card shows ONE honest "X of Y — about N min left" tally
@@ -8060,27 +8063,43 @@ async function rescanCloudNow() {
 // runs IMMEDIATELY and VISIBLY across EVERY selected input — device folders AND
 // connected cloud sources — streaming one honest live count (+ time left) to the
 // status pill, so "did it get everything?" is one tap to check.
+// ONE scan routine for EVERY selected input — shared by the "Scan now" button
+// AND by Sort/Done — so progress has a SINGLE SOURCE OF TRUTH. It scans the
+// device folders, then the cloud folders the user ACTUALLY selected, each
+// streaming its live "found" count to the MAIN status banner (via scanHandles /
+// cloudEnumProgress + renderStatusCard) — never to a per-pane editor message
+// like #scanMsg or #cloudMsg. It is pause/stop aware, and it NEVER silently
+// falls back to the whole OneDrive camera roll: if no cloud folder is selected,
+// no cloud input is pulled. Returns true if a cloud session ran so the caller
+// can finalise it with endScanSession().
+async function scanSelectedInputs() {
+  let cloudRan = false;
+  // 1) Device folders first — local and fast; each streams its live count.
+  const handles = state.watched.map((w) => w.handle).filter(Boolean);
+  if (handles.length) {
+    await withScanLock(async () => { await scanHandles(handles); }, false);
+  }
+  // 2) ONLY the cloud folders the user selected — one unified "X of Y — about
+  //    N left" tally (ETA) via beginScanSession, live count via cloudEnumProgress.
+  //    No selection => no cloud pull (we don't default to the camera roll).
+  const ids = (state.cloudSources || []).map((s) => s.id).filter(Boolean);
+  if (ids.length && window.isSecureContext && cloud.oneDriveConfigured() && (cloudSignedIn || (await cloud.hasCloudAccount()))) {
+    cloudSignedIn = true;
+    lastCloudSweep = Date.now(); // this pass counts; don't let the timer double up
+    cloudRan = await withScanLock(async () => {
+      await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds(), beginScanSession, cloudEnumProgress);
+    }, false);
+  }
+  return cloudRan;
+}
+
 async function scanAllNow() {
   if (scanBusy || scanTotal > 0) { showScanMsg("A scan's already running — give it a moment."); return; }
   startProgressUI();
   const beforeCount = state.photos.length;
   let cloudRan = false;
   try {
-    // 1) Device folders first — local and fast; each streams its live count.
-    const handles = state.watched.map((w) => w.handle).filter(Boolean);
-    if (handles.length) {
-      await withScanLock(async () => { await scanHandles(handles); }, false);
-    }
-    // 2) Connected cloud sources — pull the whole selection with one unified
-    //    "X of Y — about N left" tally (and ETA) via beginScanSession.
-    if (window.isSecureContext && cloud.oneDriveConfigured() && (cloudSignedIn || (await cloud.hasCloudAccount()))) {
-      cloudSignedIn = true;
-      lastCloudSweep = Date.now(); // this pass counts; don't let the timer double up
-      const ids = (state.cloudSources || []).map((s) => s.id);
-      cloudRan = await withScanLock(async () => {
-        await cloud.importFromFolders(ids, showScanMsg, handleFiles, knownCloudIds(), beginScanSession, cloudEnumProgress);
-      }, false);
-    }
+    cloudRan = await scanSelectedInputs();
     renderAll();
   } catch {
     showScanMsg("Couldn't finish the scan. Please try again.");
@@ -9414,25 +9433,17 @@ async function sortNow() {
     // like nothing happened, even when there are no new photos to add.
     startProgressUI();
     const beforeCount = state.photos.length;
-    // 1) Device folders — scan each watched handle (duplicates skipped).
-    for (const w of state.watched) {
-      if (w.handle) await scanHandle(w.handle);
-    }
-    // 2) Cloud folders — pull from chosen OneDrive folders (or camera roll).
-    if (
-      window.isSecureContext &&
-      cloud.oneDriveConfigured() &&
-      (cloudSignedIn || (await cloud.hasCloudAccount()))
-    ) {
-      cloudSignedIn = true;
-      const ids = (state.cloudSources || []).map((s) => s.id);
-      await cloud.importFromFolders(ids, showCloudMsg, handleFiles);
-    }
+    // Scan EVERY selected input through the ONE shared routine, so the live
+    // "found" count streams to the MAIN status banner (not the output pane's
+    // message) and only the folders the user chose are used — never the whole
+    // OneDrive camera roll by default.
+    const cloudRan = await scanSelectedInputs();
     scheduleCloudSync();
     scheduleLibrarySync();
     // Now that the user has sorted once, keep watching for new photos while the
     // app stays open (auto-backup). Never starts on its own before this.
     startAutoSync();
+    if (cloudRan) endScanSession(); // finalise the cloud session's finish tick
     // If no scan showed its own completion (nothing new was found anywhere), end
     // with a clear tick so Sort ALWAYS confirms visibly instead of going quiet.
     if (!scanBusy && scanTotal === 0 && Date.now() >= scanDoneUntil) {
