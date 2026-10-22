@@ -495,6 +495,7 @@ button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
 .thumb__status.is-saved { background: rgba(46,125,74,.9); }
 .thumb__status.is-lowres { background: rgba(200,80,20,.92); }
 .thumb__status.is-missing { background: rgba(198,24,20,.95); }
+.thumb__status.is-skipped { background: #d1140f; font-weight: 800; box-shadow: 0 0 0 2px rgba(255,255,255,.75), 0 1px 4px rgba(0,0,0,.4); }
 .thumb__status.is-pending { background: rgba(176,106,0,.85); }
 .thumb__status.is-uploading { background: rgba(20,16,14,.6); }
 /* Cover-photo marker in an album's photo grid, so the user can tell which shot
@@ -5924,6 +5925,10 @@ let backupBlocked = 0;
 // genuine stall ("couldn't upload, Try again") from normal in-progress work.
 let backupFailed = 0;
 let backupLastOk = 0;
+// How many photos the last sweep SKIPPED for good because they can't ever be
+// re-reached (picked one-off from Google Photos, a device file that's gone, or a
+// source copy that keeps failing) — flagged red in the album so they're visible.
+let backupLastSkipped = 0;
 // Live duplicate-cleanup progress, published so the home/Add banner shows the
 // tidy-up with the SAME visibility as a backup (a page-wide bar, not just album
 // text). dedupedAt throttles the automatic sweep pass per album.
@@ -6510,6 +6515,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
   let ok = 0;
   let fail = 0;
   let needsSource = 0;
+  let skipped = 0;
   let done = 0;
   const total = photos.length;
   // Publish live totals so the home-screen backup banner shows real progress
@@ -6541,11 +6547,30 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
     // and leave forceBackupBusy stuck true, so auto-backup never ran again.
     try { got = await getUploadableFile(photo); } catch { got = null; }
     if (!got || got.lowRes) {
-      // FULL QUALITY ONLY. We never store a low-res preview as the "backup": if
-      // the full-size original isn't reachable on this device right now, leave the
-      // photo waiting and tell the user WHY (so they can reconnect the source they
-      // imported from) instead of quietly uploading a smaller copy.
+      // Can this photo EVER be re-reached? Only if it still points at a CONNECTED
+      // cloud source. A one-off pick (Google Photos / the manual file picker) or a
+      // device file that's since moved has no "tentacle" to pull from again — so
+      // rather than let it stall the whole backup forever, SKIP it (and remember
+      // why) so the rest keeps flowing and the album can flag it red.
+      const cloudBackup = state.outputMode === "cloud" && cloud.oneDriveConfigured();
+      const reFetchable = cloudBackup && (photo.sourceId || photo.cloudId);
+      photo.backupTries = (photo.backupTries || 0) + 1;
+      if (!reFetchable || photo.backupTries >= 3) {
+        // Not a dumb timer: we skip because the REASON is clear — there's no source
+        // to reach (or the source copy has failed repeatedly, so it's gone).
+        photo.backupSkipped = true;
+        photo.backupSkipReason = reFetchable ? "unreadable" : "nosource";
+        await db.put("photos", photo);
+        skipped++;
+        backupInFlight.delete(photo.name || "photo");
+        setThumbStatus(photo.id, "skipped");
+        bump();
+        return;
+      }
+      // Still has a reachable source but the fetch failed this time — keep it
+      // waiting and retry on the next sweep (transient).
       needsSource++;
+      await db.put("photos", photo); // persist the try count
       backupInFlight.delete(photo.name || "photo");
       setThumbStatus(photo.id, "pending");
       bump();
@@ -6557,6 +6582,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
         if (await writeToDeviceFolder(got.file, album)) {
           photo.deviceAlbum = album;
           photo.backupLowRes = false;
+          photo.backupSkipped = false; photo.backupSkipReason = null; photo.backupTries = 0;
           await db.put("photos", photo);
           ok++;
         } else {
@@ -6569,6 +6595,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
         if (allOk) {
           photo.backupLowRes = false;
           photo.cloudVerified = true;
+          photo.backupSkipped = false; photo.backupSkipReason = null; photo.backupTries = 0;
           await db.put("photos", photo);
           state.backedUpKeys.add(`${got.file.name}|${got.file.size}|${got.file.lastModified || 0}`);
           ok++;
@@ -6618,6 +6645,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
   backupBlocked = needsSource;
   backupFailed = fail;
   backupLastOk = ok;
+  backupLastSkipped = skipped;
   await saveBackedUpKeys();
   if (!device) {
     scheduleCloudSync();
@@ -6627,6 +6655,7 @@ async function forceBackupPhotos(ids, label, includeSaved = false) {
   let msg = `Backed up ${ok} to ${where} in full quality.`;
   if (needsSource)
     msg += ` ${needsSource} not uploaded yet — their full-size original isn't on this device. They'll upload themselves in full quality once you reconnect the folder you imported from (Family ⚙️).`;
+  if (skipped) msg += ` ${skipped} skipped — their original can't be reached (flagged red in the album).`;
   if (fail) msg += ` ${fail} failed — they'll retry automatically.`;
   setAutoBackupMsg(msg);
 }
@@ -6642,17 +6671,24 @@ function photoBackupStatus(p) {
   // grid calls it out; the sweep upgrades it to full quality by itself.
   if (cloudOK && p.backupLowRes) return "savedLowRes";
   if (isPhotoBackedUp(p)) return "saved";
+  // We gave up reaching this one's original (e.g. a one-off Google Photos pick, or
+  // a source file that's gone) — flag it red so it's obvious in the album.
+  if (p.backupSkipped) return "skipped";
   const device = state.outputMode === "device" && !!state.outputHandle;
   if (state.autoBackup && (device || cloudOK)) return "pending";
   return "none";
 }
 
 function applyThumbStatus(badge, status) {
-  badge.classList.remove("is-saved", "is-pending", "is-uploading", "is-lowres", "is-missing");
+  badge.classList.remove("is-saved", "is-pending", "is-uploading", "is-lowres", "is-missing", "is-skipped");
   if (status === "saved") {
     badge.classList.add("is-saved");
     badge.innerHTML = "☁";
     badge.title = "Backed up to your output";
+  } else if (status === "skipped") {
+    badge.classList.add("is-skipped");
+    badge.innerHTML = "!";
+    badge.title = "Couldn't be backed up — its original isn't reachable (often a one-off pick from Google Photos, or a file no longer on the source). Tap Try again on the status pill after reconnecting it, or re-add it from a connected source.";
   } else if (status === "savedLowRes") {
     badge.classList.add("is-lowres");
     badge.innerHTML = "⚠";
@@ -7816,7 +7852,10 @@ async function addGoogleSource() {
     /* ignore */
   }
   try {
-    await gphotos.connectGooglePhotos(showScanMsg, handleFiles, pickerWindow);
+    // Google Photos is a ONE-OFF pick with no watched source to pull from again,
+    // so keep each picked file's original on-device (keepBlob) — otherwise it
+    // could never be backed up later.
+    await gphotos.connectGooglePhotos(showScanMsg, (fl) => handleFiles(fl, { keepBlob: true }), pickerWindow);
     renderAll();
   } catch (e) {
     showScanMsg("Couldn't import from Google Photos. Please try again.");
@@ -9614,10 +9653,15 @@ async function processFiles(fileList, opts = {}) {
       state.faces.push(faceRec);
       batchFaces.push(faceRec);
     }
-    // Keep the original video so it can be played back later (images stay as
-    // thumbnails only — videos need the real file to play). Shared pull-ins are
-    // face-detection only, so we never store their blobs on the device.
-    if (isVid && !faceOnly) {
+    // Keep the original on-device when either (a) it's a video (needs the real
+    // file to play) or (b) it came from a ONE-OFF pick with no re-fetchable source
+    // (Google Photos / the manual file picker, flagged via opts.keepBlob and no
+    // cloudId) — those give a single hand-off, so if we don't keep the full file
+    // NOW we could never back it up later. Device-folder/OneDrive imports stay
+    // thumbnail-only because their original can always be re-read. Shared pull-ins
+    // are face-detection only, so we never store their blobs on the device.
+    const keepOriginal = isVid || (!!opts.keepBlob && !(files[i] && files[i].cloudId));
+    if (keepOriginal && !faceOnly) {
       try {
         await db.put("media", { id: photoId, blob: files[i] });
       } catch {
@@ -11344,7 +11388,7 @@ function backupBannerState() {
   const device = state.outputMode === "device" && !!state.outputHandle;
   const cloudOK = state.outputMode === "cloud" && cloud.oneDriveConfigured();
   const hasOutput = device || cloudOK;
-  const { total, done } = albumsBackupTotals();
+  const { total, done, skipped } = albumsBackupTotals();
   if (!hasOutput || !state.autoBackup || !total || !state.setupDone) return null;
   const where = device ? "this device" : "OneDrive";
   const base = { done, total };
@@ -11364,17 +11408,23 @@ function backupBannerState() {
     // Anchor the ETA the first render a sweep is live.
     if (!backupEtaAnchorAt) { backupEtaAnchorAt = Date.now(); backupEtaAnchorDone = done; }
     const pct = total ? Math.round((done / total) * 100) : 0;
-    const left = Math.max(0, total - done);
+    const left = Math.max(0, total - done - skipped);
     const eta = backupEtaText(done, total);
     const now = backupNowLabel();
     return { ...base, cls: "is-busy", label: "Backing up your photos", detail: `${done} of ${total}${eta}`, note: `${left} still to go \u2014 this happens automatically in the background.${now ? ` Now: ${now}.` : ""}`, html: `<span class="home-backup__spin"></span> Backing up ${done} of ${total} to ${where}\u2026 ${left} to go${eta}${now ? ` <span class="home-backup__now">${escapeHtml(now)}</span>` : ""}`, track: true, pct, now: false, busy: true };
   }
   backupEtaAnchorAt = 0;
-  if (done >= total) {
+  const left = Math.max(0, total - done - skipped);
+  // Everything we CAN reach is backed up. If some were skipped (unreachable
+  // originals), say so honestly with a Try again — but don't keep the pill "busy"
+  // forever over photos that can never upload.
+  if (left === 0) {
+    if (skipped > 0) {
+      return { ...base, cls: "", label: "Backed up \u2014 some couldn't be reached", detail: `${done} of ${total} backed up`, note: `${skipped} photo${skipped === 1 ? "" : "s"} couldn't be backed up because the original isn't reachable \u2014 often photos picked one-off from Google Photos, or a file that's no longer on the source. They're flagged red in the album. Tap Try again to retry them.`, html: `${done} of ${total} backed up \u2014 ${skipped} couldn't be reached (flagged red)`, track: true, pct: 100, now: false, blocked: true };
+    }
     return { ...base, cls: "is-done", label: "All backed up", detail: "", note: "", html: `\u2713 All ${total} photo${total === 1 ? "" : "s"} backed up to ${where}`, track: false, pct: 100, now: false, doneState: true };
   }
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  const left = total - done;
+  const pct = total ? Math.round(((done + skipped) / total) * 100) : 0;
   // Be honest about WHY it's paused: if some originals aren't on this device they
   // can't upload here — that's not "stuck", it just needs the source.
   const blocked = Math.min(backupBlocked, left);
@@ -11578,6 +11628,23 @@ function albumCover(id, person) {
   const photos = albumPhotos(id);
   if (photos.length) return photos[photos.length - 1].thumb;
   return person ? person.thumb || "" : "";
+}
+
+// Which PHOTO is this album's cover (by id), so we can float it to the top of the
+// grid right after any skipped photos. Mirrors albumCover's choice: an explicit
+// user pick wins, otherwise the most-recent photo.
+function albumCoverPhotoId(id, person) {
+  const photos = albumPhotos(id);
+  if (!photos.length) return null;
+  if (person && person.coverThumb) {
+    const hit = photos.find((p) => p.thumb === person.coverThumb);
+    if (hit) return hit.id;
+  }
+  if ((id === ALL_ALBUM || id === UNTAGGED) && state.specialCovers && state.specialCovers[id]) {
+    const hit = photos.find((p) => p.thumb === state.specialCovers[id]);
+    if (hit) return hit.id;
+  }
+  return photos[photos.length - 1].id;
 }
 
 // CSS object-position for a person's cover, so the crop-to-fill stays centred on
@@ -11807,20 +11874,23 @@ function renderAlbumIndex() {
 }
 
 // Count every distinct photo across all the real person albums and how many are
-// already backed up \u2014 the numbers behind the overall status bar.
+// already backed up — the numbers behind the overall status bar. `skipped` are
+// photos we couldn't reach (flagged red) so they don't count as "still to do".
 function albumsBackupTotals() {
   const seen = new Set();
   let total = 0;
   let done = 0;
+  let skipped = 0;
   for (const p of namedPeopleHere()) {
     for (const ph of albumPhotos(p.id)) {
       if (seen.has(ph.id)) continue;
       seen.add(ph.id);
       total++;
       if (isPhotoBackedUp(ph)) done++;
+      else if (ph.backupSkipped) skipped++;
     }
   }
-  return { total, done };
+  return { total, done, skipped };
 }
 
 // The Albums screen's sync status at a glance: how many album photos are backed
@@ -11885,7 +11955,10 @@ async function backupAllAlbums() {
     for (const ph of albumPhotos(p.id)) {
       if (seen.has(ph.id)) continue;
       seen.add(ph.id);
-      if (!isPhotoBackedUp(ph)) gaps.push(ph.id);
+      // Skip the ones we've already given up on (unreachable originals) so an
+      // auto-sweep doesn't hammer them every time — the user's "Try again" clears
+      // the skip flag and re-queues them.
+      if (!isPhotoBackedUp(ph) && !ph.backupSkipped) gaps.push(ph.id);
     }
   }
   if (!gaps.length && !cloudOK) { renderAlbumsBackupSummary(); return; }
@@ -12214,13 +12287,21 @@ function renderAlbumDetail() {
   let photos = albumPhotos(id).slice();
   sortAlbumPhotos(photos);
 
-  // Surface anything NOT safely backed up at the very top, so at-risk photos are
-  // the first thing the user sees (stable sort keeps the chosen order within each
-  // group). Only when a cloud output is configured.
+  // One final ordering that OVERRULES the user's chosen sort, because it's the
+  // most useful at-a-glance layout: (1) any SKIPPED photos (couldn't be reached —
+  // flagged red) go first so problems are seen immediately, (2) then the album
+  // COVER so the album stays recognisable, (3) then anything else not yet backed
+  // up (at-risk), (4) then the rest. JS sort is stable, so the chosen order is
+  // kept within each group.
   const cloudConfigured = state.outputMode === "cloud" && cloud.oneDriveConfigured();
-  if (cloudConfigured) {
-    photos.sort((a, b) => (isPhotoBackedUp(a) ? 1 : 0) - (isPhotoBackedUp(b) ? 1 : 0));
-  }
+  const coverId = albumCoverPhotoId(id, person);
+  const rank = (p) => {
+    if (p.backupSkipped && !isPhotoBackedUp(p)) return 0;
+    if (p.id === coverId) return 1;
+    if (cloudConfigured && !isPhotoBackedUp(p)) return 2;
+    return 3;
+  };
+  photos.sort((a, b) => rank(a) - rank(b));
 
   const cs = albumCloudStatus(id);
   const info = cloudInfoText(cs);
@@ -14742,6 +14823,14 @@ function wire() {
   if (procBackupNow)
     procBackupNow.addEventListener("click", () =>
       runBusy(procBackupNow, "Trying…", async () => {
+        // Let the healer run again, and give every photo we'd given up on another
+        // go — the user may have reconnected the source, or just wants a retry.
+        relinkTried = false;
+        const stuck = state.photos.filter((p) => p.backupSkipped || p.backupTries);
+        if (stuck.length) {
+          for (const p of stuck) { p.backupSkipped = false; p.backupSkipReason = null; p.backupTries = 0; }
+          await db.bulkPut("photos", stuck);
+        }
         lastAutoBackupKick = Date.now();
         setAutoBackupMsg("Retrying backup\u2026");
         await backupAllAlbums();
@@ -14755,7 +14844,9 @@ function wire() {
   if (!window.isSecureContext) el("addCloudBtn").disabled = true;
 
   el("fileInput").addEventListener("change", (e) => {
-    handleFiles(e.target.files);
+    // Manual picker is also a one-off hand-off with no re-readable source, so keep
+    // the originals on-device so they can back up.
+    handleFiles(e.target.files, { keepBlob: true });
     e.target.value = "";
   });
 
