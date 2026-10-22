@@ -942,7 +942,11 @@ button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
    editor; the Done bar is the only way out and it applies the change. */
 #sourceWizard.is-editing .wizard-step-badge { display: none; }
 #sourceWizard.is-editing .wizard-pane .btn-row--split { display: none; }
-#sourceWizard.is-editing .wizard-editbar { flex: 0 0 auto; position: static; margin: 0; border-radius: 0 0 var(--radius) var(--radius); padding: 12px 18px; background: var(--accent-soft); box-shadow: 0 -8px 18px rgba(36,31,27,.1); }
+#sourceWizard.is-editing .wizard-editbar { flex: 0 0 auto; position: static; margin: 0; padding: 14px 18px 18px; background: var(--card); box-shadow: none; }
+/* In the editor the footer is just a clean, full-width Submit button — no tinted
+   bar, no shadow, no helper text floating over the content. */
+#sourceWizard.is-editing .wizard-editbar__label { display: none; }
+#sourceWizard.is-editing .wizard-editbar .btn { flex: 1 1 auto; width: 100%; }
 /* ✕ close button — only shown in the editing popup, pinned to the top-right over
    the scrolling step so it's always reachable. */
 .wizard-close-x { display: none; }
@@ -1798,8 +1802,8 @@ body.wizard-open { overflow: hidden; }
              to leave the editor and go back to the "Your setup" summary. Sits at
              the BOTTOM so Done is where you finish, after reviewing the steps. -->
         <div class="wizard-editbar" id="wizardEditBar" hidden>
-          <span class="wizard-editbar__label">Changes apply when you tap Done.</span>
-          <button class="btn btn--primary btn--sm" id="closeSetupBtn" type="button">✓ Done</button>
+          <span class="wizard-editbar__label">Changes apply when you tap Submit.</span>
+          <button class="btn btn--primary" id="closeSetupBtn" type="button">Submit</button>
         </div>
       </div>
 
@@ -4321,7 +4325,7 @@ async function getItemMeta(id) {
 // total across the whole import so a huge tree can't run away. RESILIENT: if a
 // page request ultimately fails (after graphGet's own retries), we keep whatever
 // was already collected and move on, rather than throwing away the entire scan.
-async function collectMediaItems(folderId, token, items, onStatus, knownIds, onPage) {
+async function collectMediaItems(folderId, token, items, onStatus, knownIds, onPage, onBatch) {
   if (items.length >= MAX_FILES) return;
   const subfolders = [];
   // Enumerate LIGHTWEIGHT: we deliberately do NOT $expand=thumbnails here. For a
@@ -4341,6 +4345,9 @@ async function collectMediaItems(folderId, token, items, onStatus, knownIds, onP
       // items gathered so far and stop paging THIS folder instead of failing all.
       break;
     }
+    // The NEW media items on this page — streamed to onBatch so download + face
+    // sorting can start on them immediately, while we keep enumerating the rest.
+    const pageMedia = [];
     for (const it of page.value || []) {
       if (items.length >= MAX_FILES) break;
       const mt = String(it.file?.mimeType || "");
@@ -4348,7 +4355,7 @@ async function collectMediaItems(folderId, token, items, onStatus, knownIds, onP
         // Skip items we've ALREADY imported (by driveItem id) so repeated/auto
         // sweeps only download NEW photos — makes the background catch-up cheap
         // and resumable instead of re-fetching the whole library every pass.
-        if (!(knownIds && knownIds.has(it.id))) items.push(it);
+        if (!(knownIds && knownIds.has(it.id))) { items.push(it); pageMedia.push(it); }
       } else if (it.folder && (it.folder.childCount || 0) > 0) subfolders.push(it.id);
     }
     next = page["@odata.nextLink"];
@@ -4357,23 +4364,24 @@ async function collectMediaItems(folderId, token, items, onStatus, knownIds, onP
     // Report the climbing count to the MAIN status banner and let it honour a
     // Pause (hold here) or Stop (return false → bail out of the whole walk).
     if (onPage && (await onPage(items.length)) === false) return;
+    // Hand this page's new photos to the download+sort pipeline right away so
+    // matching overlaps with finding (no "find everything first" wait).
+    if (onBatch && pageMedia.length) await onBatch(pageMedia);
   }
   for (const sf of subfolders) {
     if (items.length >= MAX_FILES) break;
-    await collectMediaItems(sf, token, items, onStatus, knownIds, onPage);
+    await collectMediaItems(sf, token, items, onStatus, knownIds, onPage, onBatch);
   }
 }
 
-// Download a batch of driveItems' pixels (preferring the pre-generated LARGE
-// thumbnail over the full original) and hand File objects to onFiles for
-// on-device sorting. Shared by camera-roll and multi-folder import.
-async function downloadAndFeed(items, token, onStatus, onFiles, onTotal) {
-  const slice = items.slice(0, MAX_FILES);
-  const total = slice.length;
-  onTotal?.(total); // tell the app the TRUE grand total so progress + ETA span the whole import, not each 80-item chunk
-  onStatus?.(`Scanning 0 of ${total}…`);
+// Build a streaming downloader. Call `add(items)` with each page of driveItems as
+// they're FOUND (it downloads their pixels — preferring the pre-generated LARGE
+// thumbnail over the full original — and hands File objects to onFiles in small
+// batches for on-device sorting), then `finish()` to flush the last partial
+// batch. Feeding incrementally lets face sorting start on the first photos while
+// the rest of the library is still being enumerated. Shared by every cloud import.
+function makeDownloader(token, onStatus, onFiles) {
   let failed = 0;
-  let done = 0;
   let fed = 0;
 
   // The token passed in was minted when the scan STARTED. Downloading tens of
@@ -4430,8 +4438,6 @@ async function downloadAndFeed(items, token, onStatus, onFiles, onTotal) {
         /* give up on this one */
       }
     }
-    done++;
-    if (done % 3 === 0 || done === total) onStatus?.(`Scanning ${done} of ${total}…`);
     if (!blob) {
       failed++;
       return null;
@@ -4462,10 +4468,9 @@ async function downloadAndFeed(items, token, onStatus, onFiles, onTotal) {
   const CONCURRENCY = 5;
   // Feed the on-device sorter in SMALL BATCHES instead of downloading the whole
   // library into memory first. This keeps memory bounded no matter how many
-  // photos the folder holds (the old 300 cap existed partly so we didn't hold
-  // thousands of image blobs at once) and lets albums start appearing while the
-  // rest are still downloading. handleFiles/processFiles is safe to call
-  // repeatedly — each call sorts its chunk and releases those blobs.
+  // photos the folder holds and lets albums start appearing while the rest are
+  // still downloading. handleFiles/processFiles is safe to call repeatedly —
+  // each call sorts its chunk and releases those blobs.
   const FEED_CHUNK = 80;
   let buffer = [];
   const feed = async () => {
@@ -4475,18 +4480,28 @@ async function downloadAndFeed(items, token, onStatus, onFiles, onTotal) {
     fed += chunk.length;
     await onFiles(chunk);
   };
-  for (let i = 0; i < slice.length; i += CONCURRENCY) {
-    const batch = slice.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(batch.map(fetchOne));
-    for (const f of results) if (f) buffer.push(f);
-    if (buffer.length >= FEED_CHUNK) await feed();
-  }
-  await feed();
-  if (!fed) {
-    onStatus?.(`Couldn't read any photos (${failed} failed). Try again, or check OneDrive is reachable.`);
-    return;
-  }
-  onStatus?.(`Scanned ${fed} photos${failed ? ` (${failed} skipped)` : ""} — sorting them on this device…`);
+
+  return {
+    // Download this page of items (concurrently) and feed full chunks onward.
+    async add(items) {
+      for (let i = 0; i < items.length; i += CONCURRENCY) {
+        const batch = items.slice(i, i + CONCURRENCY);
+        const results = await Promise.all(batch.map(fetchOne));
+        for (const f of results) if (f) buffer.push(f);
+        if (buffer.length >= FEED_CHUNK) await feed();
+      }
+    },
+    // Flush the last partial chunk and report the outcome.
+    async finish() {
+      await feed();
+      if (!fed) {
+        onStatus?.(`Couldn't read any photos${failed ? ` (${failed} failed)` : ""}. Try again, or check OneDrive is reachable.`);
+      } else {
+        onStatus?.(`Scanned ${fed} photo${fed === 1 ? "" : "s"}${failed ? ` (${failed} skipped)` : ""} — sorting them on this device…`);
+      }
+    },
+    fedCount() { return fed; },
+  };
 }
 
 // Import photos/videos from one or more chosen OneDrive folders (recursively).
@@ -4507,21 +4522,28 @@ async function importFromFolders(folderIds, onStatus, onFiles, knownIds, onTotal
     return;
   }
   onStatus?.("Finding photos & videos in your selected folders…");
+  // PIPELINE: download + on-device face sorting start on the FIRST page of photos
+  // we find and keep going as enumeration discovers more — so a big library starts
+  // sorting almost immediately instead of waiting for the whole walk to finish.
+  const dl = makeDownloader(token, onStatus, onFiles);
   const items = [];
+  const onBatch = async (batch) => {
+    onTotal?.(items.length); // grow the whole-library total + ETA as we discover more
+    await dl.add(batch); // download these now and hand them to the sorter
+  };
   for (const fid of ids) {
     if (items.length >= MAX_FILES) break;
     try {
-      await collectMediaItems(fid, token, items, onStatus, knownIds, onPage);
+      await collectMediaItems(fid, token, items, onStatus, knownIds, onPage, onBatch);
     } catch {
       // One source folder failed to list — keep going with the others and feed
       // whatever we DID find, rather than aborting the whole import.
     }
   }
+  await dl.finish(); // flush the final partial chunk
   if (!items.length) {
     onStatus?.("No photos found in the selected folders.");
-    return;
   }
-  await downloadAndFeed(items, token, onStatus, onFiles, onTotal);
 }
 
 // Assuming we're signed in, import the camera roll (the default source).
@@ -5522,9 +5544,18 @@ let scanTotal = 0;
 let scanDone = 0;
 let scanStartAt = 0;
 function beginScanSession(total) {
-  scanTotal = Number(total) || 0;
-  scanDone = 0;
-  scanStartAt = Date.now();
+  const t = Number(total) || 0;
+  if (scanStartAt === 0) {
+    // First page found — start the running tally + ETA clock.
+    scanTotal = t;
+    scanDone = 0;
+    scanStartAt = Date.now();
+  } else {
+    // The streaming import keeps finding more photos while it sorts — grow the
+    // known total so the bar + ETA span the whole library, WITHOUT resetting the
+    // progress we've already made.
+    scanTotal = Math.max(scanTotal, t);
+  }
 }
 // Clear the session and, if a visible import just finished, finalise the card
 // with a single summary (chunks suppress their own "All done" while active).
@@ -5568,12 +5599,18 @@ function scanEtaText() {
 // cloud.js bails out of the walk). Stays silent during the background 90s sweep.
 async function cloudEnumProgress(count) {
   if (!autoScanning) {
-    scanUIActive = true;
-    scanProgLabel = "Finding your photos…";
-    scanLoopDone = count;
-    scanLoopTotal = 0; // still discovering — a growing count, no bar yet
-    renderStatusCard();
-    await new Promise((r) => setTimeout(r, 0)); // let the paint land
+    if (scanStartAt) {
+      // The pipeline has already started downloading + matching, so handleFiles
+      // owns the “X of Total” display — don't fight it with a “Finding…” label.
+      // (The growing total is tracked separately via beginScanSession.)
+    } else {
+      scanUIActive = true;
+      scanProgLabel = "Finding your photos…";
+      scanLoopDone = count;
+      scanLoopTotal = 0; // still discovering — a growing count, no bar yet
+      renderStatusCard();
+      await new Promise((r) => setTimeout(r, 0)); // let the paint land
+    }
   }
   // Honour a Pause during enumeration too — the count used to keep climbing.
   while (scanPaused && !scanCancelRequested) {
