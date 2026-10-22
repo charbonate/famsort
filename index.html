@@ -909,13 +909,16 @@ button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
 .flow-stage:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(90,76,209,.12); }
 .flow-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .flow-stage__badge { font-size: .64rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; color: var(--accent-dark); }
-.flow-stage__ico { font-size: 1.3rem; line-height: 1; }
+.flow-stage__ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-dark); margin: 2px 0; }
+.flow-stage__ico svg { width: 20px; height: 20px; }
 .flow-stage__val { font-size: .9rem; font-weight: 700; color: var(--ink); line-height: 1.3; word-break: break-word; }
 .flow-stage__more { font-size: .76rem; font-weight: 600; color: var(--ink-soft); }
 .flow-stage__edit { margin-top: 2px; font-size: .7rem; font-weight: 700; color: var(--accent); opacity: 0; transition: opacity .15s; }
 .flow-stage:hover .flow-stage__edit, .flow-stage:focus-visible .flow-stage__edit { opacity: 1; }
 .flow-stage--sort { background: var(--accent-soft); border-color: transparent; }
-.flow-arrow { flex: 0 0 auto; align-self: center; color: var(--accent); font-size: 1.1rem; font-weight: 800; }
+.flow-stage--sort .flow-stage__ico { background: #fff; }
+.flow-arrow { flex: 0 0 auto; align-self: center; color: var(--accent); width: 20px; height: 20px; display: grid; place-items: center; }
+.flow-arrow svg { width: 18px; height: 18px; }
 @media (max-width: 460px) {
   .setup-flow__pipe { flex-direction: column; }
   .flow-stage { flex-basis: auto; }
@@ -928,11 +931,12 @@ button.is-pressing, .btn.is-pressing { animation: btn-press .22s ease; }
 /* Editing an existing setup opens the wizard as a centered popup over a dimmed
    page (first-run setup still renders inline, no popup). */
 .wizard-backdrop { position: fixed; inset: 0; z-index: 94; background: rgba(36,31,27,.55); }
-#sourceWizard.is-editing { position: fixed; z-index: 95; top: 50%; left: 50%; transform: translate(-50%, -50%); width: calc(100% - 32px); max-width: 560px; max-height: 88vh; max-height: 88dvh; overflow-y: auto; margin: 0; box-shadow: var(--shadow); }
-/* The Done bar sticks to the bottom of the scrolling popup. Give it a solid
-   backing and give the popup room below so it never sits ON TOP of the last
-   controls — the complaint that "Done is over everything". */
-#sourceWizard.is-editing .wizard-editbar { position: sticky; bottom: -1px; z-index: 5; margin: 16px -18px -18px; border-radius: 0 0 var(--radius) var(--radius); padding: 12px 18px; background: var(--accent-soft); box-shadow: 0 -8px 18px rgba(36,31,27,.1); }
+#sourceWizard.is-editing { position: fixed; z-index: 95; top: 50%; left: 50%; transform: translate(-50%, -50%); width: calc(100% - 32px); max-width: 560px; max-height: 88vh; max-height: 88dvh; margin: 0; box-shadow: var(--shadow); display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+/* The editing popup is a flex column: the active step scrolls in the middle and
+   the Done bar is a true footer BELOW it — never floating over the controls
+   (the recurring "Done is over everything" complaint). */
+#sourceWizard.is-editing .wizard-pane { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 18px; margin: 0; }
+#sourceWizard.is-editing .wizard-editbar { flex: 0 0 auto; position: static; margin: 0; border-radius: 0 0 var(--radius) var(--radius); padding: 12px 18px; background: var(--accent-soft); box-shadow: 0 -8px 18px rgba(36,31,27,.1); }
 body.wizard-open { overflow: hidden; }
 /* Inputs list inside the "Your setup" summary — the actual sources, not a count. */
 .setup-src-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
@@ -1117,6 +1121,35 @@ body.wizard-open { overflow: hidden; }
 }
 @keyframes proc-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
 .processing--done .processing__card { border-color: #bfe3cc; }.processing--done .bar__fill { background: #1f9d55; }
+
+/* Top row of the pill: the tappable header + a minimise button that tucks the
+   whole pill away into a small corner orb. */
+.activity__top { display: flex; align-items: center; gap: 6px; width: 100%; }
+.activity__top .activity__head { flex: 1; min-width: 0; }
+.activity__min { flex: none; width: 24px; height: 24px; display: grid; place-items: center; padding: 0;
+  border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink-soft); cursor: pointer; }
+.activity__min svg { width: 14px; height: 14px; }
+.activity__min:hover { border-color: var(--accent); color: var(--accent); background: var(--cream-2); }
+
+/* The tucked-away corner orb — a FamSort mark with a ring that spins while busy,
+   turns amber when paused and green when just finished. Tap it to reopen. */
+.activity__orb { display: none; position: absolute; right: 14px; bottom: 0; width: 58px; height: 58px;
+  padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; pointer-events: auto; animation: proc-rise .25s ease; }
+.processing.is-mini { pointer-events: none; }
+.processing.is-mini .processing__card { display: none; }
+.processing.is-mini .activity__orb { display: grid; place-items: center; }
+.activity__orb-ring { position: absolute; inset: -3px; border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--accent), var(--accent-2), var(--accent)); opacity: .32; }
+.activity__orb-mark { position: relative; width: 52px; height: 52px; border-radius: 50%;
+  background: var(--grad-primary); box-shadow: 0 8px 20px rgba(36,31,27,.3); display: grid; place-items: center; }
+.activity__orb-mark svg { width: 34px; height: 34px; }
+.activity__orb-dot { position: absolute; top: 0; right: 0; width: 15px; height: 15px; border-radius: 50%;
+  background: #d1140f; border: 2px solid #fff; display: none; }
+.processing.orb-busy .activity__orb-ring { opacity: 1; animation: spin 1.1s linear infinite; }
+.processing.orb-paused .activity__orb-ring { opacity: 1; background: #e0ad44; animation: none; }
+.processing.orb-done .activity__orb-ring { opacity: 1; background: #1f9d55; animation: none; }
+.processing.orb-attn .activity__orb-dot { display: block; }
+
 .spinner {
   width: 40px; height: 40px; margin: 0 auto 14px; border-radius: 50%;
   border: 4px solid var(--cream-2); border-top-color: var(--accent); animation: spin .8s linear infinite;
@@ -1566,25 +1599,25 @@ body.wizard-open { overflow: hidden; }
         <div class="setup-flow__pipe">
           <button class="flow-stage flow-stage--in" data-edit-step="sources" type="button">
             <span class="flow-stage__badge">Input</span>
-            <span class="flow-stage__ico" aria-hidden="true">📥</span>
+            <span class="flow-stage__ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10"/><path d="m8 9.5 4 4 4-4"/><path d="M4 15.5V18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2.5"/></svg></span>
             <span class="flow-stage__val" id="setupSummaryInputs">—</span>
             <span class="flow-stage__edit">Tap to edit</span>
           </button>
 
-          <span class="flow-arrow" aria-hidden="true">➜</span>
+          <span class="flow-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></span>
 
           <button class="flow-stage flow-stage--sort" data-edit-step="sorting" type="button">
             <span class="flow-stage__badge">Sort method</span>
-            <span class="flow-stage__ico" aria-hidden="true">🧠</span>
+            <span class="flow-stage__ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="9" r="2.6"/><path d="M4 18.5c0-2.6 2-4.3 4.5-4.3"/><circle cx="16" cy="7.5" r="2.2"/><path d="M12.3 18.5c0-2.5 1.8-4.2 4.2-4.2s4.2 1.7 4.2 4.2"/></svg></span>
             <span class="flow-stage__val" id="setupSummarySorting">—</span>
             <span class="flow-stage__edit">Tap to edit</span>
           </button>
 
-          <span class="flow-arrow" aria-hidden="true">➜</span>
+          <span class="flow-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></span>
 
           <button class="flow-stage flow-stage--out" data-edit-step="output" type="button">
             <span class="flow-stage__badge">Output</span>
-            <span class="flow-stage__ico" aria-hidden="true">📤</span>
+            <span class="flow-stage__ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 18.5h8a3.5 3.5 0 0 0 .4-6.98A5 5 0 0 0 6.5 10a4 4 0 0 0 1 8.5z"/><path d="M12 16.5V11"/><path d="m9.8 12.8 2.2-2.2 2.2 2.2"/></svg></span>
             <span class="flow-stage__val" id="setupSummaryOutput">—</span>
             <span class="flow-stage__edit">Tap to edit</span>
           </button>
@@ -2098,15 +2131,20 @@ body.wizard-open { overflow: hidden; }
        only appears while something is actually happening. -->
   <div class="processing activity" id="processing" hidden>
     <div class="processing__card activity__card">
-      <button class="activity__head" id="activityHead" type="button" aria-expanded="false" aria-label="Show activity details">
-        <span class="spinner spinner--sm" id="procSpinner"></span>
-        <span class="activity__check" id="procCheck" hidden>✓</span>
-        <span class="activity__main">
-          <span class="activity__label" id="processingText">Starting…</span>
-          <span class="activity__count" id="procCount"></span>
-        </span>
-        <span class="activity__chev" id="activityChev" aria-hidden="true">▴</span>
-      </button>
+      <div class="activity__top">
+        <button class="activity__head" id="activityHead" type="button" aria-expanded="false" aria-label="Show activity details">
+          <span class="spinner spinner--sm" id="procSpinner"></span>
+          <span class="activity__check" id="procCheck" hidden>✓</span>
+          <span class="activity__main">
+            <span class="activity__label" id="processingText">Starting…</span>
+            <span class="activity__count" id="procCount"></span>
+          </span>
+          <span class="activity__chev" id="activityChev" aria-hidden="true">▴</span>
+        </button>
+        <button class="activity__min" id="activityMin" type="button" aria-label="Tuck away into the corner" title="Tuck away">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+        </button>
+      </div>
       <div class="bar activity__bar"><div class="bar__fill" id="procBar"></div></div>
       <div class="activity__quick" id="activityQuick" hidden>
         <button class="btn btn--ghost btn--sm" id="procPause" type="button">Pause backup</button>
@@ -2119,6 +2157,13 @@ body.wizard-open { overflow: hidden; }
         </div>
       </div>
     </div>
+    <!-- Tucked-away state: a small FamSort orb in the corner with a spinning ring
+         while busy. Tap it to bring the full activity pill back. -->
+    <button class="activity__orb" id="activityOrb" type="button" aria-label="Open FamSort activity" title="FamSort activity — tap to open">
+      <span class="activity__orb-ring" aria-hidden="true"></span>
+      <span class="activity__orb-mark" aria-hidden="true"><svg viewBox="0 0 80 80" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"><rect x="14" y="26" width="38" height="38" rx="8" transform="rotate(-13 33 45)"/><rect x="28" y="16" width="38" height="38" rx="8" transform="rotate(7 47 35)" fill="#fff"/></g><circle cx="47" cy="31" r="6" fill="#5a4cd1"/><path d="M36 51c0-7.5 5-11.5 11-11.5s11 4 11 11.5" fill="#5a4cd1"/></svg></span>
+      <span class="activity__orb-dot" id="activityOrbDot" aria-hidden="true"></span>
+    </button>
   </div>
 
 
@@ -9520,6 +9565,36 @@ function applyActivityExpanded() {
   if (chev) chev.textContent = activityExpanded ? "\u25be" : "\u25b4";
 }
 
+// Whether the pill is tucked away into the small corner orb. Persisted so it
+// stays out of the way across reloads until the user taps the orb to open it.
+let activityMinimised = (() => { try { return localStorage.getItem("famsort_activity_min") === "1"; } catch { return false; } })();
+
+function setActivityMinimised(on) {
+  activityMinimised = !!on;
+  try { localStorage.setItem("famsort_activity_min", on ? "1" : "0"); } catch {}
+  applyActivityMinimised();
+}
+
+// Reflect the minimised state and keep the orb's look in sync with what's going
+// on: a spinning ring while busy, amber when paused, green when just finished,
+// and a red dot when something actually needs the user (stuck / review).
+function applyActivityMinimised() {
+  const wrap = el("processing");
+  if (!wrap) return;
+  wrap.classList.toggle("is-mini", activityMinimised);
+  const spinner = el("procSpinner");
+  const check = el("procCheck");
+  const rb = el("procBackupNow");
+  const busy = spinner && !spinner.hidden;
+  const done = check && !check.hidden;
+  const paused = scanPaused || state.backupPaused;
+  const attn = !!rb && !rb.hidden && (rb.dataset.mode === "review" || rb.textContent === "Try again");
+  wrap.classList.toggle("orb-busy", !!busy && !paused && !done);
+  wrap.classList.toggle("orb-paused", !!paused && !done);
+  wrap.classList.toggle("orb-done", !!done);
+  wrap.classList.toggle("orb-attn", attn && !done);
+}
+
 // Give EVERY slow/async button instant feedback: the moment it's pressed it
 // disables itself and shows a spinner + "working" label, so the user can SEE
 // their tap registered and can't fire it again. Restores the original on finish.
@@ -9568,6 +9643,7 @@ function startProgressUI() {
   const quick = el("activityQuick"); if (quick) quick.hidden = false;
   const pause = el("procPause"); if (pause) { pause.textContent = "Pause"; pause.classList.remove("btn--primary"); }
   applyActivityExpanded();
+  applyActivityMinimised();
   p.hidden = false;
 }
 
@@ -9582,6 +9658,7 @@ function showProgressDone(summary) {
   el("procBar").style.width = "100%";
   el("processingText").textContent = "All done";
   el("procCount").textContent = summary;
+  applyActivityMinimised();
   scanDoneUntil = Date.now() + 3400; // let the tick linger before backup status
   progressDoneTimer = setTimeout(() => {
     p.hidden = true;
@@ -11749,6 +11826,7 @@ function renderStatusCard() {
     } else if (q) {
       q.hidden = true; // the "done" tick has no actions
     }
+    applyActivityMinimised();
     renderSetupFlowStatus();
     return;
   }
@@ -11804,6 +11882,7 @@ function renderStatusCard() {
   const cancel = el("procCancel");
   if (cancel) cancel.hidden = true; // "Stop" is only for an in-progress scan
   applyActivityExpanded();
+  applyActivityMinimised();
   renderSetupFlowStatus();
 }
 
@@ -15298,6 +15377,14 @@ function wire() {
       activityExpanded = !activityExpanded;
       applyActivityExpanded();
     });
+  // Minimise the whole pill into the small corner orb (and bring it back).
+  const activityMin = el("activityMin");
+  if (activityMin)
+    activityMin.addEventListener("click", (e) => { e.stopPropagation(); setActivityMinimised(true); });
+  const activityOrb = el("activityOrb");
+  if (activityOrb)
+    activityOrb.addEventListener("click", () => { setActivityMinimised(false); });
+  applyActivityMinimised();
   const procBackupNow = el("procBackupNow");
   if (procBackupNow)
     procBackupNow.addEventListener("click", () => {
