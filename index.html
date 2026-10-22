@@ -4472,28 +4472,44 @@ function makeDownloader(token, onStatus, onFiles) {
   // still downloading. handleFiles/processFiles is safe to call repeatedly —
   // each call sorts its chunk and releases those blobs.
   const FEED_CHUNK = 80;
-  let buffer = [];
-  const feed = async () => {
-    if (!buffer.length) return;
-    const chunk = buffer;
-    buffer = [];
-    fed += chunk.length;
-    await onFiles(chunk);
-  };
+  // Keep DOWNLOADING and DETECTING running at the SAME TIME (they used to take
+  // turns — one sat idle while the other worked). `add()` downloads into `ready`
+  // and a background consumer pulls full chunks out to detect. `MAX_AHEAD` caps
+  // how far downloading may run ahead of detection so we never hold a huge pile
+  // of image blobs in memory. No accuracy change: every photo is detected exactly
+  // as before — we just stop waiting around between stages.
+  const MAX_AHEAD = 240;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let ready = []; // downloaded File objects waiting to be detected
+  let producing = true; // set false by finish() once the last page is downloaded
+
+  const consumer = (async () => {
+    while (producing || ready.length) {
+      if (ready.length >= FEED_CHUNK || (!producing && ready.length)) {
+        const chunk = ready.splice(0, FEED_CHUNK);
+        fed += chunk.length;
+        await onFiles(chunk);
+      } else {
+        await sleep(30); // nothing ready yet — wait for the downloader
+      }
+    }
+  })();
 
   return {
-    // Download this page of items (concurrently) and feed full chunks onward.
+    // Download this page of items (concurrently) into the ready queue. Honours
+    // backpressure so downloading never gets too far ahead of detection.
     async add(items) {
       for (let i = 0; i < items.length; i += CONCURRENCY) {
+        while (ready.length >= MAX_AHEAD) await sleep(30); // let the detector catch up
         const batch = items.slice(i, i + CONCURRENCY);
         const results = await Promise.all(batch.map(fetchOne));
-        for (const f of results) if (f) buffer.push(f);
-        if (buffer.length >= FEED_CHUNK) await feed();
+        for (const f of results) if (f) ready.push(f);
       }
     },
-    // Flush the last partial chunk and report the outcome.
+    // No more pages coming — let the consumer drain the queue, then report.
     async finish() {
-      await feed();
+      producing = false;
+      await consumer;
       if (!fed) {
         onStatus?.(`Couldn't read any photos${failed ? ` (${failed} failed)` : ""}. Try again, or check OneDrive is reachable.`);
       } else {
