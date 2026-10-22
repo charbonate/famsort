@@ -1087,7 +1087,7 @@ body.wizard-open { overflow: hidden; }
    never blocks taps, and expands on tap to show progress + actions. */
 .processing {
   position: fixed; left: 0; right: 0; z-index: 96;
-  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 10px);
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 22px);
   display: block; padding: 0 12px; pointer-events: none;
 }
 .processing__card {
@@ -1131,25 +1131,39 @@ body.wizard-open { overflow: hidden; }
 .activity__min svg { width: 14px; height: 14px; }
 .activity__min:hover { border-color: var(--accent); color: var(--accent); background: var(--cream-2); }
 
-/* The tucked-away corner orb — a FamSort mark with a ring that spins while busy,
-   turns amber when paused and green when just finished. Tap it to reopen. */
-.activity__orb { display: none; position: absolute; right: 14px; bottom: 0; width: 58px; height: 58px;
-  padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; pointer-events: auto; animation: proc-rise .25s ease; }
+/* When minimised, the pill's card is tucked away — the permanent centre orb in
+   the tab bar is the handle that pops it back out. The pill grows out of (and
+   sits centred above) the orb. */
 .processing.is-mini { pointer-events: none; }
 .processing.is-mini .processing__card { display: none; }
-.processing.is-mini .activity__orb { display: grid; place-items: center; }
+.processing__card { transform-origin: bottom center; }
+
+/* Permanent centre status orb — a raised, dock-style button in the MIDDLE of the
+   tab bar, a little larger than the four nav icons (iOS centre-tab / macOS dock
+   feel). The FamSort mark with a ring that spins while busy, turns amber when
+   paused, green when just finished, and shows a red dot when it needs you. It
+   only joins the bar once there's something to report (post-setup / active). */
+.tabbar { overflow: visible; }
+.tabbar.has-orb { grid-template-columns: repeat(5, 1fr); }
+.tabbar__orb { display: none; position: relative; place-items: center; align-self: stretch;
+  border: 0; background: none; padding: 0; cursor: pointer; }
+.tabbar.has-orb .tabbar__orb { display: grid; }
+.tabbar__orb-wrap { position: relative; width: 58px; height: 58px; transform: translateY(-16px);
+  display: grid; place-items: center; animation: proc-pop .3s ease; }
 .activity__orb-ring { position: absolute; inset: -3px; border-radius: 50%;
-  background: conic-gradient(from 0deg, var(--accent), var(--accent-2), var(--accent)); opacity: .32; }
+  background: conic-gradient(from 0deg, var(--accent), var(--accent-2), var(--accent)); opacity: .34; }
 .activity__orb-mark { position: relative; width: 52px; height: 52px; border-radius: 50%;
-  background: var(--grad-primary); box-shadow: 0 8px 20px rgba(36,31,27,.3); display: grid; place-items: center; }
-.activity__orb-mark svg { width: 34px; height: 34px; }
-.activity__orb-dot { position: absolute; top: 0; right: 0; width: 15px; height: 15px; border-radius: 50%;
+  background: var(--grad-primary); box-shadow: 0 10px 22px rgba(36,31,27,.34); display: grid; place-items: center;
+  border: 3px solid #fff; }
+.activity__orb-mark svg { width: 33px; height: 33px; }
+.activity__orb-dot { position: absolute; top: 1px; right: 1px; width: 15px; height: 15px; border-radius: 50%;
   background: #d1140f; border: 2px solid #fff; display: none; }
-.processing.orb-busy .activity__orb-ring { opacity: 1; animation: spin 1.1s linear infinite; }
-.processing.orb-paused .activity__orb-ring { opacity: 1; background: #e0ad44; animation: none; }
-.processing.orb-done .activity__orb-ring { opacity: 1; background: #1f9d55; animation: none; }
-.processing.orb-attn .activity__orb-dot { display: block; }
-.processing.orb-idle .activity__orb-ring { opacity: .34; animation: none; }
+.tabbar__orb:active .activity__orb-mark { transform: scale(.92); }
+.activity__orb.orb-busy .activity__orb-ring { opacity: 1; animation: spin 1.1s linear infinite; }
+.activity__orb.orb-paused .activity__orb-ring { opacity: 1; background: #e0ad44; animation: none; }
+.activity__orb.orb-done .activity__orb-ring { opacity: 1; background: #1f9d55; animation: none; }
+.activity__orb.orb-attn .activity__orb-dot { display: block; }
+.activity__orb.orb-idle .activity__orb-ring { opacity: .34; animation: none; }
 
 .spinner {
   width: 40px; height: 40px; margin: 0 auto 14px; border-radius: 50%;
@@ -2116,6 +2130,16 @@ body.wizard-open { overflow: hidden; }
     <button class="tabbar__btn" data-nav="albums">
       <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2.6"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 16.5l3.8-3.3 3 2.5L15 11l4.5 4.2"/></svg></span>Albums
     </button>
+    <!-- Permanent centre status orb — raised, dock-style, a little larger than the
+         four nav icons. It reflects what FamSort is doing right now; tap it and the
+         status pill pops out above, centred. Only joins the bar once set up / busy. -->
+    <button class="tabbar__orb activity__orb" id="activityOrb" type="button" aria-label="FamSort status — tap to open" aria-expanded="false">
+      <span class="tabbar__orb-wrap">
+        <span class="activity__orb-ring" aria-hidden="true"></span>
+        <span class="activity__orb-mark" aria-hidden="true"><svg viewBox="0 0 80 80" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"><rect x="14" y="26" width="38" height="38" rx="8" transform="rotate(-13 33 45)"/><rect x="28" y="16" width="38" height="38" rx="8" transform="rotate(7 47 35)" fill="#fff"/></g><circle cx="47" cy="31" r="6" fill="#5a4cd1"/><path d="M36 51c0-7.5 5-11.5 11-11.5s11 4 11 11.5" fill="#5a4cd1"/></svg></span>
+        <span class="activity__orb-dot" id="activityOrbDot" aria-hidden="true"></span>
+      </span>
+    </button>
     <button class="tabbar__btn" data-nav="family">
       <span class="tabbar__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="8.5" r="2.3"/><circle cx="17" cy="8.5" r="2.3"/><circle cx="12" cy="16.5" r="2.3"/><path d="M7 10.8v1.4a2 2 0 0 0 2 2h1M17 10.8v1.4a2 2 0 0 1-2 2h-1"/></svg></span>Family
     </button>
@@ -2157,13 +2181,6 @@ body.wizard-open { overflow: hidden; }
         </div>
       </div>
     </div>
-    <!-- Tucked-away state: a small FamSort orb in the corner with a spinning ring
-         while busy. Tap it to bring the full activity pill back. -->
-    <button class="activity__orb" id="activityOrb" type="button" aria-label="Open FamSort activity" title="FamSort activity — tap to open">
-      <span class="activity__orb-ring" aria-hidden="true"></span>
-      <span class="activity__orb-mark" aria-hidden="true"><svg viewBox="0 0 80 80" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"><rect x="14" y="26" width="38" height="38" rx="8" transform="rotate(-13 33 45)"/><rect x="28" y="16" width="38" height="38" rx="8" transform="rotate(7 47 35)" fill="#fff"/></g><circle cx="47" cy="31" r="6" fill="#5a4cd1"/><path d="M36 51c0-7.5 5-11.5 11-11.5s11 4 11 11.5" fill="#5a4cd1"/></svg></span>
-      <span class="activity__orb-dot" id="activityOrbDot" aria-hidden="true"></span>
-    </button>
   </div>
 
 
@@ -9628,7 +9645,7 @@ function applyActivityExpanded() {
 
 // Whether the pill is tucked away into the small corner orb. Persisted so it
 // stays out of the way across reloads until the user taps the orb to open it.
-let activityMinimised = (() => { try { return localStorage.getItem("famsort_activity_min") === "1"; } catch { return false; } })();
+let activityMinimised = (() => { try { return localStorage.getItem("famsort_activity_min") !== "0"; } catch { return true; } })();
 
 function setActivityMinimised(on) {
   activityMinimised = !!on;
@@ -9642,20 +9659,28 @@ function setActivityMinimised(on) {
 function applyActivityMinimised(snap) {
   const wrap = el("processing");
   if (!wrap) return;
-  wrap.classList.toggle("is-mini", activityMinimised);
   if (snap === undefined) snap = activitySnapshot();
-  const busy = !!(snap && snap.busy && !snap.paused && !snap.done);
-  const paused = !!(snap && snap.paused && !snap.done);
-  const done = !!(snap && snap.done);
-  const attn = !!(snap && snap.kind === "backup" && (snap.review || snap.blocked));
-  // Dormant-but-present: a calm orb when nothing's running, so it stays a handle
-  // instead of vanishing between sweeps or when you switch pages.
-  const idle = !!(snap && !busy && !paused && !done && !attn);
-  wrap.classList.toggle("orb-busy", busy);
-  wrap.classList.toggle("orb-paused", paused);
-  wrap.classList.toggle("orb-done", done);
-  wrap.classList.toggle("orb-attn", attn && !done);
-  wrap.classList.toggle("orb-idle", idle);
+  // The pill's card is open only when NOT minimised; the permanent centre orb in
+  // the tab bar is the always-there handle.
+  wrap.classList.toggle("is-mini", activityMinimised);
+  // The orb only joins the tab bar once there's something to report (after setup
+  // / while active), so pre-setup the bar stays a clean four icons.
+  const tabbar = document.querySelector(".tabbar");
+  if (tabbar) tabbar.classList.toggle("has-orb", !!snap);
+  const orb = el("activityOrb");
+  if (orb) {
+    const busy = !!(snap && snap.busy && !snap.paused && !snap.done);
+    const paused = !!(snap && snap.paused && !snap.done);
+    const done = !!(snap && snap.done);
+    const attn = !!(snap && snap.kind === "backup" && (snap.review || snap.blocked));
+    const idle = !!(snap && !busy && !paused && !done && !attn);
+    orb.classList.toggle("orb-busy", busy);
+    orb.classList.toggle("orb-paused", paused);
+    orb.classList.toggle("orb-done", done);
+    orb.classList.toggle("orb-attn", attn && !done);
+    orb.classList.toggle("orb-idle", idle);
+    orb.setAttribute("aria-expanded", activityMinimised ? "false" : "true");
+  }
 }
 
 // Give EVERY slow/async button instant feedback: the moment it's pressed it
@@ -9699,6 +9724,9 @@ function startProgressUI() {
   scanProgLabel = "Looking through your photos…";
   scanLoopDone = 0;
   scanLoopTotal = scanTotal || 0;
+  // Pop the pill out of the orb so the live count + time-left are visible while
+  // the scan runs (in-memory only — don't clobber the saved tucked/open choice).
+  activityMinimised = false;
   renderStatusCard();
 }
 
@@ -9714,6 +9742,7 @@ function showProgressDone(summary) {
     scanDoneUntil = 0;
     scanSummary = "";
     scanUIActive = false;
+    activityMinimised = true; // tuck the pill back into the orb once it's done
     renderStatusCard(); // hand the card over to the backup status, if any
   }, 3400);
 }
@@ -15474,7 +15503,7 @@ function wire() {
     activityMin.addEventListener("click", (e) => { e.stopPropagation(); setActivityMinimised(true); });
   const activityOrb = el("activityOrb");
   if (activityOrb)
-    activityOrb.addEventListener("click", () => { setActivityMinimised(false); });
+    activityOrb.addEventListener("click", () => { setActivityMinimised(!activityMinimised); });
   applyActivityMinimised();
   const procBackupNow = el("procBackupNow");
   if (procBackupNow)
