@@ -3379,6 +3379,12 @@ const SCOPES = ["Files.ReadWrite", "Files.ReadWrite.All", "User.Read"];
 // image into memory at once; this just caps the absolute worst case.
 const MAX_FILES = 25000;
 
+// Last cloud-import outcome, for the in-app Diagnostics panel. Lets us (and the
+// user) see at a glance whether a scan that "found thousands but sorted none"
+// was starved by failed downloads vs genuinely had nothing new.
+let lastScanStats = { found: 0, downloaded: 0, failed: 0, at: 0 };
+function getLastScanStats() { return { ...lastScanStats }; }
+
 function oneDriveConfigured() {
   return !!getClientId() && window.isSecureContext;
 }
@@ -4425,7 +4431,13 @@ function makeDownloader(token, onStatus, onFiles) {
       const url = it["@microsoft.graph.downloadUrl"];
       if (url) {
         try {
-          blob = await (await fetch(url)).blob();
+          // IMPORTANT: check res.ok. The pre-authed downloadUrl captured during
+          // enumeration can EXPIRE before we get to it on a big library; an
+          // expired URL returns an error PAGE, and blindly calling .blob() on it
+          // would hand a non-image blob to the face sorter (which then silently
+          // finds no faces and drops the photo). Only accept a genuine 2xx body.
+          const r = await fetch(url);
+          if (r.ok) blob = await r.blob();
         } catch {
           /* fall through */
         }
@@ -4436,6 +4448,23 @@ function makeDownloader(token, onStatus, onFiles) {
         blob = await authedBlob(`${GRAPH}/me/drive/items/${it.id}/content`);
       } catch {
         /* give up on this one */
+      }
+    }
+    if (!blob) {
+      // LAST RESORT: the thumbnail may not be ready and the enumerated
+      // downloadUrl may be stale/missing, so ask Graph for a FRESH downloadUrl
+      // right now (with token refresh) and pull the original from it. This
+      // self-heals the "found thousands but downloaded none" case where every
+      // cheap path failed on an older/large library.
+      try {
+        const meta = await graphGet(`${GRAPH}/me/drive/items/${it.id}?$select=id,@microsoft.graph.downloadUrl`, authToken);
+        const fresh = meta && meta["@microsoft.graph.downloadUrl"];
+        if (fresh) {
+          const r = await fetch(fresh);
+          if (r.ok) blob = await r.blob();
+        }
+      } catch {
+        /* genuinely unreachable — count it as failed below */
       }
     }
     if (!blob) {
@@ -4484,13 +4513,19 @@ function makeDownloader(token, onStatus, onFiles) {
   let producing = true; // set false by finish() once the last page is downloaded
 
   const consumer = (async () => {
+    let idle = 0;
     while (producing || ready.length) {
-      if (ready.length >= FEED_CHUNK || (!producing && ready.length)) {
+      // Detect as soon as a full batch is ready, OR when a few photos have been
+      // sitting here briefly (so the FIRST results appear in seconds instead of
+      // waiting for a full 80 to download), OR once downloading has finished.
+      if (ready.length >= FEED_CHUNK || (!producing && ready.length) || (ready.length && idle >= 8)) {
+        idle = 0;
         const chunk = ready.splice(0, FEED_CHUNK);
         fed += chunk.length;
         await onFiles(chunk);
       } else {
-        await sleep(30); // nothing ready yet — wait for the downloader
+        idle++;
+        await sleep(30); // nothing (full) ready yet — wait for the downloader
       }
     }
   })();
@@ -4511,12 +4546,13 @@ function makeDownloader(token, onStatus, onFiles) {
       producing = false;
       await consumer;
       if (!fed) {
-        onStatus?.(`Couldn't read any photos${failed ? ` (${failed} failed)` : ""}. Try again, or check OneDrive is reachable.`);
+        onStatus?.(`Couldn't read any photos${failed ? ` (${failed} failed to download)` : ""}. Try again, or reconnect OneDrive.`);
       } else {
         onStatus?.(`Scanned ${fed} photo${fed === 1 ? "" : "s"}${failed ? ` (${failed} skipped)` : ""} — sorting them on this device…`);
       }
     },
     fedCount() { return fed; },
+    failedCount() { return failed; },
   };
 }
 
@@ -4557,8 +4593,13 @@ async function importFromFolders(folderIds, onStatus, onFiles, knownIds, onTotal
     }
   }
   await dl.finish(); // flush the final partial chunk
+  // Record the outcome for Diagnostics, and if we FOUND photos but couldn't
+  // download them, say so plainly instead of leaving a stalled "finding" count.
+  lastScanStats = { found: items.length, downloaded: dl.fedCount(), failed: dl.failedCount(), at: Date.now() };
   if (!items.length) {
-    onStatus?.("No photos found in the selected folders.");
+    onStatus?.("No new photos found in the selected folders.");
+  } else if (!dl.fedCount()) {
+    onStatus?.(`Found ${items.length.toLocaleString()} photo${items.length === 1 ? "" : "s"} but couldn't download any — reconnect OneDrive and try again.`);
   }
 }
 
@@ -4681,7 +4722,7 @@ async function loadCloudLibrary() {
   return res.json();
 }
 
-return { getClientId, setClientId, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, getFileByContentKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, createFolder, renameFolder, folderIdByPath, cameraRollFolder, getItemMeta, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
+return { getClientId, setClientId, getLastScanStats, oneDriveConfigured, hasCloudAccount, uploadFileToOneDrive, cloudFileKey, getFileByContentKey, listFolderFiles, fileThumbnailBlob, deleteCloudFile, renameCloudFile, moveCloudFile, getFolderWebUrl, accountInfo, profilePhoto, signOut, switchAccount, inviteToFolder, listFolderPermissions, setPermissionRole, removePermission, readAccessConfig, writeAccessConfig, listSharedWithMe, readSharedAccessConfig, writeSharedAccessConfig, listSharedFolderPhotos, downloadSharedFile, signIn, listChildFolders, createFolder, renameFolder, folderIdByPath, cameraRollFolder, getItemMeta, importFromFolders, importCameraRoll, indexSourceItems, connectOneDrive, downloadCloudFile, saveCloudModel, loadCloudModel, saveCloudLibrary, loadCloudLibrary };
 })();
 
 const gphotos = (function () {
@@ -10855,6 +10896,16 @@ function showDiagnostics() {
     `Named people: ${people}`,
     `Detector: ${det.ssd ? "accurate (SSD) ✓" : det.ready ? "basic only — SSD didn't load" : "NOT loaded"}`,
   ];
+  // Last OneDrive import outcome — exposes a "found thousands but downloaded
+  // none" stall (failed downloads starving the sorter) at a glance.
+  try {
+    const cs = cloud.getLastScanStats && cloud.getLastScanStats();
+    if (cs && cs.at) {
+      lines.push(
+        `Last cloud scan: found ${cs.found}, downloaded ${cs.downloaded}, failed ${cs.failed}`
+      );
+    }
+  } catch { /* cloud module may not expose stats */ }
   const diag = el("diagOut");
   diag.textContent = lines.join("\n");
   diag.hidden = false;
