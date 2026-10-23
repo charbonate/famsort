@@ -16217,13 +16217,23 @@ boot().catch((e) => showFatal("boot()", e));
        the heavy face model + fonts and the app shell — no behaviour change. -->
   <script>
     if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:") {
-      // Auto-update: when a new worker takes control, reload once so the fresh
-      // app shell is shown without the user having to clear anything. The guard
-      // stops a reload loop.
+      // Auto-update: when a new worker takes control, reload ONCE so the fresh
+      // app shell is shown without the user having to clear anything.
+      //
+      // The reload is guarded by sessionStorage so it can fire AT MOST ONCE per
+      // tab session. The old in-memory `swRefreshing` flag reset on every page
+      // load, so a worker that kept re-claiming (e.g. after several quick
+      // deploys) could reload → claim → reload forever. sessionStorage survives
+      // the reload, so the second controllerchange is ignored and the loop can
+      // never happen.
       var swRefreshing = false;
       navigator.serviceWorker.addEventListener("controllerchange", function () {
         if (swRefreshing) return;
         swRefreshing = true;
+        try {
+          if (sessionStorage.getItem("fs-sw-reloaded") === "1") return; // already reloaded this session — never loop
+          sessionStorage.setItem("fs-sw-reloaded", "1");
+        } catch (e) { /* storage blocked — fall through to a single reload */ }
         location.reload();
       });
       window.addEventListener("load", function () {
